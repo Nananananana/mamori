@@ -8,6 +8,82 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-30
+
+Saying why. Every detection has recorded which rule found it since 0.1.0 and
+almost nothing surfaced it, so "why was this redacted?" was awkward to answer
+and "why was this **not** redacted?" was impossible.
+
+### Added
+
+- **`mamori trace`** -- every candidate the pipeline considered and what became
+  of it: kept, below the confidence threshold, ruled away by a correction, or
+  displaced by an overlapping detection that won. Each displacement says which
+  preference decided it, which makes
+  [ADR 0005](docs/adr/0005-overlap-resolution.md) inspectable rather than
+  merely written down.
+
+  ```text
+  where     type            rules         conf  outcome
+  5:11      PERSON          en            0.90  kept
+  59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
+  ```
+
+  And then the harder half. It runs the *other* stance and says what the wider
+  rules would have caught -- as a shape, never a value. When neither stance
+  finds anything more it says so, and points at a correction or the model tier
+  rather than leaving somebody guessing. See
+  [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md).
+
+- **`mamori audit`** -- which rules carry the load over a corpus, and which
+  have never fired once. Rules are run individually rather than through the
+  pipeline: a rule that fires and always loses an overlap looks identical to
+  one that never fires, and those are different problems. `--file` audits your
+  own text, which is the more useful question.
+
+- **Stable rule identifiers** (`en.PERSON.2`, `universal.EMAIL.1`), derived
+  from pack, type and declaration order, with an explicit `name=` available
+  where a rule deserves one.
+
+- **`ProtectionResult.trace`**, off by default because it costs a list of every
+  candidate. It carries masked previews and never values -- a trace is exactly
+  what somebody pastes into a bug report, and a test pins it.
+
+### Fixed
+
+`mamori audit` found these on its first run, which is the point of it.
+
+- **Three credential rules shipped in 0.10 had never been measured.** The prose
+  password rules -- `the password is X`, `パスワードは X`, `密码是 X` -- had no
+  dataset sample in any language. Credential detection, added without
+  evaluation coverage, in the release that was about not trusting unmeasured
+  things. Samples added in all three languages, including the negatives that
+  matter more: "my password is fine" must not stop a request.
+
+- **A UK-shaped phone rule had never fired**, for the same reason. Sample
+  added.
+
+- **A stale published figure.** The `ja-docs` leak rate given in 0.9 was
+  measured before a fix that landed in the same release: published at 2.49%,
+  actually 1.83%. `SECURITY.md` and the READMEs carry the corrected tables.
+
+### Changed
+
+- The remaining ten never-fired rules are the vendor-prefixed credential rules,
+  which cannot have samples -- a literal key in a file that ships inside the
+  wheel trips the secret scanner of everyone who clones the repository.
+  `audit` says so rather than listing them beside genuine findings, and a test
+  pins that nothing *else* is dead, so the next unexplained one is visible.
+
+- The roadmap is revised in
+  [proposal 0002](docs/proposals/0002-the-road-to-1-0-revised.md), against a
+  set of proposals from the project owner: traceability brought forward to
+  here, Japanese and Chinese precision next, multi-turn consistency after that,
+  and a fail-closed stance and CI linter before 1.0. A `mamori.yml` is declined
+  and [ADR 0012](docs/adr/0012-configuration-without-a-format.md) says why;
+  Markdown and JSON structure preservation was investigated and found to be
+  largely unnecessary already.
+
 ## [0.11.0] - 2026-08-29
 
 Surrogate values: `山田一郎` instead of `<PERSON_001>`, off by default. On the
@@ -863,7 +939,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Nananananana/mamori/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Nananananana/mamori/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Nananananana/mamori/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Nananananana/mamori/compare/v0.8.0...v0.9.0

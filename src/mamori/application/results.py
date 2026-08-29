@@ -13,6 +13,7 @@ from ..domain.placeholder import Placeholder
 from ..domain.placeholder_matching import PlaceholderOccurrence
 from ..domain.policy import Action
 from ..domain.span import Span
+from .trace import DecisionTrace
 
 __all__ = ["EntityReport", "ProtectionResult", "RestorationResult", "mask_preview"]
 
@@ -53,6 +54,9 @@ class ProtectionResult:
     entities: tuple[EntityReport, ...] = ()
     #: Scope the placeholders were allocated in; needed to restore.
     scope: str = ""
+    #: Everything the pipeline considered and what became of it. ``None``
+    #: unless the caller asked, because it costs a list of every candidate.
+    trace: DecisionTrace | None = None
 
     @property
     def entity_count(self) -> int:

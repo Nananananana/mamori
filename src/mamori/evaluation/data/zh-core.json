@@ -118,6 +118,16 @@
       "id": "zh-025",
       "annotated": "请[[PERSON:李明]]经理审阅，谢谢。",
       "note": "Single mention: propagation must not invent extra occurrences."
+    },
+    {
+      "id": "zh-026",
+      "note": "散文中的密码。0.10 加了规则却没有样本，0.12 的 `mamori audit` 报告它从未命中才发现。",
+      "annotated": "共享账号的密码是[[PASSWORD:huiyi2026chun]]，请及时修改。"
+    },
+    {
+      "id": "zh-027",
+      "note": "否定样本：在谈论密码，而不是在泄露密码。",
+      "annotated": "密码已经改过了，请重新登录试试。"
     }
   ]
 }

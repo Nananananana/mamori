@@ -10,6 +10,7 @@
     mamori llm      -- where the model is, and whether it answers
     mamori serve    -- an OpenAI-compatible endpoint that protects as it forwards
     mamori privacy  -- what this configuration actually does with your data
+    mamori trace    -- why something was replaced, and why something was not
     mamori correct  -- rule on a value the detectors got wrong
     mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
@@ -51,6 +52,7 @@ from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, lo
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
 from .demo import SCENARIOS, LiveSettings, run_demo
+from .explain import audit_rules, trace_text
 
 __all__ = ["build_parser", "main"]
 
@@ -210,6 +212,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--upstream", help="a proxy destination, to include it in the destinations"
     )
     privacy_cmd.add_argument("--json", action="store_true", help="emit JSON")
+
+    trace_cmd = sub.add_parser(
+        "trace", help="why something was replaced, and why something else was not"
+    )
+    add_config_args(trace_cmd)
+    trace_cmd.add_argument("text", nargs="?", help="the text to explain")
+    trace_cmd.add_argument("-f", "--file", help="read the text from a file")
+    trace_cmd.add_argument("--json", action="store_true", help="emit JSON")
+
+    audit_cmd = sub.add_parser(
+        "audit", help="which rules carry the load, and which never fire at all"
+    )
+    add_config_args(audit_cmd)
+    audit_cmd.add_argument("-f", "--file", help="audit against a file of your own")
+    audit_cmd.add_argument(
+        "-d", "--dataset", metavar="PATH", help="audit against a labelled dataset"
+    )
+    audit_cmd.add_argument(
+        "--dead", action="store_true", help="list only the rules that never fired"
+    )
+    audit_cmd.add_argument("--json", action="store_true", help="emit JSON")
 
     correct_cmd = sub.add_parser("correct", help="rule on a value the detectors got wrong")
     add_config_args(correct_cmd)
@@ -562,6 +585,97 @@ def _cmd_corrections(args: argparse.Namespace) -> int:
     print(f"{len(log)} entr{'y' if len(log) == 1 else 'ies'} in the log", end="")
     print(f", {superseded} superseded" if superseded else "")
     print("The latest ruling about a value wins. Nothing is ever deleted.")
+    return _EXIT_OK
+
+
+def _cmd_trace(args: argparse.Namespace) -> int:
+    text = _read_input(args.text, args.file)
+    return trace_text(_settings_from(args), text, as_json=args.json)
+
+
+#: Types the bundled datasets deliberately never contain. A literal
+#: vendor-prefixed credential in a file that ships inside the wheel trips the
+#: secret scanner of everybody who clones the repository, so those rules are
+#: tested with fixtures assembled at runtime instead. An audit that reported
+#: them as dead alongside genuinely dead rules would bury the real finding.
+_NEVER_IN_A_DATASET = frozenset({"API_KEY", "ACCESS_TOKEN", "PRIVATE_KEY"})
+
+
+def _cmd_audit(args: argparse.Namespace) -> int:
+    settings = _settings_from(args)
+    texts: list[str]
+    what: str
+    if args.file:
+        texts = [Path(args.file).read_text(encoding="utf-8")]
+        what = args.file
+    elif args.dataset:
+        texts = [sample.text for sample in Dataset.load(Path(args.dataset))]
+        what = args.dataset
+    else:
+        texts = [sample.text for dataset in bundled_datasets() for sample in dataset]
+        what = f"the {len(bundled_datasets())} bundled datasets"
+
+    usage = audit_rules(texts, settings.locales or None)
+    dead = [u for u in usage if u.dead]
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "audited": what,
+                    "texts": len(texts),
+                    "rules": len(usage),
+                    "never_fired": len(dead),
+                    "usage": [
+                        {
+                            "rule": u.identifier,
+                            "entity_type": u.entity_type,
+                            "tier": u.tier,
+                            "matches": u.matches,
+                        }
+                        for u in usage
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return _EXIT_OK
+
+    print(f"{len(usage)} rules over {len(texts)} text(s) -- {what}")
+    print()
+
+    if not args.dead:
+        print("What fired")
+        print()
+        for entry in usage[:20]:
+            if entry.dead:
+                break
+            print(f"  {entry.matches:>6}  {entry.identifier:<28}{entry.tier}")
+        print()
+
+    expected = [e for e in dead if e.entity_type in _NEVER_IN_A_DATASET]
+    unexplained = [e for e in dead if e.entity_type not in _NEVER_IN_A_DATASET]
+
+    print(f"Never fired ({len(dead)} of {len(usage)})")
+    print()
+    for entry in unexplained:
+        print(f"          {entry.identifier:<28}{entry.tier}")
+    if not unexplained:
+        print("          (none without an explanation)")
+
+    if expected:
+        print()
+        print(f"  and {len(expected)} credential rule(s), which is expected here:")
+        print("  a literal vendor-prefixed key in a shipped dataset trips the secret")
+        print("  scanner of everyone who clones the repository, so the datasets")
+        print("  deliberately contain none. Those rules are covered by")
+        print("  tests/test_detectors.py, which assembles the fixtures at runtime.")
+
+    print()
+    print("A rule that never fires is either dead or waiting for data nobody has.")
+    print("Neither is automatically a bug, and both are worth knowing. Run this")
+    print("against your own text with --file to see which rules matter to you.")
     return _EXIT_OK
 
 
@@ -1157,6 +1271,8 @@ _COMMANDS = {
     "llm": _cmd_llm,
     "serve": _cmd_serve,
     "privacy": _cmd_privacy,
+    "trace": _cmd_trace,
+    "audit": _cmd_audit,
     "correct": _cmd_correct,
     "corrections": _cmd_corrections,
     "locales": _cmd_locales,

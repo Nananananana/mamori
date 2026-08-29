@@ -225,6 +225,16 @@
       "id": "ja-049",
       "annotated": "担当は[[PERSON:高橋]]課長です。至急ご確認ください。",
       "note": "Single mention: propagation must not invent extra occurrences."
+    },
+    {
+      "id": "ja-050",
+      "note": "散文中のパスワード。0.10で規則を足したが標本が無く、0.12の `mamori audit` が「一度も発火していない」と報告して発覚した。",
+      "annotated": "共有アカウントのパスワードは[[PASSWORD:kaigi2026spring]]です。ご確認ください。"
+    },
+    {
+      "id": "ja-051",
+      "note": "否定標本。パスワードの話をしているだけで、開示はしていない。ここでブロックすると普通の文でリクエストが止まる。",
+      "annotated": "パスワードは変更しましたので、再度お試しください。"
     }
   ]
 }

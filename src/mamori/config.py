@@ -244,6 +244,7 @@ class MamoriConfig:
         policy: PrivacyPolicy | None = None,
         store: MappingStore | None = None,
         scope: str | None = None,
+        trace: bool = False,
     ) -> PrivacySession:
         """Build a :class:`~mamori.application.session.PrivacySession`.
 
@@ -274,6 +275,7 @@ class MamoriConfig:
             prompts=self.prompt_library(),
             corrections=self.correction_log(),
             surrogate_types=self.surrogate_types(),
+            trace=trace,
         )
 
     def replace(self, **changes: object) -> MamoriConfig:

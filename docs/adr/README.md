@@ -37,3 +37,4 @@ it, and — the part that is usually missing — what it costs.
 | [0024](0024-corrections-are-appended-applied-at-read.md) | Corrections are appended, applied at read |
 | [0025](0025-measure-at-the-length-people-send.md) | Measure at the length people actually send |
 | [0026](0026-surrogates-trade-obviousness-for-readability.md) | Surrogates trade obviousness for readability |
+| [0027](0027-say-why-and-say-why-not.md) | Say why, and say why not |

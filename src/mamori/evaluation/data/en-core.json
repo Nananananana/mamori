@@ -229,6 +229,21 @@
       "id": "en-049",
       "annotated": "Dear [[PERSON:Jane Doe]],\n\nplease confirm by Friday.",
       "note": "Single mention: propagation must not invent extra occurrences."
+    },
+    {
+      "id": "en-050",
+      "note": "A password written in prose. Added in 0.12 after `mamori audit` reported that the rule for it, shipped in 0.10, had never fired on any sample.",
+      "annotated": "The staging password is [[PASSWORD:hunter2spring]], can you check the deploy?"
+    },
+    {
+      "id": "en-051",
+      "note": "Negative: talking about a password is not disclosing one. Blocking this would stop a request over an ordinary sentence, which is the most disruptive false positive this library can produce.",
+      "annotated": "My password is fine, I just cannot reach the gateway."
+    },
+    {
+      "id": "en-052",
+      "note": "A UK-style number: leading zero, space separated. en.PHONE.2 existed for this and had no sample until 0.12.",
+      "annotated": "Reach the London office on [[PHONE:020 7946 0958]]."
     }
   ]
 }

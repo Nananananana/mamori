@@ -49,6 +49,7 @@ class PrivacySession:
         prompts: PromptLibrary | None = None,
         corrections: CorrectionLog | None = None,
         surrogate_types: frozenset[str] = frozenset(),
+        trace: bool = False,
     ) -> None:
         """
         Args:
@@ -64,6 +65,8 @@ class PrivacySession:
             corrections: Values the operator has ruled on. The only input
                 that can reduce what is detected, and the one place a
                 credential cannot be ruled away.
+            trace: Record every candidate the pipeline considered and what
+                became of it, on ``ProtectionResult.trace``. Off by default.
             surrogate_types: Types replaced by a plausible value rather than a
                 token. Empty by default. Read
                 :mod:`mamori.domain.surrogate` before turning it on: an
@@ -92,6 +95,7 @@ class PrivacySession:
             self._store,
             self._corrections,
             surrogate_types=frozenset(surrogate_types),
+            trace=trace,
         )
         self._restoration = RestorationService(self._store)
 

@@ -25,10 +25,11 @@ should be reserved for types whose extent you are sure about.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 
 from .sensitive_entity import SensitiveEntity
 
-__all__ = ["resolve_overlaps"]
+__all__ = ["Displacement", "resolve_overlaps", "resolve_overlaps_traced"]
 
 
 def _preference(entity: SensitiveEntity) -> tuple[int, int, float, int, str, str]:
@@ -68,3 +69,52 @@ def assert_non_overlapping(entities: Sequence[SensitiveEntity]) -> None:
         if entity.span.start < previous_end:
             raise ValueError(f"overlapping spans after resolution at offset {entity.span.start}")
         previous_end = entity.span.end
+
+
+@dataclass(frozen=True, slots=True)
+class Displacement:
+    """One detection that lost its span to another, and to which.
+
+    The losers used to be dropped without a word, which is fine for producing
+    text and useless for explaining it. "Why is this a PERSON when a rule said
+    it was a COMPANY_NAME?" has an answer, and this is it.
+    """
+
+    loser: SensitiveEntity
+    winner: SensitiveEntity
+
+    @property
+    def reason(self) -> str:
+        """Which preference decided it, in the order the module documents."""
+        if self.winner.span.length != self.loser.span.length:
+            return "wider span"
+        if self.winner.entity_type.severity != self.loser.entity_type.severity:
+            return "higher severity"
+        if self.winner.confidence.value != self.loser.confidence.value:
+            return "higher confidence"
+        if self.winner.span.start != self.loser.span.start:
+            return "earlier in the text"
+        return "tie broken by detector name"
+
+
+def resolve_overlaps_traced(
+    entities: Iterable[SensitiveEntity],
+) -> tuple[list[SensitiveEntity], list[Displacement]]:
+    """Resolve, and say what was displaced by what.
+
+    Identical to :func:`resolve_overlaps` in what it keeps -- it is the same
+    loop -- and it additionally records every detection that lost, with the
+    one that took its span. Used by ``mamori trace``; the plain function stays
+    the fast path for producing text.
+    """
+    ranked = sorted(entities, key=_preference)
+    accepted: list[SensitiveEntity] = []
+    displaced: list[Displacement] = []
+    for candidate in ranked:
+        winner = next((kept for kept in accepted if candidate.span.overlaps(kept.span)), None)
+        if winner is not None:
+            displaced.append(Displacement(loser=candidate, winner=winner))
+            continue
+        accepted.append(candidate)
+    accepted.sort(key=lambda e: e.span.start)
+    return accepted, displaced

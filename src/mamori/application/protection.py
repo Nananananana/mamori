@@ -11,7 +11,11 @@ from ..domain.mapping import Mapping
 from ..domain.normalization import NormalizedText
 from ..domain.placeholder import STRICT_PLACEHOLDER_RE, Placeholder
 from ..domain.policy import Action, PrivacyPolicy
-from ..domain.resolution import assert_non_overlapping, resolve_overlaps
+from ..domain.resolution import (
+    assert_non_overlapping,
+    resolve_overlaps,
+    resolve_overlaps_traced,
+)
 from ..domain.script import scripts_in
 from ..domain.sensitive_entity import SensitiveEntity
 from ..domain.span import Span
@@ -20,6 +24,7 @@ from ..errors import DetectionError, PolicyViolationError
 from ..ports.detector import Detector
 from ..ports.mapping_store import MappingStore
 from .results import EntityReport, ProtectionResult, mask_preview
+from .trace import DecisionTrace, Outcome, TraceBuilder
 
 __all__ = ["ProtectionService"]
 
@@ -39,12 +44,17 @@ class ProtectionService:
         store: MappingStore,
         corrections: CorrectionLog | None = None,
         surrogate_types: frozenset[str] = frozenset(),
+        trace: bool = False,
     ) -> None:
         self._corrections = corrections if corrections is not None else CorrectionLog()
         #: Types substituted with a plausible value instead of a token. Empty
         #: by default, and deliberately: an unrestored placeholder is obvious
         #: and an unrestored surrogate reads as a fact about the wrong person.
         self._surrogate_types = frozenset(surrogate_types)
+        #: Record what was considered and discarded. Off by default: it
+        #: costs a list of every candidate, and nothing in the normal path
+        #: reads it.
+        self._trace = trace
         self._detectors = tuple(detectors)
         self._policy = policy
         self._store = store
@@ -68,17 +78,42 @@ class ProtectionService:
         # same reasoning applies to a corrected-away value -- if it could win a
         # span and then be dropped, ruling out a false positive would open a
         # hole where a real detection used to be.
-        confident = [
-            entity
-            for entity in detections
-            if self._policy.accepts(entity.confidence.value)
-            and not self._corrections.excludes(entity)
-        ]
+        builder = TraceBuilder() if self._trace else None
 
-        resolved = resolve_overlaps(confident)
+        confident: list[SensitiveEntity] = []
+        for entity in detections:
+            if not self._policy.accepts(entity.confidence.value):
+                _note(
+                    builder,
+                    entity,
+                    Outcome.BELOW_CONFIDENCE,
+                    f"below min_confidence {self._policy.min_confidence}",
+                )
+                continue
+            if self._corrections.excludes(entity):
+                _note(
+                    builder, entity, Outcome.CORRECTED_AWAY, "ruled not sensitive by a correction"
+                )
+                continue
+            confident.append(entity)
+
+        if builder is None:
+            resolved = resolve_overlaps(confident)
+        else:
+            resolved, displaced = resolve_overlaps_traced(confident)
+            for loss in displaced:
+                _note(
+                    builder,
+                    loss.loser,
+                    Outcome.DISPLACED,
+                    f"lost to {loss.winner.entity_type.name} ({loss.reason})",
+                )
+            for kept in resolved:
+                _note(builder, kept, Outcome.KEPT)
         assert_non_overlapping(resolved)
 
         decided = [(entity, self._policy.action_for(entity.entity_type)) for entity in resolved]
+        trace = builder.build(len(text)) if builder is not None else None
 
         blocked = tuple(
             (entity.entity_type.name, entity.span.start, entity.span.end)
@@ -88,7 +123,7 @@ class ProtectionService:
         if blocked:
             raise PolicyViolationError(blocked)
 
-        return self._apply(text, decided, scope)
+        return self._apply(text, decided, scope, trace)
 
     # -- internals ---------------------------------------------------------
 
@@ -129,6 +164,7 @@ class ProtectionService:
         text: str,
         decided: Sequence[tuple[SensitiveEntity, Action]],
         scope: str,
+        trace: DecisionTrace | None = None,
     ) -> ProtectionResult:
         reports: list[EntityReport] = []
         pieces: list[str] = []
@@ -166,6 +202,7 @@ class ProtectionService:
             protected_text="".join(pieces),
             entities=tuple(reports),
             scope=scope,
+            trace=trace,
         )
 
     def _allocate(self, entity: SensitiveEntity, scope: str, text: str) -> Mapping:
@@ -234,3 +271,27 @@ def _appearing_in(text: str, type_name: str) -> frozenset[str]:
         if located is not None:
             candidates |= set(located.values)
     return frozenset(value for value in candidates if value in text)
+
+
+def _note(
+    builder: TraceBuilder | None,
+    entity: SensitiveEntity,
+    outcome: Outcome,
+    detail: str = "",
+) -> None:
+    """Record one decision, if anybody asked for a trace.
+
+    The preview is masked here rather than at the edge, so there is no path
+    from a trace to a value even by accident.
+    """
+    if builder is None:
+        return
+    builder.record(
+        entity_type=entity.entity_type.name,
+        span=entity.span,
+        preview=mask_preview(entity.value),
+        source=entity.source,
+        confidence=entity.confidence.value,
+        outcome=outcome,
+        detail=detail,
+    )

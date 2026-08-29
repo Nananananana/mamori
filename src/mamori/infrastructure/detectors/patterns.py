@@ -46,6 +46,11 @@ class PatternRule:
         validator: Optional check applied to the matched text. Used for
             checksummed identifiers, where a checksum turns a hopelessly
             false-positive-prone digit run into a reliable signal.
+        name: How this rule is identified in a trace or an audit. Optional
+            because naming a hundred rules by hand is a hundred chances to
+            name one wrongly; :func:`identify` fills in a stable
+            ``pack.TYPE.n`` when nothing was given, which is enough for
+            "which rule fired" and "which rule has never fired once".
     """
 
     entity_type: EntityType
@@ -54,6 +59,7 @@ class PatternRule:
     group: int = 0
     validator: Callable[[str], bool] | None = None
     tier: RuleTier = RuleTier.CORE
+    name: str = ""
 
 
 def compile_rule(
@@ -64,12 +70,14 @@ def compile_rule(
     group: int = 0,
     validator: Callable[[str], bool] | None = None,
     tier: RuleTier = RuleTier.CORE,
+    name: str = "",
 ) -> PatternRule:
     """Compile ``pattern`` into a rule. Convenience for the locale modules."""
     return PatternRule(
         entity_type=entity_type,
         pattern=re.compile(pattern),
         confidence=confidence,
+        name=name,
         group=group,
         validator=validator,
         tier=tier,
@@ -289,3 +297,26 @@ UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     _WIDE_SECRET,
     _WIDE_DIGIT_RUN,
 )
+
+
+def identify(rules: Sequence[PatternRule], pack: str) -> dict[int, str]:
+    """Give every rule in a pack a stable identifier.
+
+    ``en.PERSON.2`` -- the pack, the type, and which rule of that type it is,
+    counted in declaration order. Stable across runs and across unrelated
+    edits, and it changes when somebody inserts a rule above it, which is the
+    honest behaviour: the rule at that position genuinely is a different one.
+
+    Keyed by ``id()`` so a rule object can be looked up without needing to be
+    hashable or to carry its own position.
+    """
+    seen: dict[str, int] = {}
+    named: dict[int, str] = {}
+    for rule in rules:
+        if rule.name:
+            named[id(rule)] = rule.name
+            continue
+        type_name = rule.entity_type.name
+        seen[type_name] = seen.get(type_name, 0) + 1
+        named[id(rule)] = f"{pack}.{type_name}.{seen[type_name]}"
+    return named

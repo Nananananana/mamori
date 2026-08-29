@@ -282,6 +282,35 @@ credential in a file on disk. Rotate it instead.
 
 ---
 
+## 为什么这个被替换了？那个为什么没有？
+
+```bash
+mamori trace "Dear Monday, the contract is with Globex Corporation."
+```
+
+```text
+where     type            rules         conf  outcome
+5:11      PERSON          en            0.90  kept
+34:53     COMPANY_NAME    en            0.70  kept
+59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
+```
+
+第二个问题才是关键，而在 `v0.12` 之前根本无法回答。
+当什么都没命中时，`trace` 会跑另一个立场，
+告诉你更宽的规则**本来会**抓到什么——只给形状，不给值；
+如果两个立场都够不到，它会直说，并指向订正或模型层。
+
+```bash
+mamori audit --file inbox.txt   # 对你的文本来说哪些规则有用
+mamori audit --dead             # 哪些规则从来没命中过
+```
+
+`audit` 第一次运行就发现：`v0.10` 加的三条凭据规则
+**从来没有任何样本检验过**。
+参见 [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md)。
+
+---
+
 ## 我的数据到底被怎么处理了
 
 问它就好：
@@ -411,10 +440,10 @@ mamori protect --min-confidence 0.7 -f draft.txt
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall_first** | balanced | **recall_first** |
-| `ja-core` | 0.71% | **0.00%** | 0.00% | **2.42%** |
-| `en-core` | 2.01% | **0.67%** | 0.00% | **0.78%** |
-| `zh-core` | 0.00% | **0.00%** | 2.55% | **4.00%** |
-| `ja-docs` | 2.49% | **2.49%** | 0.18% | **1.06%** |
+| `ja-core` | 0.69% | **0.00%** | 0.22% | **2.50%** |
+| `en-core` | 1.93% | **0.64%** | 0.00% | **0.72%** |
+| `zh-core` | 0.00% | **0.00%** | 2.29% | **3.59%** |
+| `ja-docs` | 1.83% | **1.83%** | 0.18% | **1.06%** |
 | `en-docs` | 20.29% | **3.55%** | 0.03% | **0.90%** |
 | `zh-docs` | 6.11% | **6.11%** | 0.59% | **0.78%** |
 
@@ -602,9 +631,9 @@ mamori eval
 ```
 
 ```text
-zh-core  (zh, 25 samples)
-  leak rate             0.00%   (0/202 sensitive chars left uncovered)
-  over-redaction        4.00%   (11/275 ordinary chars replaced)
+zh-core  (zh, 27 samples)
+  leak rate             0.00%   (0/215 sensitive chars left uncovered)
+  over-redaction        3.59%   (11/306 ordinary chars replaced)
   entity P / R / F1   0.844 / 1.000 / 0.915   (match: overlap)
   clean samples       25/25
 ```
@@ -707,6 +736,7 @@ infrastructure ──> ports
 `v0.9` 把评测数据扩到文档规模，发现了四个 44 字符样本无法暴露的检测缺陷。
 `v0.10` 加了可以真正跑起来的 demo，并发现了测量框架自身的一个缺陷。
 `v0.11` 加了替身值（默认关闭）。
+`v0.12` 让它能说出「为什么」。
 
 | | |
 |---|---|

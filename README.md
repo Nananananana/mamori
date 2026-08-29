@@ -302,6 +302,34 @@ places. See [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md
 
 ---
 
+## Why was this replaced? Why was that not?
+
+```bash
+mamori trace "Dear Monday, the contract is with Globex Corporation."
+```
+
+```text
+where     type            rules         conf  outcome
+5:11      PERSON          en            0.90  kept
+34:53     COMPANY_NAME    en            0.70  kept
+59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
+```
+
+The second question is the one that matters, and it was not answerable before
+`v0.12`. When nothing fired, `trace` runs the other stance and tells you what
+the wider rules *would* have caught — as a shape, never a value — and when
+neither stance helps, it says so and points at a correction or the model tier.
+
+```bash
+mamori audit --file inbox.txt   # which rules matter to your text
+mamori audit --dead             # which have never fired at all
+```
+
+`audit` found three credential rules shipped in `v0.10` that no sample had ever
+exercised. See [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md).
+
+---
+
 ## What is this actually doing with my data?
 
 Ask it:
@@ -441,10 +469,10 @@ default**:
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall-first** | balanced | **recall-first** |
-| `ja-core` | 0.71% | **0.00%** | 0.00% | **2.42%** |
-| `en-core` | 2.01% | **0.67%** | 0.00% | **0.78%** |
-| `zh-core` | 0.00% | **0.00%** | 2.55% | **4.00%** |
-| `ja-docs` | 2.49% | **2.49%** | 0.18% | **1.06%** |
+| `ja-core` | 0.69% | **0.00%** | 0.22% | **2.50%** |
+| `en-core` | 1.93% | **0.64%** | 0.00% | **0.72%** |
+| `zh-core` | 0.00% | **0.00%** | 2.29% | **3.59%** |
+| `ja-docs` | 1.83% | **1.83%** | 0.18% | **1.06%** |
 | `en-docs` | 20.29% | **3.55%** | 0.03% | **0.90%** |
 | `zh-docs` | 6.11% | **6.11%** | 0.59% | **0.78%** |
 
@@ -648,9 +676,9 @@ mamori eval
 ```
 
 ```text
-ja-core  (ja, 49 samples)
-  leak rate             0.00%   (0/561 sensitive chars left uncovered)
-  over-redaction        2.42%   (21/869 ordinary chars replaced)
+ja-core  (ja, 51 samples)
+  leak rate             0.00%   (0/576 sensitive chars left uncovered)
+  over-redaction        2.50%   (23/919 ordinary chars replaced)
   entity P / R / F1   0.868 / 0.983 / 0.922   (match: overlap)
   clean samples       49/49
 ```
@@ -768,7 +796,7 @@ discarding almost everything the model got right. `v0.8` gave the operator the
 last word. `v0.9` grew the datasets to document scale, which found four
 detection bugs that 44-character samples could not have shown. `v0.10` added a
 demo that runs, and found a bug in the measurement harness itself. `v0.11`
-added surrogate values, off by default.
+added surrogate values, off by default. `v0.12` made it say why.
 
 | | |
 |---|---|

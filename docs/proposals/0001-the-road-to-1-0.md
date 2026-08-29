@@ -1,6 +1,7 @@
 # 0001. The road to 1.0
 
-**Status:** current plan, revised after 0.11.0
+**Status:** superseded by [proposal 0002](0002-the-road-to-1-0-revised.md).
+Kept as the record of what was planned after 0.7 and what came of it.
 
 A roadmap in a README is a list. This is the reasoning behind the list, which
 is the part that changes when something is learned. ADRs record decisions
