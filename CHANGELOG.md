@@ -8,6 +8,41 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Added
+
+- **English and Chinese detection**, alongside Japanese. Rules are grouped into
+  language packs and a pack runs when the text gives a reason to run it; all of
+  them are enabled by default. See
+  [ADR 0008](docs/adr/0008-language-packs.md).
+  - English: NANP and UK phone numbers, SSN with range validation, ZIP+4, UK
+    postcodes, street addresses, legal-suffix company names, labelled employee
+    IDs and project codes, and personal names anchored on a title, salutation,
+    sign-off or label.
+  - Chinese: mainland mobile and landline numbers, 居民身份证 with its ISO 7064
+    MOD 11-2 check character, labelled postcodes, addresses from province to
+    street number, company suffixes, labelled employee IDs and project codes,
+    and personal names anchored on a surname.
+- `Script` and `scripts_in`, and `AdaptiveLocaleDetector` on top of them: the
+  Chinese pack stands down when the text contains kana, because kana appear in
+  Japanese and never in Chinese. Han-only text runs both CJK packs and
+  over-detects, which is the safe direction.
+- `PrivacySession(locales=[...])`, the `--locale/-l` flag on `inspect` and
+  `protect`, and a `mamori locales` command showing each pack and when it runs.
+- `register_locale`, for adding a language without touching the library.
+- `SSN` and `RESIDENT_ID` entity types. National identifiers keep their local
+  names rather than collapsing into one `NATIONAL_ID`: each has its own format
+  and its own checksum.
+- Stopword lists for the Japanese and Chinese surname rules, so 森林 and 高兴
+  are no longer read as people.
+
+### Changed
+
+- Language-independent rules moved to `UNIVERSAL_RULES` and now run whatever the
+  text looks like; `DEFAULT_RULES` and `NAME_RULES` are gone.
+- The detector name recorded on an entity is now the pack code (`ja`, `en`,
+  `zh`) or `universal`, so a report says which language's rules fired.
+- The CLI moved under `src/mamori/interfaces/`, matching the prescribed layout.
+
 ## [0.1.0] - 2026-08-29
 
 First release. The core round trip works end to end, in memory, with no

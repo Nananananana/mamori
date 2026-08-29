@@ -64,8 +64,14 @@ PHONE = _t("PHONE", Category.PII, 75)
 ADDRESS = _t("ADDRESS", Category.PII, 70)
 POSTAL_CODE = _t("POSTAL_CODE", Category.PII, 60)
 DATE_OF_BIRTH = _t("DATE_OF_BIRTH", Category.PII, 65)
-MY_NUMBER = _t("MY_NUMBER", Category.PII, 95)
 CREDIT_CARD = _t("CREDIT_CARD", Category.PII, 95)
+
+# National identifiers keep their local names rather than collapsing into one
+# NATIONAL_ID. Each has its own format and its own checksum, and <SSN_001> tells
+# a reader more than <NATIONAL_ID_001> would.
+MY_NUMBER = _t("MY_NUMBER", Category.PII, 95)  # Japan, 個人番号
+SSN = _t("SSN", Category.PII, 95)  # United States
+RESIDENT_ID = _t("RESIDENT_ID", Category.PII, 95)  # China, 居民身份证
 
 # --- Secrets ---------------------------------------------------------------
 API_KEY = _t("API_KEY", Category.SECRET, 100)
@@ -97,8 +103,10 @@ BUILTIN_TYPES: dict[str, EntityType] = {
         ADDRESS,
         POSTAL_CODE,
         DATE_OF_BIRTH,
-        MY_NUMBER,
         CREDIT_CARD,
+        MY_NUMBER,
+        SSN,
+        RESIDENT_ID,
         API_KEY,
         ACCESS_TOKEN,
         PASSWORD,

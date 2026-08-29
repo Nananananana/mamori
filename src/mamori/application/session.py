@@ -42,13 +42,25 @@ class PrivacySession:
         policy: PrivacyPolicy | None = None,
         store: MappingStore | None = None,
         scope: str | None = None,
+        locales: Sequence[str] | str | None = None,
     ) -> None:
+        """
+        Args:
+            detectors: Replaces the default detector set entirely.
+            policy: Defaults to :meth:`PrivacyPolicy.default`.
+            store: Defaults to an in-memory store.
+            scope: Defaults to a generated identifier.
+            locales: Language pack codes to enable, e.g. ``["ja", "en"]``.
+                ``None`` enables all of them, which is the safer default: an
+                unexpected language in a document is exactly the case nobody
+                redacted by hand. Ignored when ``detectors`` is given.
+        """
         from ..infrastructure.detectors import default_detectors
         from ..infrastructure.storage import InMemoryMappingStore
 
         self._store: MappingStore = store if store is not None else InMemoryMappingStore()
         self._policy = policy if policy is not None else PrivacyPolicy.default()
-        self._detectors = tuple(detectors) if detectors is not None else default_detectors()
+        self._detectors = tuple(detectors) if detectors is not None else default_detectors(locales)
         self._scope = scope or f"session-{uuid.uuid4().hex[:12]}"
         self._protection = ProtectionService(self._detectors, self._policy, self._store)
         self._restoration = RestorationService(self._store)

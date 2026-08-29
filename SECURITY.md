@@ -31,19 +31,48 @@ riskier behaviour than the behaviour it replaced.
 The v0.1 detectors are regular expressions and a surname list. They are known
 to miss:
 
+Language-independent:
+
+| Category | Known gaps |
+|---|---|
+| Secrets | Any credential without a recognisable vendor prefix, and any high-entropy string not written next to a keyword. Entropy-based detection is not implemented: it produces too many false positives on base64 payloads and hashes to be usable by default. |
+| `PHONE` | Unseparated digit runs, which are deliberately not matched -- an order number looks identical. |
+| Everything | Data that is only sensitive in context: a salary figure, an unreleased date, a headcount, who was in a meeting. |
+
+Japanese (`ja`):
+
 | Category | Known gaps |
 |---|---|
 | `PERSON` | Names with an uncommon surname and no honorific. Given names alone. Names inside compounds. Nicknames. Names written only in hiragana. |
-| `ADDRESS` | Addresses with no prefecture. Building and room numbers when written apart from the street. Non-Japanese addresses. |
-| `PHONE` | Unseparated digit runs, which are deliberately not matched -- an order number looks identical. |
+| `ADDRESS` | Addresses with no prefecture. Building and room numbers written apart from the street. |
 | `COMPANY_NAME` | Trading names with no legal suffix. Names containing の, which the rule truncates on purpose. Abbreviations and internal shorthand. |
 | `PROJECT_NAME` | Internal codenames, which by construction look like ordinary words. |
-| Secrets | Any credential without a recognisable vendor prefix, and any high-entropy string not written next to a keyword. |
-| Everything | Data that is only sensitive in context: a salary figure, an unreleased date, a headcount, who was in a meeting. |
+
+English (`en`):
+
+| Category | Known gaps |
+|---|---|
+| `PERSON` | **Any name not preceded by a title, salutation, sign-off or label.** Two capitalised words are also every product, city and department, so an unanchored rule would flag most of a business email. This is the largest single gap in the library. |
+| `ADDRESS` | Addresses with no street type. Apartment and unit lines written separately. Non-US, non-UK formats. |
+| `COMPANY_NAME` | Trading names with no legal suffix -- "the contract is with Acme" is not detected. |
+| `SSN` | Nine bare digits, which are deliberately not matched without a label. |
+
+Chinese (`zh`):
+
+| Category | Known gaps |
+|---|---|
+| `PERSON` | Surnames outside the list. Also the reverse: a surname plus one or two characters is often an ordinary word, so this rule both misses names and invents them. It is `LOW` confidence for that reason. |
+| `ADDRESS` | Addresses without a city or district marker. Traditional-character forms of the markers. |
+| `POSTAL_CODE` | Six bare digits, which need a label to be matched at all. |
+| Traditional Chinese | Rules keyed on characters use simplified forms. Identity numbers, phone numbers and email still match; company suffixes and surnames written only in traditional forms may not. |
+
+Not covered at all: Korean, and every language with no pack. Universal rules
+(email, credentials, card numbers, private addresses) still apply to text in
+those languages; nothing else does.
 
 Detector quality is not yet measured. There is no labelled evaluation set, so
-nobody -- including the maintainers -- can currently state a recall figure.
-Building one is a v0.2 goal.
+nobody -- including the maintainers -- can currently state a recall figure for
+any of the three languages. Building one is a v0.2 goal.
 
 ### It is not a compliance control
 

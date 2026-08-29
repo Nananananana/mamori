@@ -69,7 +69,10 @@ change later.
 
 This is the most useful contribution, and the easiest to get subtly wrong.
 
-1. Add the rule to `src/mamori/infrastructure/detectors/patterns.py`.
+1. Put it in the right place. If the format is the same in every language --
+   an email address, a card number, a vendor-prefixed key -- it belongs in
+   `detectors/patterns.py`. If it depends on the language, it belongs in that
+   language's pack under `detectors/locales/`.
 2. **Write a comment saying which way it leans.** Every rule is a
    precision/recall trade-off. `MY_NUMBER` uses a check digit because `\d{12}`
    would match every order number in the corpus; `POSTAL_CODE` requires 〒
@@ -90,6 +93,20 @@ This is the most useful contribution, and the easiest to get subtly wrong.
 
 Then add the entity type to `docs/adr/` reasoning if it needs a new category,
 and to the gap table in `SECURITY.md` if it has known blind spots.
+
+## Adding a language
+
+Create a module under `src/mamori/infrastructure/detectors/locales/`, export a
+`LocalePack`, and register it in that package's `__init__.py`. Tests go in
+`tests/test_detectors_<code>.py` and use `types_in(text, "<code>")` so they
+exercise your pack alone.
+
+The part that needs thought is `triggers` and `suppressed_by`. A pack runs when
+the text contains one of its trigger scripts and none of its suppressing ones.
+If your language shares a script with one already present, say what distinguishes
+them — the Chinese pack stands down on kana for exactly that reason. If nothing
+distinguishes them, let both run: over-detecting costs answer quality, and
+missing a name costs what the library exists to prevent.
 
 ## Commits and pull requests
 

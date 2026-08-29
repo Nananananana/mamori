@@ -4,6 +4,7 @@
     mamori protect  -- print the text that is safe to send
     mamori restore  -- put the values back into a response
     mamori policy   -- show the active policy
+    mamori locales  -- show the language packs and when each one runs
     mamori demo     -- a full round trip in one process
 
 ``inspect`` is the command to reach for first. It answers "what is in this
@@ -22,7 +23,9 @@ from ...application.results import ProtectionResult, RestorationResult
 from ...application.session import PrivacySession
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
+from ...domain.script import scripts_in
 from ...errors import MamoriError, PolicyViolationError
+from ...infrastructure.detectors import available_locales
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
 
@@ -63,6 +66,16 @@ def build_parser() -> argparse.ArgumentParser:
     def add_input_args(p: argparse.ArgumentParser) -> None:
         p.add_argument("text", nargs="?", help="text to process; omit to read stdin")
         p.add_argument("-f", "--file", help="read the text from a file instead")
+        p.add_argument(
+            "-l",
+            "--locale",
+            action="append",
+            metavar="CODE",
+            help=(
+                "language pack to enable; repeatable. Omit to enable all of them, "
+                "which is the safer default"
+            ),
+        )
 
     inspect = sub.add_parser("inspect", help="report what would be detected")
     add_input_args(inspect)
@@ -87,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("--mapping", required=True, metavar="PATH", help="mapping file")
 
     sub.add_parser("policy", help="show the active policy")
+    sub.add_parser("locales", help="show the language packs and when each runs")
     sub.add_parser("demo", help="run a full round trip on a sample text")
 
     return parser
@@ -127,7 +141,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     # Inspection must report on credentials rather than refuse, so it uses a
     # permissive policy. It never prints a protected text, so nothing here is
     # a step towards sending anything.
-    with PrivacySession(policy=PrivacyPolicy.permissive()) as session:
+    with PrivacySession(policy=PrivacyPolicy.permissive(), locales=args.locale) as session:
         result = session.protect(text)
         if args.json:
             print(json.dumps({"entities": _reports_as_json(result)}, ensure_ascii=False, indent=2))
@@ -140,7 +154,7 @@ def _cmd_protect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     policy = PrivacyPolicy.permissive() if args.permissive else PrivacyPolicy.default()
     store = InMemoryMappingStore()
-    session = PrivacySession(policy=policy, store=store)
+    session = PrivacySession(policy=policy, store=store, locales=args.locale)
     try:
         result = session.protect(text)
     except PolicyViolationError as exc:
@@ -213,6 +227,7 @@ _DEMO_TEXT = (
     "株式会社さくら商事の佐藤花子です。\n"
     "ご連絡先 tanaka@example.com / 090-1234-5678 にご返信ください。\n"
     "社内Wikiは https://wiki.corp.local/project にあります。\n"
+    "CC: Mr. John Smith (Acme Inc.), 415-555-0198\n"
 )
 
 
@@ -227,6 +242,8 @@ def _cmd_demo(_args: argparse.Namespace) -> int:
 
         print("--- 3. what was replaced ---")
         _print_reports(protected)
+        found = ", ".join(sorted(script.value for script in scripts_in(_DEMO_TEXT)))
+        print(f"    scripts found: {found}")
 
         # Stand-in for a model that answered using the placeholders, and
         # mangled two of them on the way -- which is exactly what they do.
@@ -248,11 +265,34 @@ def _cmd_demo(_args: argparse.Namespace) -> int:
     return _EXIT_OK
 
 
+def _cmd_locales(_args: argparse.Namespace) -> int:
+    packs = available_locales()
+    print("language packs\n")
+    width = max(len(pack.code) for pack in packs)
+    for pack in packs:
+        triggers = ", ".join(sorted(s.value for s in pack.triggers)) or "always"
+        line = (
+            f"  {pack.code:<{width}}  {pack.name:<10}  {len(pack.rules):>2} rules"
+            f"  runs on: {triggers}"
+        )
+        if pack.suppressed_by:
+            stood_down = ", ".join(sorted(s.value for s in pack.suppressed_by))
+            line += f"  (not when: {stood_down})"
+        print(line)
+    print(
+        "\nEvery pack is enabled unless --locale narrows them: an unexpected language\n"
+        "in a document is exactly the case nobody redacted by hand. Universal rules --\n"
+        "email, addresses, card numbers, credentials -- run whatever the text says."
+    )
+    return _EXIT_OK
+
+
 _COMMANDS = {
     "inspect": _cmd_inspect,
     "protect": _cmd_protect,
     "restore": _cmd_restore,
     "policy": _cmd_policy,
+    "locales": _cmd_locales,
     "demo": _cmd_demo,
 }
 

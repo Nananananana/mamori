@@ -1,0 +1,202 @@
+"""Japanese rules.
+
+Personal names are the hardest common case: there is no word boundary to anchor
+on, and the same characters are a surname in one sentence and a place in the
+next. Two complementary rules are used.
+
+**Honorific-anchored.** ``田中さん`` / ``佐藤部長`` -- the suffix is strong
+evidence and it sits exactly where the name ends. High precision, and it works
+for surnames outside any dictionary.
+
+**Dictionary-anchored.** A run starting with a known surname, optionally
+followed by a given name. Catches ``田中太郎`` written with no honorific, at the
+cost of missing every surname not in the list.
+
+Neither rule recovers a name written with no honorific and an uncommon surname.
+That gap is real and is what a local model is for; see the roadmap.
+"""
+
+from __future__ import annotations
+
+from ....domain import entity_types as t
+from ....domain.confidence import HIGH, LOW, MEDIUM
+from ....domain.script import Script
+from ..patterns import PatternRule, compile_rule
+from .base import LocalePack
+
+__all__ = ["COMMON_SURNAMES", "JAPANESE", "my_number_valid"]
+
+
+def my_number_valid(value: str) -> bool:
+    """Check digit of a Japanese Individual Number (個人番号).
+
+    Without this, the rule would be ``\\d{12}`` and would match every order
+    number and timestamp in the corpus.
+    """
+    digits = [int(c) for c in value if c.isdigit()]
+    if len(digits) != 12:
+        return False
+    body, check = digits[:11], digits[11]
+    total = 0
+    for position in range(1, 12):
+        weight = position + 1 if position <= 6 else position - 5
+        total += body[11 - position] * weight
+    remainder = total % 11
+    expected = 0 if remainder <= 1 else 11 - remainder
+    return check == expected
+
+
+# fmt: off
+#: The most common Japanese surnames. Not exhaustive by design -- adding rarer
+#: surnames raises recall but each one is a new source of false positives on
+#: place names and ordinary nouns.
+COMMON_SURNAMES: tuple[str, ...] = (
+    "佐藤", "鈴木", "高橋", "田中", "伊藤", "渡辺", "山本", "中村", "小林", "加藤",
+    "吉田", "山田", "佐々木", "山口", "松本", "井上", "木村", "林", "斎藤", "斉藤",
+    "清水", "山崎", "阿部", "森", "池田", "橋本", "山下", "石川", "中島", "前田",
+    "藤田", "後藤", "小川", "岡田", "村上", "長谷川", "近藤", "石井", "斎田", "坂本",
+    "遠藤", "藤井", "青木", "福田", "三浦", "西村", "藤原", "太田", "松田", "原田",
+    "岡本", "中野", "中川", "小野", "田村", "竹内", "金子", "和田", "中山", "石田",
+    "上田", "森田", "原", "柴田", "酒井", "工藤", "横山", "宮崎", "宮本", "内田",
+    "高木", "安藤", "島田", "谷口", "大野", "高田", "丸山", "今井", "河野", "藤本",
+    "村田", "武田", "上野", "杉山", "増田", "小島", "平野", "大塚", "千葉", "久保",
+    "松井", "岩崎", "桜井", "木下", "野口", "松尾", "菊地", "野村", "渡部", "新井",
+    "渋谷", "水野", "小松", "菅原", "大西", "市川", "岡", "浜田", "武藤", "本田",
+)
+
+#: Words that look like a name in front of an honorific but are not one.
+_HONORIFIC_STOPWORDS = frozenset({
+    "お客", "客", "皆", "神", "王", "貴", "殿", "各", "他", "当", "御",
+    "社長", "部長", "課長", "先生", "皆様", "何", "誰",
+})
+
+_HONORIFICS = (
+    "さん", "様", "さま", "氏", "君", "くん", "ちゃん", "先生", "殿",
+    "部長", "課長", "社長", "専務", "常務", "取締役", "主任", "係長", "次長", "室長",
+)
+
+#: Ordinary words that begin with a surname character. 森林 is 森 plus 林, both
+#: surnames, and neither is a person here. The list covers the common
+#: collisions; it will never cover all of them, which is why the
+#: dictionary-anchored rule is only MEDIUM confidence.
+_NOT_NAMES = frozenset({
+    "森林", "森閑", "林業", "林道", "林立", "林檎",
+    "原因", "原則", "原理", "原料", "原点", "原案", "原稿", "原油", "原文",
+    "原価", "原本", "原産", "原子", "原作",
+    "田舎", "田畑", "石油", "石材", "石炭", "石鹸", "石段",
+    "金額", "金融", "金曜", "金庫", "金属",
+})
+
+#: Suffixes that turn a surname-looking run into an organisation or a place.
+_NOT_A_NAME_AFTER = (
+    "会社", "商事", "工業", "銀行", "大学", "病院", "株式", "製作所", "建設",
+    "電機", "運輸", "市", "区", "町", "村", "県", "府", "都", "駅", "線",
+    "川", "山", "寺", "神社", "空港", "港", "島",
+)
+# fmt: on
+
+_HONORIFIC_ALT = "|".join(_HONORIFICS)
+_NOT_NAME_ALT = "|".join(_NOT_A_NAME_AFTER)
+_SURNAME_ALT = "|".join(sorted(COMMON_SURNAMES, key=len, reverse=True))
+
+
+def _not_stopword(value: str) -> bool:
+    return value.strip() not in _HONORIFIC_STOPWORDS
+
+
+def _plausible_name(value: str) -> bool:
+    """Reject runs that start with a surname but are not names."""
+    candidate = value.strip()
+    if candidate in _NOT_NAMES:
+        return False
+    return not candidate.endswith(_NOT_A_NAME_AFTER)
+
+
+# The character class is "tempered": it excludes the most common particles,
+# because a greedy run of kana would otherwise swallow the rest of the sentence
+# -- 株式会社さくら商事の田中さん would come out as one company name ending in
+# の田中. The cost is that a company whose name genuinely contains の
+# (株式会社さくらの森) is truncated. Under-capturing a company name is
+# recoverable; over-capturing hides an unrelated person from every other rule.
+_COMPANY_BODY = r"(?:(?![のはがをにへとでもや])[一-鿿぀-ゟ゠-ヿーA-Za-z0-9]){1,16}"
+
+RULES: tuple[PatternRule, ...] = (
+    # Requires separators or a mobile prefix. A bare run of ten digits is far
+    # more often an order number than a phone number.
+    compile_rule(
+        t.PHONE,
+        r"(?:0[789]0[\-\s]?\d{4}[\-\s]?\d{4}|0\d{1,3}[\-\s]\d{1,4}[\-\s]\d{4})",
+        HIGH,
+    ),
+    # Anchored on 〒 on purpose: NNN-NNNN also matches product codes and dates.
+    compile_rule(t.POSTAL_CODE, r"〒\s*(\d{3}[\-−ー]\d{4})", HIGH, group=1),
+    # Prefecture through street number. Deliberately conservative: it misses
+    # addresses written without a prefecture.
+    compile_rule(
+        t.ADDRESS,
+        r"(?:東京都|北海道|(?:京都|大阪)府|[一-鿿]{2,3}県)"
+        r"[一-鿿぀-ゟ゠-ヿ]{1,12}?[市区町村]"
+        r"[一-鿿぀-ゟ゠-ヿ0-9]{0,16}"
+        r"(?:\d+(?:[\-−ー]\d+)*(?:号|番地|番)?)?",
+        MEDIUM,
+    ),
+    compile_rule(
+        t.DATE_OF_BIRTH,
+        r"(?:生年月日|誕生日)\s*[:：]?\s*"
+        r"(\d{4}\s*[/\-年]\s*\d{1,2}\s*[/\-月]\s*\d{1,2}\s*日?)",
+        HIGH,
+        group=1,
+    ),
+    compile_rule(t.MY_NUMBER, r"(?<!\d)\d{12}(?!\d)", HIGH, validator=my_number_valid),
+    compile_rule(
+        t.COMPANY_NAME,
+        r"(?:(?:株式|有限|合同|合名|合資)会社"
+        + _COMPANY_BODY
+        + r"|"
+        + _COMPANY_BODY
+        + r"(?:株式|有限|合同|合名|合資)会社)",
+        HIGH,
+    ),
+    compile_rule(
+        t.EMPLOYEE_ID,
+        r"(?:社員番号|従業員番号|社員ID)\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
+        HIGH,
+        group=1,
+    ),
+    compile_rule(
+        t.PROJECT_NAME,
+        r"プロジェクト(?:名|コード)?\s*[:：]\s*([^\s,;。、]{2,40})",
+        LOW,
+        group=1,
+    ),
+    # 田中さん, 佐藤 花子様. The honorific is matched by lookahead so it stays in
+    # the output: <PERSON_001>さん reads far better to a model than a bare token.
+    compile_rule(
+        t.PERSON,
+        r"(?<![一-鿿])([一-鿿]{1,4}(?:[ 　][一-鿿]{1,4})?)(?=" + _HONORIFIC_ALT + r")",
+        HIGH,
+        group=1,
+        validator=_not_stopword,
+    ),
+    # 田中太郎, 田中. Rejected when followed by an organisation or place suffix,
+    # so 田中商事 is left for the company rule.
+    compile_rule(
+        t.PERSON,
+        r"(?<![一-鿿])(?:" + _SURNAME_ALT + r")"
+        r"(?!" + _NOT_NAME_ALT + r")"
+        r"(?:[ 　]?[一-鿿]{1,3})?(?![一-鿿])",
+        MEDIUM,
+        validator=_plausible_name,
+    ),
+    # ジョン・スミス -- a katakana full name joined by a middle dot.
+    compile_rule(t.PERSON, r"[ァ-ヶー]{2,10}・[ァ-ヶー]{2,10}", MEDIUM),
+)
+
+JAPANESE = LocalePack(
+    code="ja",
+    name="Japanese",
+    rules=RULES,
+    # Kana are decisive. Han alone could be either Japanese or Chinese, so the
+    # Japanese pack runs on it too and over-detects rather than missing.
+    triggers=frozenset({Script.KANA, Script.HAN}),
+)

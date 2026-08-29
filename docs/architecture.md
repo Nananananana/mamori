@@ -60,7 +60,7 @@ interfaces ──> application ──> domain
 | `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity | stdlib only |
 | `ports/` | `Detector`, `MappingStore` protocols | `domain` |
 | `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports` |
-| `infrastructure/` | Regex detectors, in-memory store, JSON mapping file | `domain`, `ports` |
+| `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file | `domain`, `ports` |
 | `interfaces/cli/` | Argument parsing, output formatting | `application`, `domain` |
 
 `domain` imports nothing else, including nothing outside the standard library.
@@ -114,9 +114,39 @@ A scope is one conversation. It partitions the mapping store, so:
 
 `PrivacySession` creates a scope, and `close()` purges it.
 
+## Language packs
+
+Rules are grouped by language. A pack declares its rules plus the scripts that
+make it worth running, and the scripts that mean it is not:
+
+```text
+                        scripts in the text
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+     latin?                  kana?                    han?
+        │                       │                       │
+        ▼                       ▼                       ▼
+      en pack              ja pack, and           ja pack, and
+                           zh pack stands          zh pack too
+                              down                (ambiguous)
+```
+
+Kana are the one decisive signal: they appear in Japanese and never in Chinese.
+Han alone could be either, so both CJK packs run and over-detect — the safe
+direction. Language-independent rules (email, card numbers, credentials, private
+addresses) sit outside the packs and always run.
+
+Every pack is enabled unless `locales=` narrows it. `mamori locales` prints what
+is registered and when each one fires. See
+[ADR 0008](adr/0008-language-packs.md).
+
 ## Extension points
 
 Two, both with a second implementation already in view:
+
+A third is `LocalePack`: registering one with `register_locale` adds a language
+without touching the library.
 
 ```python
 class Detector(Protocol):
@@ -150,7 +180,10 @@ so a new detector stops a request rather than quietly shipping what it found.
 | `test_domain_values.py` | Value object invariants |
 | `test_normalization.py` | The offset map, including length-changing normalization |
 | `test_resolution_and_policy.py` | Overlap resolution and policy precedence |
-| `test_detectors.py` | Every rule: what it catches, what it deliberately does not, exact spans |
+| `test_detectors.py` | Universal and Japanese rules: what each catches, what it deliberately does not, exact spans |
+| `test_detectors_en.py` | English rules, and the names they are known to miss |
+| `test_detectors_zh.py` | Chinese rules, including the resident-ID check character |
+| `test_locales.py` | Script detection, pack selection, cross-language behaviour |
 | `test_placeholder_matching.py` | Tamper tolerance and the precision guards against it |
 | `test_session.py` | Round trips, fail-closed behaviour, scope isolation, placeholder collision |
 | `test_security_leakage.py` | Greps real logs, reprs, tracebacks and payloads for the values |

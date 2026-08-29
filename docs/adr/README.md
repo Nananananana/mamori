@@ -13,3 +13,4 @@ it, and — the part that is usually missing — what it costs.
 | [0005](0005-overlap-resolution.md) | Resolve overlapping detections by width first |
 | [0006](0006-mappings-live-in-memory.md) | Mappings live in memory by default |
 | [0007](0007-defer-the-async-machinery.md) | Defer the async, event and envelope machinery |
+| [0008](0008-language-packs.md) | Language packs, selected by script |

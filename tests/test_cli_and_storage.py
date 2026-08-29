@@ -220,3 +220,42 @@ class TestCli:
     def test_no_subcommand_is_a_usage_error(self) -> None:
         with pytest.raises(SystemExit):
             main([])
+
+
+class TestCliLocales:
+    def test_locales_lists_the_packs(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["locales"]) == 0
+        out = capsys.readouterr().out
+        assert "Japanese" in out and "English" in out and "Chinese" in out
+
+    def test_locales_shows_when_the_chinese_pack_stands_down(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["locales"]) == 0
+        assert "not when: kana" in capsys.readouterr().out
+
+    def test_inspect_honours_a_locale_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["inspect", "--locale", "ja", "Dear Jane Doe,"]) == 0
+        assert "PERSON" not in capsys.readouterr().out
+
+    def test_inspect_finds_the_name_with_the_right_locale(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["inspect", "--locale", "en", "Dear Jane Doe,"]) == 0
+        assert "PERSON" in capsys.readouterr().out
+
+    def test_the_locale_flag_is_repeatable(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["protect", "-l", "ja", "-l", "en", "Dear Jane Doe,"]) == 0
+        assert "Jane Doe" not in capsys.readouterr().out
+
+    def test_an_unknown_locale_is_an_error_not_a_traceback(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["inspect", "--locale", "kl", "hello"]) == 1
+        assert "unknown locale" in capsys.readouterr().err
+
+    def test_demo_covers_more_than_one_language(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["demo"]) == 0
+        out = capsys.readouterr().out
+        assert "(ja," in out and "(en," in out
+        assert "scripts found:" in out

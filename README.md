@@ -2,7 +2,7 @@
 
 **Use real data with an external LLM, without sending real data to it.**
 
-日本語版は [README.ja.md](README.ja.md) にあります。
+日本語版は [README.ja.md](README.ja.md)、中文版在 [README.zh.md](README.zh.md)。
 
 You have a customer email in front of you and a model that could draft the
 reply in seconds. So you retype the message with the names removed, get the
@@ -58,14 +58,58 @@ mamori inspect -f draft.txt
 
 ```text
 4 detected:
-      0:4     PERSON           <PERSON_001>       田***                (jp-name, 0.90)
-     12:30    EMAIL            <EMAIL_001>        t*****************   (regex, 1.00)
-     45:58    PHONE            <PHONE_001>        0************        (regex, 0.90)
-     70:94    INTERNAL_URL     <INTERNAL_URL_001> h***********************  (regex, 0.90)
+      0:4     PERSON           <PERSON_001>       田***                (ja, 0.90)
+     12:30    EMAIL            <EMAIL_001>        t*****************   (universal, 1.00)
+     45:58    PHONE            <PHONE_001>        0************        (ja, 0.90)
+     70:94    INTERNAL_URL     <INTERNAL_URL_001> h***********************  (universal, 0.90)
 ```
+
+The last column is the rule set that fired, so you can see which language's
+pack found what.
 
 `mamori demo` runs a whole round trip, including a reply whose placeholders
 have been mangled, so you can see what recovery looks like.
+
+---
+
+## Languages
+
+Japanese, English and Chinese, in one document if that is what you have:
+
+```text
+田中太郎さんへ                        ->  <PERSON_001>さんへ
+CC: Mr. John Smith (Acme Inc.)       ->  CC: Mr. <PERSON_003> (<COMPANY_NAME_002>)
+张伟先生，请拨打 13812345678          ->  <PERSON_004>先生，请拨打 <PHONE_003>
+```
+
+Rules are grouped into language packs, and a pack runs when the text gives a
+reason to run it. All of them are enabled by default — an unexpected language in
+a document is exactly the case nobody redacted by hand — and `locales=` narrows
+it when you know better:
+
+```python
+mamori.PrivacySession(locales=["ja", "en"])
+```
+
+```bash
+mamori locales
+```
+
+```text
+  en  English     16 rules  runs on: latin
+  ja  Japanese    11 rules  runs on: han, kana
+  zh  Chinese     11 rules  runs on: han  (not when: kana)
+```
+
+That last line is the whole trick. Chinese and Japanese share Han characters, so
+the two surname lists fire on each other's text and turn ordinary words into
+people. Kana settle it: they appear in Japanese and never in Chinese, so kana in
+the text stands the Chinese rules down. Text in Han alone could be either, so
+both run and over-detect — the safe direction.
+
+Email, credentials, card numbers and private addresses are language-independent
+and always run. Adding a language is one module and one registry entry; see
+`register_locale`.
 
 ---
 
@@ -105,7 +149,8 @@ it replaced.
 
 - **Detection is not complete and never will be.** The default rules are
   regular expressions. They will miss a name written with an uncommon surname
-  and no honorific, an address with no prefecture, an internal codename that
+  and no honorific, an English name with nothing in front of it to mark it as
+  one, an address with no prefecture or street type, an internal codename that
   looks like an ordinary word, and anything sensitive only in context.
 - **`mamori` reduces the chance of a leak. It does not eliminate it.** If your
   team's rule was "never paste customer data into a chat window", `mamori` is
@@ -165,9 +210,9 @@ Python or the shell.
 
 | | |
 |---|---|
-| **v0.2** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. A labelled Japanese evaluation set, so detector quality becomes a number instead of an opinion. |
+| **v0.2** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. Labelled evaluation sets for each language, so detector quality becomes a number instead of an opinion. |
 | **v0.3** | Dictionary and rule detectors, a Presidio adapter, an opt-in encrypted persistent store. |
-| **v0.4** | Local-model detection as an opt-in deep-scan tier, for the cases patterns cannot reach. |
+| **v0.4** | Local-model detection as an opt-in deep-scan tier, for the cases patterns cannot reach — unanchored English names and Chinese given names above all. |
 | **v0.5** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
 The proxy is second on purpose. Nobody rewrites a working application to adopt
