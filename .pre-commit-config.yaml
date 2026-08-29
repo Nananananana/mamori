@@ -1,0 +1,24 @@
+# Keep this fast. A hook that makes committing slow gets bypassed, and a
+# bypassed hook protects nothing. Type checking and tests run in CI.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      # A mapping file holds every value the library just removed from a
+      # prompt. It must never reach a commit.
+      - id: check-added-large-files
+      - id: detect-private-key

@@ -41,7 +41,7 @@ Issues = "https://github.com/Nananananana/mamori/issues"
 Changelog = "https://github.com/Nananananana/mamori/blob/main/CHANGELOG.md"
 
 [project.scripts]
-mamori = "mamori.cli.main:main"
+mamori = "mamori.interfaces.cli.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mamori"]

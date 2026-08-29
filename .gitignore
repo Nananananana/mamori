@@ -10,6 +10,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.hypothesis/
 htmlcov/
 *.mamori-mapping.json
 mapping.json

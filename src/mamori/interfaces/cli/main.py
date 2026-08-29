@@ -17,14 +17,14 @@ import json
 import sys
 from pathlib import Path
 
-from .. import __version__
-from ..application.results import ProtectionResult, RestorationResult
-from ..application.session import PrivacySession
-from ..domain.entity_types import BUILTIN_TYPES
-from ..domain.policy import PrivacyPolicy
-from ..errors import MamoriError, PolicyViolationError
-from ..infrastructure.storage import InMemoryMappingStore
-from ..infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
+from ... import __version__
+from ...application.results import ProtectionResult, RestorationResult
+from ...application.session import PrivacySession
+from ...domain.entity_types import BUILTIN_TYPES
+from ...domain.policy import PrivacyPolicy
+from ...errors import MamoriError, PolicyViolationError
+from ...infrastructure.storage import InMemoryMappingStore
+from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
 
 __all__ = ["build_parser", "main"]
 
