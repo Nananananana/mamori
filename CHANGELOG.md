@@ -8,6 +8,65 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-30
+
+Restoration, measured at the scale detection has had since 0.2.
+
+Detection has thousands of labelled samples. Restoration -- the half that turns
+an answer about `<PERSON_001>` back into an answer about a person -- had a
+thousand, in two shapes, with five manglings. The last two releases both found
+restoration-side bugs *by accident*, which is the argument for looking on
+purpose.
+
+Two thousand replies, in six shapes, with fourteen manglings applied per
+occurrence, a quarter of them carrying something placeholder-shaped that was
+never allocated, and every one of them also emitted as pieces cut at arbitrary
+boundaries.
+
+### Fixed
+
+- **`<COMPANY _ NAME _ 001>` restored whole and not in pieces.** 0.14 widened
+  the batch scanner to accept the spaced form -- it was 195 of 1002 failures in
+  the first reply corpus, the single biggest restoration bug this project has
+  had -- and the **streaming** partial matcher was never widened with it. The
+  two paths have disagreed on it ever since.
+
+  340 of the first 2000 replies were affected. A reply streamed through the
+  proxy came back with a placeholder still in it where the same reply, received
+  whole, came back correct.
+
+  The property test in `tests/test_streaming.py` could have found this and did
+  not. It draws from an alphabet that includes both spaces and underscores, but
+  the shape needs a space on *both* sides of an underscore inside a type name,
+  and Hypothesis never happened to draw one. Arbitrary chunking of realistic
+  text found it on the first run. Property tests and corpora fail differently,
+  which is the argument for having both.
+
+### Measured
+
+```text
+2000 replies
+  2000 restored exactly, 0 not
+  0 false restoration(s) -- must be 0
+  2000/2000 streamed identically to whole
+  0 leftover placeholder(s) in recoverable replies
+```
+
+The second line is the one to read twice. A quarter of the replies carry
+`<PERSON_042>` or `<SSN_001>` -- placeholders this scope never allocated -- and
+restoring one would mean a reply can fish for values by guessing. None was
+restored, which is what
+[ADR 0003](docs/adr/0003-readable-placeholders.md)'s "permissive about surface,
+strict about identity" is supposed to mean, now with a number behind it.
+
+Full-width digits turn out to restore: NFKC folds them before anything looks at
+them. That was expected to fail and does not, which is the normalization doing
+its job.
+
+### Unchanged
+
+No detection number moved. This release is entirely about the other half.
+
 ## [0.19.0] - 2026-08-30
 
 Deployment. Three things a team needs before this is allowed near production,
@@ -1525,7 +1584,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/Nananananana/mamori/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/Nananananana/mamori/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/Nananananana/mamori/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/Nananananana/mamori/compare/v0.16.0...v0.17.0

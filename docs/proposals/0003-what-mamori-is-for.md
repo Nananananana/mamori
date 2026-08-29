@@ -24,6 +24,7 @@ list has moved every time.
 | 0.17 — the assembled prompt | 0.17 — the assembled prompt | the first version number this document got right |
 | 0.18 — deployment | 0.18 — the agent-shaped payload | an audit found a leak; deployment moved to 0.19 |
 | 0.19 — deployment | 0.19 — deployment | the linter found a bug in this repository on its first run |
+| (not planned) | 0.20 — the reply corpus | the standing plan worked: measure something unmeasured, fix what it turns up |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -163,9 +164,12 @@ standing plan is therefore: **measure something that has not been measured, and
 fix what that turns up.** Candidates, in rough order of how likely they are to
 be worth it:
 
-- A corpus of *replies* at the scale prose got in 0.14 — restoration has 1002
-  generated fixtures against detection's thousands, and the last two releases
-  both found restoration-side bugs by accident rather than by looking.
+- ~~A corpus of *replies* at the scale prose got in 0.14~~ — **done in 0.20**,
+  and it found the bug it was built to look for: the streaming matcher never
+  got 0.14's fix, so `<COMPANY _ NAME _ 001>` restored whole and not in pieces
+  for four releases. What is still uncovered is **surrogates**, where
+  restoration is exact-match with no tolerance for a model that rewrites the
+  value — the fragile path, and the one with no corpus behind it.
 - The anchorless name, which is the largest measured gap left (`en-docs` 3.50%,
   `en-context` 9.69% on the generated set) and is not a regular-expression
   problem.

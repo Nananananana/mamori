@@ -43,7 +43,20 @@ __all__ = ["StreamSummary", "StreamingRestorer"]
 _MAX_HOLD = 96
 
 #: A type name being spelled out, with its separator and index part-way in.
-_PARTIAL_BODY = r"[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]*)*[\s\-_]*\d*\s*"
+#:
+#: This has to admit everything the batch scanner admits, or a placeholder is
+#: restored when the whole reply arrives at once and not when it arrives in
+#: pieces -- and the two paths are supposed to be indistinguishable. 0.14
+#: widened the batch scanner to accept ``<COMPANY _ NAME _ 001>``, which is
+#: what a model produces often enough to have been 195 of 1002 failures, and
+#: **this was not widened with it**. The corpus that chunks at arbitrary
+#: boundaries is what showed it; no hand-written test would have, because a
+#: hand-written test cuts between words.
+_PARTIAL_BODY = (
+    r"[A-Za-z][A-Za-z0-9]*"
+    r"(?:[^\S\r\n]*[_\-][^\S\r\n]*[A-Za-z0-9]*)*"
+    r"[^\S\r\n]*\d*[^\S\r\n]*"
+)
 
 #: Matches a run that reaches the end of the buffer and could still grow into a
 #: placeholder. Two shapes: an opening bracket with anything or nothing after it

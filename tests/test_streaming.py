@@ -158,6 +158,24 @@ class TestStreamingMatchesBatch:
             expected = session.restore(response).text
             assert stream(session, chunk_every(response, size)) == expected
 
+    @pytest.mark.parametrize("size", [1, 2, 3, 4, 5, 8, 13, 100])
+    def test_a_spaced_separator_survives_any_chunking(self, size: int) -> None:
+        """`<COMPANY _ NAME _ 001>` restored whole and not in pieces.
+
+        0.14 widened the batch scanner to accept this -- it was 195 of 1002
+        failures in the first reply corpus -- and the streaming partial matcher
+        was not widened with it, so the two paths disagreed for four releases.
+        The property test above could have found it and did not: the shape
+        needs a space on both sides of an underscore *inside* a type name, and
+        Hypothesis never happened to draw one.
+        """
+        response = "Contact <COMPANY _ NAME _ 001> or < PERSON_001 > today."
+        with PrivacySession() as session:
+            session.protect(PROMPT)
+            expected = session.restore(response).text
+            assert "COMPANY" not in expected, "the batch path restores it"
+            assert stream(session, chunk_every(response, size)) == expected
+
     @SETTINGS
     @given(size=st.integers(min_value=1, max_value=30))
     def test_any_uniform_chunk_size(self, size: int) -> None:

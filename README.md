@@ -1039,7 +1039,9 @@ pointed a corpus at prompts nobody typed and found four bugs, three of which had
 nothing to do with assembled prompts and had been there for releases. `v0.18`
 found that a tool call's arguments had never been protected at all. `v0.19` is
 the deployment release, and its linter found a bug in this repository on its
-first run.
+first run. `v0.20` measured restoration the way detection has been measured
+since `v0.2`, and found that streamed and whole replies had disagreed for four
+releases.
 
 | | |
 |---|---|
