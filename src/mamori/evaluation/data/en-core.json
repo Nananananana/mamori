@@ -209,6 +209,26 @@
     {
       "id": "en-045",
       "annotated": "Hello [[PERSON:Tom]],\n\nthe invoice for [[COMPANY_NAME:Acme Inc.]] is attached. Employee ID: [[EMPLOYEE_ID:C-4477]]."
+    },
+    {
+      "id": "en-046",
+      "annotated": "Dear [[PERSON:Priya Raman]],\n\n[[PERSON:Priya Raman]] is leading the migration. Please loop [[PERSON:Priya Raman]] in.",
+      "note": "Co-occurrence: the salutation settles the first mention, and nothing marks the other two."
+    },
+    {
+      "id": "en-047",
+      "annotated": "Mr. [[PERSON:John Smith]] called.\n[[PERSON:John Smith]] wants the report by Friday.",
+      "note": "Co-occurrence across lines from a title anchor."
+    },
+    {
+      "id": "en-048",
+      "annotated": "Dear [[PERSON:Ann]],\n\nthe announcement goes out Monday. Announcements are drafted already.",
+      "note": "Propagation must respect word boundaries: Ann is a seed, Announcement is not an occurrence of it."
+    },
+    {
+      "id": "en-049",
+      "annotated": "Dear [[PERSON:Jane Doe]],\n\nplease confirm by Friday.",
+      "note": "Single mention: propagation must not invent extra occurrences."
     }
   ]
 }

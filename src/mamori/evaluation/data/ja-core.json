@@ -205,6 +205,26 @@
       "id": "ja-045",
       "annotated": "[[PERSON:田中 太郎]]さんと[[PERSON:田中太郎]]さんは同一人物です。",
       "note": "Spacing variant: both must resolve to one identity."
+    },
+    {
+      "id": "ja-046",
+      "annotated": "[[PERSON:凪沢]]さんへ\n\n本件は[[PERSON:凪沢]]の担当となりました。[[PERSON:凪沢]]まで直接ご連絡ください。",
+      "note": "Co-occurrence: an honorific settles the first mention, and nothing marks the rest. Only the propagation pass reaches them."
+    },
+    {
+      "id": "ja-047",
+      "annotated": "[[COMPANY_NAME:株式会社あおい技研]]と契約しました。\n[[COMPANY_NAME:株式会社あおい技研]]の窓口は営業部です。",
+      "note": "Co-occurrence for a company name repeated across lines."
+    },
+    {
+      "id": "ja-048",
+      "annotated": "件名: [[PERSON:鷲見]]様への回答\n\n[[PERSON:鷲見]]様\n平素よりお世話になっております。",
+      "note": "Co-occurrence in a subject line, where the honorific already anchors both."
+    },
+    {
+      "id": "ja-049",
+      "annotated": "担当は[[PERSON:高橋]]課長です。至急ご確認ください。",
+      "note": "Single mention: propagation must not invent extra occurrences."
     }
   ]
 }

@@ -34,10 +34,13 @@ class Floor:
     min_precision: float
 
 
+# Raised in 0.3.0 after the co-occurrence pass: leak rates fell from 1.4% to
+# 0.7% (ja), 7.4% to 2.0% (en) and 1.5% to 0.0% (zh), so the old floors no
+# longer defended anything.
 FLOORS = (
-    Floor("ja", max_leak_rate=0.03, max_over_redaction=0.05, min_recall=0.95, min_precision=0.95),
-    Floor("en", max_leak_rate=0.05, max_over_redaction=0.05, min_recall=0.90, min_precision=0.95),
-    Floor("zh", max_leak_rate=0.15, max_over_redaction=0.10, min_recall=0.85, min_precision=0.85),
+    Floor("ja", max_leak_rate=0.015, max_over_redaction=0.02, min_recall=0.97, min_precision=0.97),
+    Floor("en", max_leak_rate=0.035, max_over_redaction=0.02, min_recall=0.94, min_precision=0.97),
+    Floor("zh", max_leak_rate=0.05, max_over_redaction=0.05, min_recall=0.95, min_precision=0.90),
 )
 
 
@@ -110,7 +113,7 @@ class TestExactMatchIsTracked:
     def test_spans_line_up_with_the_labels(self, locale: str) -> None:
         datasets = bundled_datasets(locale)
         report = evaluate(datasets[0], match=MatchMode.EXACT)
-        assert report.overall.f1 >= 0.85, (
+        assert report.overall.f1 >= 0.93, (
             f"{locale}: exact-match F1 {report.overall.f1:.3f} -- detections are landing "
             "on the right values with the wrong boundaries"
         )

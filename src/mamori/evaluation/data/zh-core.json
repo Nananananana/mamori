@@ -103,6 +103,21 @@
     {
       "id": "zh-022",
       "annotated": "[[PERSON:王强]]女士与[[PERSON:陈静]]老师都会出席。"
+    },
+    {
+      "id": "zh-023",
+      "annotated": "尊敬的[[PERSON:诸葛云]]先生：\n本次评审由[[PERSON:诸葛云]]主持，请在会前把材料发给[[PERSON:诸葛云]]。",
+      "note": "Co-occurrence. In Chinese this is not an optimisation -- there is nothing else to anchor the later mentions on."
+    },
+    {
+      "id": "zh-024",
+      "annotated": "合同方为[[COMPANY_NAME:云图科技有限公司]]。\n[[COMPANY_NAME:云图科技有限公司]]已完成签署。",
+      "note": "Co-occurrence for a company name."
+    },
+    {
+      "id": "zh-025",
+      "annotated": "请[[PERSON:李明]]经理审阅，谢谢。",
+      "note": "Single mention: propagation must not invent extra occurrences."
     }
   ]
 }
