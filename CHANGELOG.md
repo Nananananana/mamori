@@ -8,6 +8,100 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-29
+
+A demo you can actually run, a guide to measuring mamori on your own text, and
+a bug in the measurement harness that had been quietly corrupting the model-tier
+numbers since 0.7.0.
+
+### Added
+
+- **`mamori demo`, rebuilt.** Five short scenarios, each answering a question
+  somebody actually has: what the model sees and whether you get your words
+  back, what happens when a placeholder arrives split across streamed chunks,
+  whether any of this survives a document rather than a sentence, what to do
+  when it gets one wrong, and what happens when there is a password in the
+  text.
+
+  ```bash
+  mamori demo                      # the tour
+  mamori demo --file draft.txt     # on your own text
+  mamori demo --scenario stream
+  ```
+
+  The round trip now names **what found each value** -- the rule set and its
+  confidence -- so "why was this replaced?" has an answer.
+
+- **`mamori demo --live`** sends the protected text to a model you name and
+  restores the answer. The whole round trip, nothing simulated:
+
+  ```bash
+  mamori demo --live --model llama3.1:8b --api http://localhost:11434/v1/
+  ```
+
+  Any OpenAI-compatible endpoint, and `--api-key-env` for a hosted one. The
+  trust boundary deliberately does not apply: it refuses an external
+  *detector*, which sees text before it is protected, and this is the service
+  you chose, which sees protected text only.
+
+- **[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md)**, which
+  the 0.9 plan owed. How to build a labelled dataset, what to put in it
+  (documents, not sentences), how to compare two configurations -- and, first,
+  the warning that such a file is full of your real data and belongs in
+  `.gitignore` before it exists.
+
+- **A password written in prose is now detected.** `password: hunter2spring`
+  was caught and `the password is hunter2spring` was not, in all three
+  languages -- and prose is how somebody pastes a credential into a chat
+  window. A validator keeps "my password is fine" from blocking a request:
+  a prose match needs a digit, a capital, a symbol, or length no ordinary word
+  reaches. A short all-lowercase password is missed by this, which is the right
+  way round.
+
+### Fixed
+
+- **The evaluation harness left the co-occurrence pass out of every cached
+  model run.** `mamori eval --cache` rebuilt the detection pipeline by hand,
+  and `build_pipeline` defaults co-occurrence to off while
+  `MamoriConfig.detectors()` passes one in. So the model was scored against a
+  baseline that had a pass the candidate lacked, from 0.7.0 onwards.
+
+  Found by a result that could not be true: adding a model *increased* the leak
+  rate on a document, and three propagated detections had vanished. The
+  regression check written in 0.7.0 -- "for a candidate that only adds, this
+  must be empty, and it is worth checking rather than assuming" -- caught the
+  harness rather than the library.
+
+  Fixed by deleting the second assembly path, not by correcting it.
+  `MamoriConfig.detectors(provider=...)` substitutes the provider and leaves
+  everything else alone, so there is one place that knows how a pipeline is
+  built. A test pins that co-occurrence survives the substitution.
+
+  **The published conclusions survived re-measurement** -- at 8B the model
+  raises English recall and does nothing for Japanese -- but the over-redaction
+  figures moved and the comparison was not sound when it was published.
+  `SECURITY.md` and the READMEs carry the corrected table and say why.
+
+- **A measurement where every model call failed reported a clean zero delta.**
+  A 12B model timed out on every request; the pass degraded to nothing exactly
+  as designed, the comparison measured the rules against themselves, and the
+  output said `+0.00%` on every line -- which reads as "the model had nothing
+  to add", a conclusion it had not earned. `mamori eval` now counts provider
+  failures and refuses to exit clean:
+
+  ```text
+  WARNING: the model failed on 4 of 4 request(s).
+  A model that never answers produces exactly the numbers above.
+  ```
+
+### Changed
+
+- **The open question from 0.7 is still open, and now has a reason.** Whether a
+  model above 8B changes the model-tier table could not be measured here:
+  `gemma4:12b` times out on this hardware, and a run of 49 samples does not
+  complete. That is not evidence about the model, only about the machine, and
+  it is recorded as such rather than as a result.
+
 ## [0.9.0] - 2026-08-29
 
 Every quality number this project published came from 123 samples with a median
@@ -689,7 +783,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/Nananananana/mamori/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Nananananana/mamori/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Nananananana/mamori/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Nananananana/mamori/compare/v0.6.0...v0.7.0

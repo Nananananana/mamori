@@ -19,6 +19,67 @@ English: [README.md](README.md) ／ 日本語: [README.ja.md](README.ja.md)
 
 `<PERSON_001>` 与 `张伟` 之间的对应表，始终留在你自己的机器上。
 
+
+## 先跑起来看看
+
+除了安装之外什么都不需要：
+
+```bash
+pip install mamori
+mamori demo
+```
+
+五个简短的场景，每个回答一个真实会被问到的问题：模型看到的是什么、
+你能不能拿回自己的原话；占位符在流式输出里被切开时会怎样；
+这一套在文档上还成立吗，而不只是在一句话上；判断错了怎么办；
+文本里有密码时会发生什么。
+
+然后用你自己的内容试：
+
+```bash
+mamori demo --file draft.txt
+mamori demo --scenario roundtrip --text "请拨打 13812345678 联系张伟"
+```
+
+```text
+you wrote
+  Dear Jane Doe, reach me at jane.doe@example.com
+
+the model sees
+  Dear <PERSON_001>, reach me at <EMAIL_001>
+
+replaced 2 value(s), and what found each one:
+  <PERSON_001>        PERSON        en          0.90
+  <EMAIL_001>         EMAIL         universal   1.00
+```
+
+右边两列是「哪套规则命中的」和「有多确信」，
+所以「这个为什么被打码了」是有答案的。
+
+### 对着真实模型
+
+`--live` 会保护你的文本、真的发给你指定的模型、再把答案还原回来——
+整个往返，没有任何模拟：
+
+```bash
+mamori demo --live --model llama3.1:8b --api http://localhost:11434/v1/ \
+  --text "尊敬的张伟先生，请拨打 13812345678 与我们联系。请用三行概括。"
+```
+
+```text
+what actually goes over the wire
+  尊敬的<PERSON_001>先生，请拨打 <PHONE_001> 与我们联系。请用三行概括。
+
+what the model said (placeholders intact)
+  <PERSON_001>先生您好，我们会尽快与您联系。
+
+restored into your own words
+  张伟先生您好，我们会尽快与您联系。
+```
+
+任何 OpenAI 兼容端点都可以（Ollama、vLLM、LM Studio，
+或者用 `--api-key-env` 接托管 API）。
+
 ---
 
 ## 安装
@@ -115,7 +176,7 @@ mamori proxy on http://127.0.0.1:8100/v1/
 
 | | 泄漏率：仅规则 → +模型 | 过度打码 | precision |
 |---|---|---|---|
-| `en-core` | 2.01% → **0.67%** | 0.66% → 4.43% | 1.000 → 0.855 |
+| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
 | `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
 | `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
 
@@ -135,6 +196,9 @@ mamori eval --compare --stance balanced -c mamori.json --cache answers.json
 ```
 
 `--compare` 会点名列出发生变化的样本——聚合数字只会告诉你「有东西动了」，不会告诉你动了什么。
+用**你自己的文档**来测量（这比这里的任何数字都更有说服力）的做法，见
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md)，
+那里也写了要注意什么——那个文件装的就是你的真实数据。
 `--cache` 用模型**和提示词**共同做键，所以重跑是免费的，
 而改动一行指引只会让依赖旧措辞的那些答案失效。
 
@@ -604,6 +668,7 @@ infrastructure ──> ports
 `v0.7` 第一次测量了模型层，发现它一直在把模型答对的东西几乎全部丢掉，并修好了它。
 `v0.8` 把最终决定权交给了运维人员。
 `v0.9` 把评测数据扩到文档规模，发现了四个 44 字符样本无法暴露的检测缺陷。
+`v0.10` 加了可以真正跑起来的 demo，并发现了测量框架自身的一个缺陷。
 
 | | |
 |---|---|

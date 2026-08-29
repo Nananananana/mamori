@@ -157,28 +157,39 @@ overstated its cost by roughly half.
 
 ### The model tier, measured
 
-Added in 0.4.0 and measured for the first time in 0.7.0. Balanced stance,
-`llama3.1:8b` running locally:
+Added in 0.4.0, measured for the first time in 0.7.0, and re-measured in 0.10.0
+after a bug was found in the harness that produced those numbers. Balanced
+stance, `llama3.1:8b` running locally, against the fragment sets:
 
 | | leak: rules -> +model | over-redaction | precision |
 |---|---|---|---|
-| `en-core` | 2.01% -> 0.67% | 0.66% -> 4.43% | 1.000 -> 0.855 |
+| `en-core` | 2.01% -> 0.67% | 0.00% -> 3.77% | 1.000 -> 0.855 |
 | `ja-core` | 0.71% -> 0.71% | 0.00% -> 5.41% | 1.000 -> 0.868 |
-| `zh-core` | 0.00% -> 0.00% | 2.55% -> 10.18% | 0.964 -> 0.871 |
 
-At this size it raises English recall and costs precision everywhere. It does
-not improve Japanese or Chinese on these sets. At the recall-first default it
-does not move the leak rate at all, because the wide rules already reach those
-values, and roughly six times the over-redaction.
+At this size the model raises English recall -- it closes `en-006`, a name in
+running prose with nothing to anchor on -- and costs precision in both
+languages. It does not improve Japanese. At the recall-first default it does
+not move the leak rate at all, because the wide rules already reach those
+values, and costs roughly six times the over-redaction.
 
-Two things this measurement corrected are worth knowing if you ran an earlier
-version: the model was asked for character offsets and got 0 of 52 right, so
-its findings were being discarded almost entirely (0.4.0 to 0.6.0); and
-`OTHER_SENSITIVE`, which the default policy blocks, was being proposed for
-weekdays and error codes. Both are fixed in 0.7.0.
+**About the correction.** The 0.7.0 figures were produced by a harness that
+rebuilt the detection pipeline by hand and left out the co-occurrence pass, so
+the model was being scored against a baseline that had a pass it lacked. The
+conclusions survived re-measurement -- the model is an English-recall tool at
+8B and does nothing for Japanese -- but the over-redaction figures moved and
+the comparison was not sound when it was published. The harness now has one
+assembly path, and a test pins it.
 
-Run `mamori eval --compare` against your own data. These are 8B numbers on
-small synthetic sets and they are a floor for judgement, not a substitute.
+Two things this measurement corrected in the library itself, worth knowing if
+you ran an earlier version: the model was asked for character offsets and got
+0 of 52 right, so its findings were being discarded almost entirely (0.4.0 to
+0.6.0); and `OTHER_SENSITIVE`, which the default policy blocks, was being
+proposed for weekdays and error codes. Both are fixed.
+
+Run `mamori eval --compare` against your own data --
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md) says how,
+and what to be careful about. These are 8B numbers on small synthetic sets and
+they are a floor for judgement, not a substitute.
 
 ### It is not a compliance control
 

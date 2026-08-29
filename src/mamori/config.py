@@ -42,6 +42,7 @@ from .llm_settings import LLMSettings
 
 if TYPE_CHECKING:  # imported for types only; the runtime import stays lazy
     from .application.session import PrivacySession
+    from .ports.llm import LLMProvider
     from .ports.mapping_store import MappingStore
 from .prompts.library import PromptLibrary, default_library
 
@@ -120,8 +121,17 @@ class MamoriConfig:
             min_confidence=self.min_confidence,
         )
 
-    def detectors(self) -> tuple[Any, ...]:
+    def detectors(self, *, provider: LLMProvider | None = None) -> tuple[Any, ...]:
         """The detector set these settings describe.
+
+        Args:
+            provider: Replaces the model these settings name, keeping
+                everything else identical. Measurement needs this -- to score a
+                cached provider, or a second model -- and it is a parameter
+                rather than a second assembly path on purpose: a harness that
+                rebuilt the pipeline by hand silently lost the co-occurrence
+                pass and published a model comparison against the wrong
+                baseline for two releases.
 
         Raises:
             ConfigurationError: an unknown locale or provider, or an endpoint
@@ -136,7 +146,7 @@ class MamoriConfig:
             if self.co_occurrence
             else None
         )
-        extra = list(self.llm_passes())
+        extra = list(self.llm_passes(provider=provider))
         log = self.correction_log()
         if log.added():
             # Last, so it sees what everything else found and adds only what
@@ -170,13 +180,18 @@ class MamoriConfig:
         except ValueError as exc:
             raise ConfigurationError(f"corrections: {exc}") from exc
 
-    def llm_passes(self) -> tuple[Any, ...]:
+    def llm_passes(self, *, provider: LLMProvider | None = None) -> tuple[Any, ...]:
         """The model pass these settings describe, or nothing.
 
         Built here rather than inside the pipeline so that a caller who wants
         to supply their own provider object -- one this configuration could not
         name, because it holds a loaded model or a client with credentials --
         can skip this entirely and pass the pass in directly.
+
+        Args:
+            provider: Used instead of the one these settings name. Everything
+                else about the pass -- prompt library, locales, limits -- stays
+                as configured.
         """
         if self.llm is None or not self.llm.model:
             return ()
@@ -184,7 +199,8 @@ class MamoriConfig:
         from .infrastructure.detectors.llm_pass import LLMDetectionPass
         from .infrastructure.llm import create_provider
 
-        provider = create_provider(self.llm.provider, self.llm.endpoint())
+        if provider is None:
+            provider = create_provider(self.llm.provider, self.llm.endpoint())
         return (
             LLMDetectionPass(
                 provider,

@@ -255,9 +255,9 @@ class TestCliLocales:
         assert "unknown locale" in capsys.readouterr().err
 
     def test_demo_covers_more_than_one_language(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main(["demo"]) == 0
+        assert main(["demo", "--scenario", "roundtrip"]) == 0
         out = capsys.readouterr().out
-        assert "(ja," in out and "(en," in out
+        assert "ja " in out and "en " in out, "the demo must show both packs firing"
         assert "scripts found:" in out
 
 

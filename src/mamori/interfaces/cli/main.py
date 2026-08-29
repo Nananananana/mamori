@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -32,7 +33,6 @@ from ...application.session import PrivacySession
 from ...config import MamoriConfig, load_config_file
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
-from ...domain.script import scripts_in
 from ...domain.stance import Stance
 from ...errors import ConfigurationError, MamoriError, PolicyViolationError
 from ...evaluation import (
@@ -50,6 +50,7 @@ from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
+from .demo import SCENARIOS, LiveSettings, run_demo
 
 __all__ = ["build_parser", "main"]
 
@@ -238,7 +239,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_config_args(corrections_cmd)
     corrections_cmd.add_argument("--json", action="store_true", help="emit JSON")
-    sub.add_parser("demo", help="run a full round trip on a sample text")
+    demo_cmd = sub.add_parser("demo", help="see it work, on the sample text or on yours")
+    add_config_args(demo_cmd)
+    demo_cmd.add_argument("--text", help="run the tour on your own text")
+    demo_cmd.add_argument("-f", "--file", help="run the tour on a file")
+    demo_cmd.add_argument(
+        "--scenario",
+        action="append",
+        choices=sorted(SCENARIOS),
+        help="just one part of the tour; repeatable",
+    )
+    demo_cmd.add_argument(
+        "--live",
+        action="store_true",
+        help="actually send the protected prompt to a model and restore its "
+        "answer. Needs --model and --api",
+    )
+    demo_cmd.add_argument("--model", help="model name, for --live")
+    demo_cmd.add_argument(
+        "--api",
+        metavar="URL",
+        help="the service to ask, for --live, e.g. http://localhost:11434/v1/",
+    )
+    demo_cmd.add_argument(
+        "--api-key-env",
+        metavar="NAME",
+        help="environment variable holding the key for --api, if it needs one",
+    )
+    demo_cmd.add_argument("--json", action="store_true", help="emit JSON")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
     evaluate_cmd.add_argument(
@@ -839,38 +867,31 @@ _DEMO_TEXT = (
 )
 
 
-def _cmd_demo(_args: argparse.Namespace) -> int:
-    print("--- 1. original (never leaves this machine) ---")
-    print(_DEMO_TEXT)
+def _cmd_demo(args: argparse.Namespace) -> int:
+    text: str | None = None
+    if args.file:
+        text = Path(args.file).read_text(encoding="utf-8")
+    elif args.text:
+        text = args.text
 
-    with PrivacySession() as session:
-        protected = session.protect(_DEMO_TEXT)
-        print("--- 2. what an external model would see ---")
-        print(protected.protected_text)
+    live: LiveSettings | None = None
+    if args.live:
+        if not args.model or not args.api:
+            print("--live needs --model and --api", file=sys.stderr)
+            return _EXIT_ERROR
+        key = os.environ.get(args.api_key_env, "") if args.api_key_env else ""
+        if args.api_key_env and not key:
+            print(f"{args.api_key_env} is not set", file=sys.stderr)
+            return _EXIT_ERROR
+        live = LiveSettings(base_url=args.api, model=args.model, api_key=key)
 
-        print("--- 3. what was replaced ---")
-        _print_reports(protected)
-        found = ", ".join(sorted(script.value for script in scripts_in(_DEMO_TEXT)))
-        print(f"    scripts found: {found}")
-
-        # Stand-in for a model that answered using the placeholders, and
-        # mangled two of them on the way -- which is exactly what they do.
-        reply = (
-            "\n<PERSON_001>様\n\nお世話になっております。PERSON_002です。\n"
-            "<EMAIL_1> 宛にご返信いたします。\n"
-        )
-        print("\n--- 4. a reply that came back, placeholders altered ---")
-        print(reply)
-
-        restored = session.restore(reply)
-        print("--- 5. restored locally ---")
-        print(restored.text)
-        print(
-            f"-- {len(restored.restored)} restored, "
-            f"{len(restored.tampered)} had been altered, "
-            f"{len(restored.unknown)} unrecognised"
-        )
-    return _EXIT_OK
+    return run_demo(
+        _settings_from(args),
+        text=text,
+        scenarios=args.scenario,
+        live=live,
+        as_json=args.json,
+    )
 
 
 def _cmd_locales(_args: argparse.Namespace) -> int:
@@ -1030,6 +1051,17 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             _print_comparison(comparison)
         if cache is not None:
             print(f"cache  {cache.hits} hit(s), {cache.misses} miss(es) -> {cache.path}")
+            if cache.failures:
+                print()
+                print(
+                    f"WARNING: the model failed on {cache.failures} of "
+                    f"{cache.hits + cache.misses} request(s)."
+                )
+                print("A model that never answers produces exactly the numbers above:")
+                print("no change to anything. That is not a result -- the pass degrades")
+                print("to nothing by design, and the comparison has measured the rules")
+                print("against themselves. Check `mamori llm --check`, and the timeout.")
+                return _EXIT_ERROR
         return _EXIT_OK
 
     for report in reports:
@@ -1064,26 +1096,14 @@ def _eval_cache(settings: MamoriConfig, path: Path, *, replay: bool) -> CachedPr
 
 
 def _eval_detectors(settings: MamoriConfig, cache: CachedProvider | None) -> Sequence[Detector]:
-    """The detectors to score, with the cache spliced in when there is one."""
-    if cache is None:
-        return list(settings.detectors())
+    """The detectors to score, with the cache spliced in when there is one.
 
-    from ...infrastructure.detectors import build_pipeline
-    from ...infrastructure.detectors.llm_pass import LLMDetectionPass
-
-    cached_pass = LLMDetectionPass(
-        cache,
-        library=settings.prompt_library(),
-        locales=settings.locales or None,
-        require_model=False,
-    )
-    return [
-        build_pipeline(
-            locales=settings.locales or None,
-            stance=settings.stance,
-            extra_passes=[cached_pass],
-        )
-    ]
+    Assembly is the settings' job, not this function's. An earlier version
+    rebuilt the pipeline here and quietly left out the co-occurrence pass,
+    which meant every cached model measurement was scored against a baseline
+    that had it -- so the model looked worse than it was, for two releases.
+    """
+    return list(settings.detectors(provider=cache))
 
 
 def _print_comparison(comparison: Comparison) -> None:

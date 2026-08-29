@@ -64,6 +64,10 @@ class CachedProvider:
         self._dirty = False
         self.hits = 0
         self.misses = 0
+        #: Requests the inner provider could not answer. Counted because a run
+        #: where every call failed reports a clean zero delta and looks exactly
+        #: like a run where the model had nothing to add.
+        self.failures = 0
 
     @property
     def name(self) -> str:
@@ -90,7 +94,11 @@ class CachedProvider:
                 "was never recorded."
             )
         self.misses += 1
-        response = self._inner.generate(request)
+        try:
+            response = self._inner.generate(request)
+        except Exception:
+            self.failures += 1
+            raise
         self._entries[key] = response.text
         self._dirty = True
         return response
@@ -116,7 +124,11 @@ class CachedProvider:
             if self._read_only:
                 raise LookupError(f"{len(pending)} of {len(requests)} answers are not cached")
             self.misses += len(pending)
-            fresh = self._ask(tuple(request for _, request in pending))
+            try:
+                fresh = self._ask(tuple(request for _, request in pending))
+            except Exception:
+                self.failures += len(pending)
+                raise
             for (index, request), response in zip(pending, fresh, strict=True):
                 answers[index] = response
                 self._entries[_key(self.name, request)] = response.text

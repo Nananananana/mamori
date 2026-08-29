@@ -203,3 +203,127 @@ class TestRememberingWhatAModelSaid:
             [self._request(user="1"), self._request(user="2"), self._request(user="3")]
         )
         assert len(answers) == 3
+
+
+class TestOnePlaceAssemblesDetectors:
+    """The harness must not build a second pipeline of its own.
+
+    It did, for two releases. `build_pipeline` defaults co-occurrence to off
+    and `MamoriConfig.detectors()` passes one in, so every cached model
+    measurement was scored against a baseline that had a pass the candidate
+    lacked -- the model looked worse than it was, and the published conclusion
+    that it "does nothing for Japanese" was measured wrongly.
+
+    The fix was to delete the second path rather than to fix it, so these
+    tests are about the parameter that made deleting it possible.
+    """
+
+    @staticmethod
+    def _config() -> MamoriConfig:
+        return MamoriConfig.from_mapping(
+            {"llm": {"model": "m", "base_url": "http://localhost:1/v1/"}}
+        )
+
+    def test_a_substituted_provider_keeps_everything_else(self) -> None:
+        substitute = ScriptedProvider('{"entities": []}')
+        passes = self._config().llm_passes(provider=substitute)
+        assert len(passes) == 1
+        assert passes[0].provider is substitute
+
+    def test_the_detector_set_is_otherwise_identical(self) -> None:
+        """Same passes, same order, same everything but the provider."""
+        config = self._config()
+        named = config.detectors()
+        substituted = config.detectors(provider=ScriptedProvider('{"entities": []}'))
+        assert len(named) == len(substituted) == 1
+        assert [p.name for p in named[0].passes] == [p.name for p in substituted[0].passes]
+
+    def test_co_occurrence_survives_the_substitution(self) -> None:
+        """The pass whose absence caused the wrong numbers."""
+        detectors = self._config().detectors(provider=ScriptedProvider('{"entities": []}'))
+        assert any("co-occurrence" in p.name for p in detectors[0].passes)
+
+    def test_it_still_runs_without_a_model_configured(self) -> None:
+        assert MamoriConfig().llm_passes(provider=ScriptedProvider("{}")) == ()
+
+    def test_a_substituted_provider_produces_the_same_propagation(self) -> None:
+        """End to end: the silent model must not cost the rules anything."""
+        from mamori import PrivacySession
+
+        text = "Dear Priya Raman,\n\nPriya Raman is leading it. Please loop Priya Raman in."
+        with PrivacySession(detectors=list(MamoriConfig().detectors())) as plain:
+            expected = plain.protect(text).entity_count
+        silent = self._config().detectors(provider=ScriptedProvider('{"entities": []}'))
+        with PrivacySession(detectors=list(silent)) as session:
+            assert session.protect(text).entity_count >= expected
+
+
+class TestAFailedRunDoesNotLookLikeAResult:
+    """A model that never answers produces a perfect zero delta.
+
+    Found the hard way. A 12B model timed out on every request during a real
+    measurement; the pass degraded to nothing exactly as designed, the
+    comparison measured the rules against themselves, and the output said
+    +0.00% on every line. That reads as "the model had nothing to add", which
+    is a conclusion, and it was not one.
+    """
+
+    class Broken:
+        name = "broken"
+        supports_structured_output = False
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            raise TimeoutError("took too long")
+
+    def test_failures_are_counted(self, tmp_path: Path) -> None:
+        cache = CachedProvider(self.Broken(), tmp_path / "c.json")
+        for _ in range(3):
+            with pytest.raises(TimeoutError):
+                cache.generate(LLMRequest(system="s", user="u"))
+        assert cache.failures == 3
+
+    def test_a_working_provider_records_none(self, tmp_path: Path) -> None:
+        cache = CachedProvider(ScriptedProvider("ok"), tmp_path / "c.json")
+        cache.generate(LLMRequest(system="s", user="u"))
+        assert cache.failures == 0
+
+    def test_nothing_is_cached_from_a_failure(self, tmp_path: Path) -> None:
+        """Otherwise a retry would replay the failure as an answer."""
+        cache = CachedProvider(self.Broken(), tmp_path / "c.json")
+        with pytest.raises(TimeoutError):
+            cache.generate(LLMRequest(system="s", user="u"))
+        assert len(cache) == 0
+
+    def test_the_command_refuses_to_report_a_failed_run_as_clean(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from mamori.interfaces.cli.main import main
+
+        settings = tmp_path / "mamori.json"
+        settings.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "model": "nothing-is-listening",
+                        "base_url": "http://127.0.0.1:1/v1/",
+                        "timeout": 1,
+                        "retries": 0,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        argv = [
+            "eval",
+            "--locale",
+            "zh",
+            "--compare",
+            "-c",
+            str(settings),
+            "--cache",
+            str(tmp_path / "answers.json"),
+        ]
+        assert main(argv) == 1, "a run where every call failed must not exit clean"
+        out = capsys.readouterr().out
+        assert "WARNING" in out
+        assert "not a result" in out

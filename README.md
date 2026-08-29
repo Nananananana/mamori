@@ -21,6 +21,70 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 
 The mapping from `<PERSON_001>` back to `田中太郎` never leaves your machine.
 
+
+## See it work
+
+Nothing to install, nothing to configure:
+
+```bash
+pip install mamori
+mamori demo
+```
+
+Five short scenarios, each answering a question somebody actually has: what the
+model sees and whether you get your words back, what happens when a placeholder
+arrives split across streamed chunks, whether any of this survives a document
+rather than a sentence, what to do when it gets one wrong, and what happens when
+there is a password in your text.
+
+Then try it on something of yours:
+
+```bash
+mamori demo --file draft.txt
+mamori demo --scenario roundtrip --text "Call Jane Doe on 415-555-0198"
+```
+
+```text
+you wrote
+  Dear Jane Doe, reach me at jane.doe@example.com
+
+the model sees
+  Dear <PERSON_001>, reach me at <EMAIL_001>
+
+replaced 2 value(s), and what found each one:
+  <PERSON_001>        PERSON        en          0.90
+  <EMAIL_001>         EMAIL         universal   1.00
+```
+
+The last two columns are the rule set that fired and how sure it was, so "why
+was this replaced?" has an answer.
+
+### Against a real model
+
+`--live` protects your text, sends it to a model you name, and restores the
+answer — the whole round trip, with nothing simulated:
+
+```bash
+mamori demo --live --model llama3.1:8b --api http://localhost:11434/v1/ \
+  --text "田中太郎さんへ。tanaka@example.com までご返信ください。3行で要約して。"
+```
+
+```text
+what actually goes over the wire
+  <PERSON_001>さんへ。<EMAIL_001> までご返信ください。3行で要約して。
+
+what the model said (placeholders intact)
+  <PERSON_001>さまへ
+  <COMPANY_NAME_001>からご連絡いたします。
+
+restored into your own words
+  田中太郎さまへ
+  株式会社さくら商事からご連絡いたします。
+```
+
+It works with any OpenAI-compatible endpoint — Ollama, vLLM, LM Studio, or a
+hosted API with `--api-key-env`.
+
 ---
 
 ## Install
@@ -126,7 +190,7 @@ the bundled sets:
 
 | | leak: rules → +model | over-redaction | precision |
 |---|---|---|---|
-| `en-core` | 2.01% → **0.67%** | 0.66% → 4.43% | 1.000 → 0.855 |
+| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
 | `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
 | `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
 
@@ -147,7 +211,10 @@ mamori eval --compare --stance balanced -c mamori.json --cache answers.json
 ```
 
 `--compare` names the individual samples that changed, because an aggregate
-tells you something moved and not what. `--cache` keys on the model *and the
+tells you something moved and not what. To measure mamori on **your own**
+documents -- which is much better evidence than anything here -- see
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md), which also
+says what to be careful about, since such a file is full of your real data. `--cache` keys on the model *and the
 prompt*, so re-running is free and rewriting one line of guidance invalidates
 exactly the answers that depended on it.
 
@@ -661,7 +728,8 @@ delivered the proxy, and made the privacy claims answerable and machine-checked.
 `v0.7` measured the model tier for the first time and found it had been
 discarding almost everything the model got right. `v0.8` gave the operator the
 last word. `v0.9` grew the datasets to document scale, which found four
-detection bugs that 44-character samples could not have shown.
+detection bugs that 44-character samples could not have shown. `v0.10` added a
+demo that runs, and found a bug in the measurement harness itself.
 
 | | |
 |---|---|

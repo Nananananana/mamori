@@ -1,6 +1,6 @@
 # 0001. The road to 1.0
 
-**Status:** current plan, revised after 0.9.0
+**Status:** current plan, revised after 0.10.0
 
 A roadmap in a README is a list. This is the reasoning behind the list, which
 is the part that changes when something is learned. ADRs record decisions
@@ -23,6 +23,8 @@ edited.
 - `0.8` — corrections, so the operator has the last word.
 - `0.9` — the datasets grew to document scale and found four detection bugs the
   fragment sets could not have shown.
+- `0.10` — a demo that runs, a guide to measuring on your own text, and a bug
+  in the harness that had been corrupting the model-tier numbers since 0.7.
 
 ## What measuring keeps changing about the plan
 
@@ -85,10 +87,23 @@ Two parts of the original intent are **not** done and move to 0.10:
 - the open question from 0.7, still open: does a model above 8B change the
   model-tier table? The harness exists and the run takes one command.
 
-### 0.10 — Bring your own data, and a larger model
+### 0.10 — A demo, and bring your own data *(delivered)*
 
-The two parts of 0.9 that did not land, above. Both are small and both answer
-questions a user will ask.
+`mamori demo` with five scenarios and a `--live` mode that sends a real request
+to a real model, and
+[docs/measuring-your-own-data.md](../measuring-your-own-data.md).
+
+**The larger-model question is still open, and now has a reason.** `gemma4:12b`
+times out on the hardware available here, so a run does not complete. That says
+something about the machine and nothing about the model, and the honest record
+of it is "not measured" rather than a table. It stays on the list.
+
+Building the demo also found two things: a password written in prose (`the
+password is X`) was not detected in any language, and a measurement where every
+model call fails reported a clean zero delta. Both are fixed. The second is the
+third time in four releases that something correct-looking turned out to be
+doing nothing, which is beginning to look less like bad luck and more like the
+shape of this kind of software.
 
 ### 0.11 — Surrogate values
 

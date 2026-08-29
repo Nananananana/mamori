@@ -20,6 +20,70 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 
 `<PERSON_001>` から `田中太郎` に戻す対応表が手元の端末を出ることはない。
 
+
+## 動かして見る
+
+インストール以外に何も要らない。
+
+```bash
+pip install mamori
+mamori demo
+```
+
+短いシナリオが5つ。それぞれ実際に聞かれる問いに答える。
+モデルには何が見えて自分の言葉は戻ってくるのか。
+プレースホルダーがストリームで分割されて届いたらどうなるのか。
+1文ではなく文書でも通用するのか。間違えたときどうするのか。
+テキストにパスワードが入っていたらどうなるのか。
+
+次に自分のもので試す。
+
+```bash
+mamori demo --file draft.txt
+mamori demo --scenario roundtrip --text "田中太郎さんに090-1234-5678で連絡して"
+```
+
+```text
+you wrote
+  Dear Jane Doe, reach me at jane.doe@example.com
+
+the model sees
+  Dear <PERSON_001>, reach me at <EMAIL_001>
+
+replaced 2 value(s), and what found each one:
+  <PERSON_001>        PERSON        en          0.90
+  <EMAIL_001>         EMAIL         universal   1.00
+```
+
+右の2列は「どの規則集が反応したか」と「どれくらい確信していたか」である。
+**「なぜこれが置換されたのか」に答えが出る。**
+
+### 実際のモデルに対して
+
+`--live` は保護してから指定したモデルに実際に送り、答えを復元する。
+シミュレーションではなく往復の全部である。
+
+```bash
+mamori demo --live --model llama3.1:8b --api http://localhost:11434/v1/ \
+  --text "田中太郎さんへ。tanaka@example.com までご返信ください。3行で要約して。"
+```
+
+```text
+what actually goes over the wire
+  <PERSON_001>さんへ。<EMAIL_001> までご返信ください。3行で要約して。
+
+what the model said (placeholders intact)
+  <PERSON_001>さまへ
+  <COMPANY_NAME_001>からご連絡いたします。
+
+restored into your own words
+  田中太郎さまへ
+  株式会社さくら商事からご連絡いたします。
+```
+
+OpenAI互換エンドポイントなら何でもよい（Ollama、vLLM、LM Studio、
+`--api-key-env` を使えばホスティングされたAPIも）。
+
 ---
 
 ## インストール
@@ -121,7 +185,7 @@ mamori proxy on http://127.0.0.1:8100/v1/
 
 | | 漏洩率: 規則のみ → +モデル | 過剰検出 | precision |
 |---|---|---|---|
-| `en-core` | 2.01% → **0.67%** | 0.66% → 4.43% | 1.000 → 0.855 |
+| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
 | `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
 | `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
 
@@ -141,6 +205,9 @@ mamori eval --compare --stance balanced -c mamori.json --cache answers.json
 ```
 
 `--compare` は変化したサンプルを名前で挙げる。集計値は「何かが動いた」としか言わない。
+**自分の文書で測る**手順（ここにある数字よりはるかに強い証拠になる）は
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md) にある。
+そのファイルは自分の実データそのものになるので、注意点も併記した。
 `--cache` はモデルと**プロンプト**でキーを作るので、再実行は無料で、
 ガイダンスを1行書き換えるとそれに依存していた答えだけが無効になる。
 
@@ -650,6 +717,7 @@ Pythonからもシェルからも。
 ほぼ全て捨てていたことを見つけて直した。
 `v0.8` で最終判断を運用者の手に渡した。
 `v0.9` で評価データを文書規模にし、44文字の標本では見えなかった検出バグを4件見つけた。
+`v0.10` で実際に動くデモを追加し、測定基盤自体のバグを見つけた。
 
 | | |
 |---|---|

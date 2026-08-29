@@ -141,6 +141,27 @@ _CREDIT_CARD = compile_rule(
 # Vendor-prefixed keys are unambiguous, so they get CERTAIN and, under the
 # default policy, stop the request outright.
 
+
+def _looks_like_a_secret(value: str) -> bool:
+    """Whether a word after "the password is" is a credential or a sentence.
+
+    "the password is hunter2spring" is a credential. "the password is short"
+    and "my password is fine" are people talking *about* a password, and
+    blocking those would stop a request over an ordinary sentence -- the most
+    disruptive false positive this library can produce, because BLOCK does not
+    degrade, it refuses.
+
+    So a prose match needs some evidence of being a secret rather than a word:
+    a digit, a capital, a symbol, or enough length that no plain word reaches
+    it. A short all-lowercase password is missed by this, which is the right
+    way round -- the `password: value` rule beside it has a separator to lean
+    on and needs no such test.
+    """
+    if len(value) >= 12:
+        return True
+    return any(c.isdigit() or c.isupper() or not c.isalnum() for c in value)
+
+
 _CREDENTIAL_RULES = (
     compile_rule(t.API_KEY, r"sk-ant-[A-Za-z0-9_\-]{16,}", CERTAIN),
     compile_rule(t.API_KEY, r"sk-(?:proj-)?[A-Za-z0-9_\-]{20,}", CERTAIN),
@@ -177,9 +198,38 @@ _CREDENTIAL_RULES = (
         MEDIUM,
         group=1,
     ),
+    # "the password is hunter2spring", パスワードは kaigi2026spring.
+    # Prose, not configuration -- and the commoner of the two ways somebody
+    # pastes a credential into a chat window. Written separately from the
+    # `key: value` rule above because the separator is a word rather than a
+    # colon, and because the value has to stop at a comma or a full stop
+    # instead of running to the end of the sentence.
+    compile_rule(
+        t.PASSWORD,
+        r"(?i)(?:password|passphrase|passcode)\s+(?:is|was|=)\s+"
+        r"[\"']?([^\s\"'<>,;]{4,200}?)(?=[\s,.;:!?\"']|$)",
+        MEDIUM,
+        group=1,
+        validator=_looks_like_a_secret,
+    ),
+    compile_rule(
+        t.PASSWORD,
+        r"(?:パスワード|暗証番号)\s*(?:は|が)\s*[\"'「]?([^\s\"'」、。<>,;]{4,200})",
+        MEDIUM,
+        group=1,
+        validator=_looks_like_a_secret,
+    ),
+    compile_rule(
+        t.PASSWORD,
+        r"(?:密码|密碼)\s*(?:是|为|為)\s*[\"'「]?([^\s\"'」、。<>,;]{4,200})",
+        MEDIUM,
+        group=1,
+        validator=_looks_like_a_secret,
+    ),
 )
 
 # --- Internal infrastructure ----------------------------------------------
+
 
 _INTERNAL_URL = compile_rule(
     t.INTERNAL_URL,
