@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from .application.results import EntityReport, ProtectionResult, RestorationResult
 from .application.session import PrivacySession
+from .application.streaming import StreamingRestorer, StreamSummary
 from .domain.entity_types import Category, EntityType, register_type
 from .domain.placeholder import Placeholder
 from .domain.policy import Action, PrivacyPolicy
@@ -31,7 +32,7 @@ from .errors import (
     StorageError,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "Action",
@@ -50,6 +51,8 @@ __all__ = [
     "RestorationError",
     "RestorationResult",
     "StorageError",
+    "StreamSummary",
+    "StreamingRestorer",
     "__version__",
     "register_type",
 ]

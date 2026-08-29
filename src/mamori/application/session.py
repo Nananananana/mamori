@@ -12,6 +12,7 @@ from ..ports.mapping_store import MappingStore
 from .protection import ProtectionService
 from .restoration import RestorationService
 from .results import ProtectionResult, RestorationResult
+from .streaming import StreamingRestorer
 
 __all__ = ["PrivacySession"]
 
@@ -86,6 +87,15 @@ class PrivacySession:
     def restore(self, text: str) -> RestorationResult:
         """Replace this session's placeholders in ``text`` with real values."""
         return self._restoration.restore(text, self._scope)
+
+    def stream_restore(self) -> StreamingRestorer:
+        """Start restoring a response that arrives in pieces.
+
+        Feeding a streamed answer through this produces exactly the text
+        :meth:`restore` would produce for the whole response, so nothing is lost
+        by not waiting for the last token.
+        """
+        return StreamingRestorer(self._store, self._scope)
 
     def close(self) -> None:
         """Discard every mapping held for this session."""
