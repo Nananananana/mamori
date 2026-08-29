@@ -15,6 +15,7 @@ __all__ = [
     "DetectionError",
     "MamoriError",
     "PolicyViolationError",
+    "ProviderError",
     "RestorationError",
     "StorageError",
 ]
@@ -60,3 +61,17 @@ class RestorationError(MamoriError):
 
 class StorageError(MamoriError):
     """A mapping store operation failed."""
+
+
+class ProviderError(MamoriError):
+    """A model provider failed.
+
+    Carries the provider name and a short reason. Never the prompt, the answer
+    or the server's response body -- an error from a detector is one of the few
+    places the unprotected text is in scope, so nothing from it is repeated.
+    """
+
+    def __init__(self, provider: str, reason: str) -> None:
+        super().__init__(f"provider {provider!r} failed: {reason}")
+        self.provider = provider
+        self.reason = reason
