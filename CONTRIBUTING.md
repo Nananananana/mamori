@@ -94,6 +94,54 @@ This is the most useful contribution, and the easiest to get subtly wrong.
 Then add the entity type to `docs/adr/` reasoning if it needs a new category,
 and to the gap table in `SECURITY.md` if it has known blind spots.
 
+## Adding an evaluation sample
+
+The most useful thing after a rule. A sample is one line in
+`src/mamori/evaluation/data/<locale>-core.json`, annotated inline:
+
+```json
+{"id": "ja-046", "annotated": "[[PERSON:田中太郎]]さんへ [[EMAIL:a@example.com]]"}
+```
+
+The loader strips the markup and computes the offsets, so you never count
+characters.
+
+Rules for samples:
+
+- **Invent everything.** These files ship inside the wheel, so a real name or a
+  real key here is published to everyone who installs mamori. A test refuses
+  vendor-prefixed credentials outright; the rest is on you.
+- **Label what a redactor would remove**, not what the rules currently find. A
+  sample that leaks is a finding, not a bug in the sample.
+- **A leaking sample needs a `note`** saying why, or the next reader will
+  "fix" it by relabelling. A test enforces this.
+- **Negative samples matter as much as positive ones.** Text with nothing
+  sensitive is the only way over-redaction gets measured.
+
+Then check what it did:
+
+```bash
+mamori eval --locale ja --show-leaks
+```
+
+If a change improves the numbers, raise the floors in
+`tests/test_detection_quality.py`. That ratchet is the point. Never lower one to
+make a change pass — if a change costs coverage, that is the finding.
+
+## Adding an adapter
+
+`tests/contracts.py` holds the conformance suites for `Detector` and
+`MappingStore`. Subclass the matching mixin and you inherit the contract:
+
+```python
+class TestMyStore(MappingStoreContract):
+    def make_store(self) -> MappingStore:
+        return MyStore()
+```
+
+Scope isolation and index numbering are the two things implementations get
+wrong, and both are in the suite.
+
 ## Adding a language
 
 Create a module under `src/mamori/infrastructure/detectors/locales/`, export a

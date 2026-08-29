@@ -8,6 +8,52 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-29
+
+### Added
+
+- **Detector evaluation.** `mamori.evaluation` scores the detectors against
+  labelled datasets, and `mamori eval` prints the result. Two metric families
+  are reported: entity precision/recall/F1 per type, and the character-level
+  pair that actually matters here — `leak_rate` (share of labelled sensitive
+  characters no detection covered) and `over_redaction_rate` (share of ordinary
+  text replaced anyway). See
+  [ADR 0009](docs/adr/0009-measure-leaked-characters.md).
+- **Labelled datasets** for Japanese, English and Chinese, shipped with the
+  package. Samples are authored with inline `[[TYPE:value]]` markup and the
+  loader computes the offsets, so nobody counts characters by hand. Labels
+  record what a human redactor would remove, including cases the rules are
+  known to miss; each of those carries a note saying why.
+- **Quality floors in CI** (`tests/test_detection_quality.py`), so a rule change
+  that improves one language and quietly wrecks another turns the build red.
+- **Streaming restoration.** `session.stream_restore()` restores a response as
+  it arrives, holding back only the shortest suffix that further input could
+  still turn into a placeholder. For any chunking it emits exactly what
+  `restore()` emits for the whole response — a Hypothesis property, not an
+  aspiration. See [ADR 0010](docs/adr/0010-streaming-restoration.md).
+- **Port conformance suites** (`tests/contracts.py`). A new `Detector` or
+  `MappingStore` subclasses the matching mixin and inherits the contract instead
+  of guessing at it.
+
+### Fixed
+
+Five bugs, all found by the new datasets within an hour of writing them, and all
+producing wrong output on plausible input:
+
+- The Japanese address rule stopped at the first hyphen, so
+  `東京都千代田区千代田1-1` was replaced as far as `...千代田1` and the rest was
+  sent on.
+- The Japanese surname rule swallowed the honorific: `佐藤花子様` came back as a
+  four-character name ending in `様`.
+- `INTERNAL_URL` and `DATABASE_URL` matched anything up to whitespace, so a link
+  followed by Japanese text took the sentence with it.
+- `DATE_OF_BIRTH` captured a trailing space when the closing `日` was absent.
+- A Japanese company name ran into the following clause
+  (`有限会社みどりから見積`); the tempered character class now stops on
+  multi-character particles as well as single ones.
+
+## [0.1.1] - 2026-08-29
+
 ### Added
 
 - **English and Chinese detection**, alongside Japanese. Rules are grouped into
@@ -90,5 +136,7 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Nananananana/mamori/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/Nananananana/mamori/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Nananananana/mamori/releases/tag/v0.1.0

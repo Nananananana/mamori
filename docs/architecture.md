@@ -61,6 +61,7 @@ interfaces ──> application ──> domain
 | `ports/` | `Detector`, `MappingStore` protocols | `domain` |
 | `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports` |
 | `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file | `domain`, `ports` |
+| `evaluation/` | Labelled datasets, scoring, quality metrics | `application`, `domain` |
 | `interfaces/cli/` | Argument parsing, output formatting | `application`, `domain` |
 
 `domain` imports nothing else, including nothing outside the standard library.
@@ -173,6 +174,42 @@ Custom entity types register with `mamori.register_type`. Note that a type
 whose category has no policy default falls through to `BLOCK` — deliberately,
 so a new detector stops a request rather than quietly shipping what it found.
 
+## Streaming
+
+An answer arrives token by token, and `<PERSON_001>` shows up as `<PER`, `SON_0`,
+`01>`. `session.stream_restore()` holds back the shortest suffix that further
+input could still turn into a placeholder and emits the rest, restored:
+
+```python
+stream = session.stream_restore()
+for chunk in llm_response_stream:
+    print(stream.feed(chunk), end="")
+print(stream.finish())
+```
+
+The invariant, checked with Hypothesis over every chunking: streaming emits
+exactly what `restore()` emits for the whole response. See
+[ADR 0010](adr/0010-streaming-restoration.md).
+
+## Measuring detection
+
+`mamori.evaluation` scores the detectors against labelled data. Two metric
+families, because neither is honest alone:
+
+| Metric | Question it answers |
+|---|---|
+| `leak_rate` | What share of the sensitive characters would have left the machine |
+| `over_redaction_rate` | What share of ordinary text was destroyed getting there |
+| entity P / R / F1 | Which rule is missing, per type |
+
+```bash
+mamori eval --locale ja --show-leaks
+```
+
+Datasets are authored with inline markup — `[[PERSON:田中太郎]]さんへ` — and the
+loader computes the offsets, so nobody counts characters by hand. Quality floors
+run in CI. See [ADR 0009](adr/0009-measure-leaked-characters.md).
+
 ## Testing
 
 | File | Covers |
@@ -189,6 +226,14 @@ so a new detector stops a request rather than quietly shipping what it found.
 | `test_security_leakage.py` | Greps real logs, reprs, tracebacks and payloads for the values |
 | `test_roundtrip_properties.py` | Hypothesis: restore undoes protect, protect is idempotent, nothing crashes |
 | `test_cli_and_storage.py` | The shell interface and the JSON mapping file |
+| `test_streaming.py` | Incremental restoration; Hypothesis over every chunking |
+| `test_evaluation.py` | The scoring harness and the dataset parser |
+| `test_detection_quality.py` | Quality floors per language, run in CI |
+| `test_port_contracts.py` | Every bundled adapter against the port conformance suites |
+
+`tests/contracts.py` holds the conformance suites for `Detector` and
+`MappingStore`. A new adapter subclasses the matching mixin and inherits the
+contract rather than guessing at it.
 
 The round-trip property is scoped to `ANONYMIZE`. It cannot hold for `MASK` or
 `BLOCK`, which destroy information on purpose — a global assertion would be

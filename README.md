@@ -50,6 +50,23 @@ A session is one conversation. The same value keeps the same placeholder for
 its whole life, so a model can tell that two mentions are the same person, and
 an answer in turn five can still be restored with a value from turn one.
 
+### Streaming
+
+An answer arrives token by token, and `<PERSON_001>` shows up as `<PER`,
+`SON_0`, `01>`. Restore it as it comes:
+
+```python
+stream = session.stream_restore()
+for chunk in llm_response_stream:
+    print(stream.feed(chunk), end="", flush=True)
+print(stream.finish())
+```
+
+Whatever the chunking, this emits exactly what `restore()` would emit for the
+whole response — checked with Hypothesis over every split, because a streaming
+path that *usually* agrees with the batch path breaks at whichever token
+boundary the model happens to pick.
+
 ### From the shell
 
 ```bash
@@ -141,6 +158,46 @@ it, which is why width comes first.
 
 ---
 
+## How well does it work?
+
+Ask it:
+
+```bash
+mamori eval
+```
+
+```text
+ja-core  (ja, 45 samples)
+  leak rate             0.75%   (4/531 sensitive chars left uncovered)
+  over-redaction        0.00%   (0/803 ordinary chars replaced)
+  entity P / R / F1   1.000 / 0.981 / 0.990   (match: overlap)
+  clean samples       44/45
+```
+
+**Leak rate** is the share of labelled sensitive characters that no detection
+covered — the part that would have left the machine. **Over-redaction** is what
+it cost in ordinary text. Neither number means anything alone: a tool that
+redacts everything has a perfect leak rate and destroys every answer, and a
+privacy layer people stop using has a real-world leak rate of 1.0.
+
+Entity-level precision and recall are reported too, per type, because they are
+how you find a rule that is missing rather than merely imprecise. But they are
+not the headline. A detector that finds `田中` inside `田中太郎` scores as a hit
+under overlap matching and a miss under exact matching; neither says the thing
+that matters, which is that two characters of somebody's name were sent to a
+third party.
+
+Quality floors run in CI, so a rule change that improves one language and
+quietly wrecks another turns the build red. Writing the first datasets found
+five real bugs within an hour — read
+[ADR 0009](docs/adr/0009-measure-leaked-characters.md) for what they were.
+
+Treat the numbers as regression floors, not as a claim about your data: the
+datasets are small and synthetic, and a leak rate near zero on 45 invented
+sentences says nothing about a real inbox.
+
+---
+
 ## What this does not do
 
 Read this part. A security tool that is trusted past its actual reach is worse
@@ -208,16 +265,23 @@ network and no database.
 `v0.1` is the core: detect, decide, pseudonymize, restore, in memory, from
 Python or the shell.
 
+`v0.2` added the measurement harness, streaming restoration, and English and
+Chinese language packs.
+
 | | |
 |---|---|
-| **v0.2** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. Labelled evaluation sets for each language, so detector quality becomes a number instead of an opinion. |
-| **v0.3** | Dictionary and rule detectors, a Presidio adapter, an opt-in encrypted persistent store. |
-| **v0.4** | Local-model detection as an opt-in deep-scan tier, for the cases patterns cannot reach — unanchored English names and Chinese given names above all. |
-| **v0.5** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
+| **v0.3** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. Same-document co-occurrence: once a name is confirmed anywhere with high confidence, every later mention of it is too. |
+| **v0.4** | A Presidio adapter, an opt-in encrypted persistent store, and a confidence floor so answer quality can be traded against coverage. |
+| **v0.5** | Local-model detection as an opt-in deep-scan tier, for the cases patterns cannot reach — unanchored English names and Chinese given names above all. |
+| **v0.6** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
-The proxy is second on purpose. Nobody rewrites a working application to adopt
-a library, and a privacy layer that only protects new code protects very
-little.
+The proxy is next on purpose. Nobody rewrites a working application to adopt a
+library, and a privacy layer that only protects new code protects very little.
+
+Language priority is Japanese and English first, Chinese second. The Chinese
+rules exist and are measured; the design for making them good is written up in
+`docs/adr/0008-language-packs.md` and is honest that regular expressions cannot
+finish the job.
 
 ---
 

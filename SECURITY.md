@@ -70,9 +70,30 @@ Not covered at all: Korean, and every language with no pack. Universal rules
 (email, credentials, card numbers, private addresses) still apply to text in
 those languages; nothing else does.
 
-Detector quality is not yet measured. There is no labelled evaluation set, so
-nobody -- including the maintainers -- can currently state a recall figure for
-any of the three languages. Building one is a v0.2 goal.
+### What the numbers actually are
+
+Detection is measured against bundled labelled datasets. Run `mamori eval`
+yourself; as of `0.2.0`:
+
+| Set | Samples | Leak rate | Over-redaction | Entity P / R |
+|---|---|---|---|---|
+| `ja-core` | 45 | 0.75% | 0.00% | 1.000 / 0.981 |
+| `en-core` | 45 | 2.25% | 0.74% | 1.000 / 0.951 |
+| `zh-core` | 22 | 0.00% | 1.19% | 0.955 / 1.000 |
+
+*Leak rate* is the share of labelled sensitive characters that no detection
+covered — the part that would have left the machine. *Over-redaction* is the
+share of ordinary characters replaced anyway.
+
+**Read these as regression floors, not as a claim about your data.** The sets
+are small and synthetic. They were written to cover the cases the rules are
+meant to handle and the ones they are known to miss, which makes them good at
+catching a change that breaks something and poor at estimating recall on a
+corpus nobody has seen. A leak rate near zero on 45 invented sentences says
+nothing about a real inbox.
+
+The residual leaks are the documented gaps: an English name with nothing in
+front of it to mark it as one, and a trading name with no legal suffix.
 
 ### It is not a compliance control
 
