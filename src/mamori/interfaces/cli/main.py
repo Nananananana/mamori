@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from ... import __version__
@@ -32,17 +33,21 @@ from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.script import scripts_in
 from ...domain.stance import Stance
-from ...errors import MamoriError, PolicyViolationError
+from ...errors import ConfigurationError, MamoriError, PolicyViolationError
 from ...evaluation import (
+    CachedProvider,
+    Comparison,
     Dataset,
     EvaluationReport,
     MatchMode,
     bundled_datasets,
+    compare,
     evaluate,
 )
 from ...infrastructure.detectors import available_locales
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
+from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
 
 __all__ = ["build_parser", "main"]
@@ -235,6 +240,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-leaks",
         action="store_true",
         help="list the samples that leaked, worst first",
+    )
+    evaluate_cmd.add_argument(
+        "-c",
+        "--config",
+        metavar="PATH",
+        dest="config",
+        help="settings file, so a configured model is included in the run",
+    )
+    evaluate_cmd.add_argument(
+        "--compare",
+        action="store_true",
+        help="score the rules alone as well, and print what the model changed. "
+        "A single number says nothing: the question is what it caught and what "
+        "that cost",
+    )
+    evaluate_cmd.add_argument(
+        "--cache",
+        metavar="PATH",
+        help="remember what the model answered, so the run can be repeated. "
+        "The prompt is part of the key, so rewriting guidance invalidates "
+        "exactly the answers that depended on it. Writes to disk",
+    )
+    evaluate_cmd.add_argument(
+        "--replay",
+        action="store_true",
+        help="answer only from --cache and never call the model. Checks a "
+        "scoring change without the model's variance in the way",
     )
     evaluate_cmd.add_argument("--json", action="store_true", help="emit JSON")
 
@@ -774,19 +806,67 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         print("no datasets matched", file=sys.stderr)
         return _EXIT_ERROR
 
-    detectors = list(MamoriConfig(stance=Stance(args.stance)).detectors())
-    reports = [
-        evaluate(
-            dataset,
-            detectors=detectors,
-            match=MatchMode(args.match),
-            min_confidence=args.min_confidence,
-        )
-        for dataset in datasets
-    ]
+    stance = Stance(args.stance)
+    rules_only = MamoriConfig(stance=stance)
+    settings = rules_only
+    if args.config:
+        settings = load_config_file(Path(args.config)).replace(stance=stance)
+
+    cache: CachedProvider | None = None
+    if args.cache:
+        cache = _eval_cache(settings, Path(args.cache), replay=args.replay)
+    elif args.replay:
+        print("--replay needs --cache", file=sys.stderr)
+        return _EXIT_ERROR
+
+    comparisons: list[Comparison] = []
+    try:
+        detectors = list(_eval_detectors(settings, cache))
+        reports = [
+            evaluate(
+                dataset,
+                detectors=detectors,
+                match=MatchMode(args.match),
+                min_confidence=args.min_confidence,
+            )
+            for dataset in datasets
+        ]
+
+        if args.compare:
+            baseline_detectors = list(rules_only.detectors())
+            for dataset, report in zip(datasets, reports, strict=True):
+                baseline = evaluate(
+                    dataset,
+                    detectors=baseline_detectors,
+                    match=MatchMode(args.match),
+                    min_confidence=args.min_confidence,
+                )
+                comparisons.append(
+                    compare(
+                        baseline,
+                        report,
+                        baseline_name="rules only",
+                        candidate_name=_candidate_name(settings),
+                    )
+                )
+    finally:
+        if cache is not None:
+            cache.save()
 
     if args.json:
-        print(json.dumps([_report_as_json(r) for r in reports], ensure_ascii=False, indent=2))
+        payload: object
+        if args.compare:
+            payload = [c.as_mapping() for c in comparisons]
+        else:
+            payload = [_report_as_json(r) for r in reports]
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return _EXIT_OK
+
+    if args.compare:
+        for comparison in comparisons:
+            _print_comparison(comparison)
+        if cache is not None:
+            print(f"cache  {cache.hits} hit(s), {cache.misses} miss(es) -> {cache.path}")
         return _EXIT_OK
 
     for report in reports:
@@ -797,6 +877,91 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         "it cost in ordinary text. Neither number is meaningful without the other."
     )
     return _EXIT_OK
+
+
+def _candidate_name(settings: MamoriConfig) -> str:
+    if settings.llm is not None and settings.llm.model:
+        return f"+ {settings.llm.model}"
+    return "candidate"
+
+
+def _eval_cache(settings: MamoriConfig, path: Path, *, replay: bool) -> CachedProvider:
+    """Wrap the configured model so a run can be repeated.
+
+    Raises:
+        ConfigurationError: No model is configured, so there is nothing to
+            cache and asking for one is a mistake worth reporting.
+    """
+    passes = settings.llm_passes()
+    if not passes:
+        raise ConfigurationError(
+            "--cache needs a model. Point --config at settings with an 'llm' section."
+        )
+    return CachedProvider(passes[0].provider, path, read_only=replay)
+
+
+def _eval_detectors(settings: MamoriConfig, cache: CachedProvider | None) -> Sequence[Detector]:
+    """The detectors to score, with the cache spliced in when there is one."""
+    if cache is None:
+        return list(settings.detectors())
+
+    from ...infrastructure.detectors import build_pipeline
+    from ...infrastructure.detectors.llm_pass import LLMDetectionPass
+
+    cached_pass = LLMDetectionPass(
+        cache,
+        library=settings.prompt_library(),
+        locales=settings.locales or None,
+        require_model=False,
+    )
+    return [
+        build_pipeline(
+            locales=settings.locales or None,
+            stance=settings.stance,
+            extra_passes=[cached_pass],
+        )
+    ]
+
+
+def _print_comparison(comparison: Comparison) -> None:
+    base, cand = comparison.baseline, comparison.candidate
+    print(f"{cand.dataset}  ({cand.locale}, {len(cand.samples)} samples)")
+    print()
+    width = max(len(comparison.baseline_name), len(comparison.candidate_name), 10)
+    header = f"{comparison.baseline_name:>{width}}{comparison.candidate_name:>{width + 2}}"
+    print(f"  {'':<20}{header}       delta")
+    print(
+        f"  {'leak rate':<20}{base.leak_rate:>{width}.2%}{cand.leak_rate:>{width + 2}.2%}"
+        f"{comparison.leak_delta:>+12.2%}"
+    )
+    print(
+        f"  {'over-redaction':<20}{base.over_redaction_rate:>{width}.2%}"
+        f"{cand.over_redaction_rate:>{width + 2}.2%}{comparison.over_redaction_delta:>+12.2%}"
+    )
+    print(
+        f"  {'entity precision':<20}{base.overall.precision:>{width}.3f}"
+        f"{cand.overall.precision:>{width + 2}.3f}{comparison.precision_delta:>+12.3f}"
+    )
+    print(
+        f"  {'entity recall':<20}{base.overall.recall:>{width}.3f}"
+        f"{cand.overall.recall:>{width + 2}.3f}{comparison.recall_delta:>+12.3f}"
+    )
+    print()
+
+    if comparison.newly_clean:
+        print(f"  now fully covered   {', '.join(comparison.newly_clean)}")
+    if comparison.still_leaking:
+        print(f"  still leaking       {', '.join(comparison.still_leaking)}")
+    if comparison.regressions:
+        print("  REGRESSIONS -- these leak now and did not before:")
+        for change in comparison.regressions:
+            print(f"    {change.sample_id}  {change.describe()}")
+    cost = [c for c in comparison.changes if c.over_redaction_added and not c.leak_fixed]
+    if cost:
+        print("  cost with nothing gained:")
+        for change in cost[:10]:
+            print(f"    {change.sample_id}  {change.describe()}")
+    print()
 
 
 _COMMANDS = {

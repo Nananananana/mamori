@@ -17,6 +17,8 @@ have left the machine.
 
 from __future__ import annotations
 
+from .cache import CachedProvider
+from .comparison import Comparison, SampleChange, compare
 from .dataset import (
     DATA_DIR,
     Annotation,
@@ -37,13 +39,17 @@ from .scoring import (
 __all__ = [
     "DATA_DIR",
     "Annotation",
+    "CachedProvider",
+    "Comparison",
     "Dataset",
     "EvaluationReport",
     "MatchMode",
     "Sample",
+    "SampleChange",
     "SampleResult",
     "TypeScore",
     "bundled_datasets",
+    "compare",
     "evaluate",
     "parse_annotated",
     "score_sample",

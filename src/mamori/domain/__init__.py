@@ -12,6 +12,7 @@ from .confidence import CERTAIN, HIGH, LOW, MEDIUM, Confidence
 from .entity_types import BUILTIN_TYPES, Category, EntityType, get_type, register_type
 from .mapping import Mapping
 from .normalization import NormalizedText, normalize_value
+from .occurrences import find_occurrences
 from .placeholder import Placeholder
 from .placeholder_matching import PlaceholderOccurrence, scan_placeholders
 from .policy import Action, PrivacyPolicy
@@ -45,6 +46,7 @@ __all__ = [
     "Stance",
     "TrustBoundary",
     "Window",
+    "find_occurrences",
     "get_type",
     "normalize_value",
     "register_type",

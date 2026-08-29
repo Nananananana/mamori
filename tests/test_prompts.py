@@ -383,22 +383,66 @@ class TestParsingAModelAnswer:
         assert outcome.unparsable
         assert outcome.entities == ()
 
-    def test_a_hallucinated_span_is_dropped(self) -> None:
-        """The check that stops the wrong characters being spliced out."""
+    def test_a_value_that_is_not_in_the_text_is_dropped(self) -> None:
+        """The check that stops the wrong characters being spliced out.
+
+        A model can infer a name from an email address and report it as
+        though it were written down. Protecting a value the document does not
+        contain would mean cutting characters that are not there.
+        """
+        bad = {"type": "PERSON", "text": "Yamada"}
+        outcome = parse_detection_response(answer(bad), self.TEXT)
+        assert outcome.entities == ()
+        assert "does not appear in the text" in outcome.rejected[0]
+
+    def test_the_rejection_does_not_quote_the_value_back(self) -> None:
+        """Rejections end up in diagnostics; they show a shape, not a value."""
+        bad = {"type": "PERSON", "text": "Yamada"}
+        outcome = parse_detection_response(answer(bad), self.TEXT)
+        assert "Yamada" not in outcome.rejected[0]
+
+    def test_wrong_offsets_no_longer_throw_the_answer_away(self) -> None:
+        """Measured: a local 8B model got 0 of 52 offsets right, and 51 of
+        those 52 values were really in the document. Asking a model to count
+        characters and discarding it for failing was throwing away the tier."""
         bad = {"type": "PERSON", "start": 0, "end": 5, "text": "Kenji"}
         outcome = parse_detection_response(answer(bad), self.TEXT)
-        assert outcome.entities == ()
-        assert "does not match the offsets" in outcome.rejected[0]
+        assert [e.value for e in outcome.entities] == ["Kenji"]
+        assert self.TEXT[outcome.entities[0].span.start : outcome.entities[0].span.end] == "Kenji"
 
-    def test_offsets_outside_the_text_are_dropped(self) -> None:
+    def test_offsets_outside_the_text_are_ignored_not_fatal(self) -> None:
         bad = {"type": "PERSON", "start": 900, "end": 950, "text": "Kenji"}
         outcome = parse_detection_response(answer(bad), self.TEXT)
-        assert outcome.entities == ()
-        assert "outside the text" in outcome.rejected[0]
+        assert [e.value for e in outcome.entities] == ["Kenji"]
 
-    def test_reversed_offsets_are_dropped(self) -> None:
-        bad = {"type": "PERSON", "start": 20, "end": 10, "text": "x"}
-        assert parse_detection_response(answer(bad), self.TEXT).entities == ()
+    def test_correct_offsets_are_still_honoured(self) -> None:
+        """A model that can count keeps its exact span, including the case the
+        search cannot resolve: the same value twice, only one of them meant."""
+        text = "Kenji spoke to Kenji."
+        item = {"type": "PERSON", "start": 15, "end": 20, "text": "Kenji"}
+        outcome = parse_detection_response(answer(item), text)
+        assert [(e.span.start, e.span.end) for e in outcome.entities] == [(15, 20)]
+
+    def test_a_value_appearing_twice_is_reported_twice(self) -> None:
+        """Protecting one mention and leaving the other is not protecting it."""
+        text = "Kenji spoke to Kenji."
+        outcome = parse_detection_response(answer({"type": "PERSON", "text": "Kenji"}), text)
+        assert [(e.span.start, e.span.end) for e in outcome.entities] == [(0, 5), (15, 20)]
+
+    def test_offsets_are_optional(self) -> None:
+        outcome = parse_detection_response(answer({"type": "PERSON", "text": "Kenji"}), self.TEXT)
+        assert len(outcome.entities) == 1
+
+    def test_a_one_character_value_is_refused(self) -> None:
+        """It would match most of a CJK document."""
+        outcome = parse_detection_response(answer({"type": "PERSON", "text": "K"}), self.TEXT)
+        assert outcome.entities == ()
+
+    def test_a_latin_value_respects_word_boundaries(self) -> None:
+        """Ann is a name; Announcement is not an occurrence of it."""
+        text = "Dear Ann, the announcement goes out Monday."
+        outcome = parse_detection_response(answer({"type": "PERSON", "text": "Ann"}), text)
+        assert [(e.span.start, e.span.end) for e in outcome.entities] == [(5, 8)]
 
     def test_an_unknown_type_is_dropped(self) -> None:
         bad = dict(self.entity("Kenji"), type="VIBES")

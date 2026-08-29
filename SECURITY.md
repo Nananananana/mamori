@@ -136,6 +136,31 @@ marked *tolerated*: neither required nor wrong, excluded from both sides. The
 earlier numbers charged the recall-first stance for doing exactly its job, and
 overstated its cost by roughly half.
 
+### The model tier, measured
+
+Added in 0.4.0 and measured for the first time in 0.7.0. Balanced stance,
+`llama3.1:8b` running locally:
+
+| | leak: rules -> +model | over-redaction | precision |
+|---|---|---|---|
+| `en-core` | 2.01% -> 0.67% | 0.66% -> 4.43% | 1.000 -> 0.855 |
+| `ja-core` | 0.71% -> 0.71% | 0.00% -> 5.41% | 1.000 -> 0.868 |
+| `zh-core` | 0.00% -> 0.00% | 2.55% -> 10.18% | 0.964 -> 0.871 |
+
+At this size it raises English recall and costs precision everywhere. It does
+not improve Japanese or Chinese on these sets. At the recall-first default it
+does not move the leak rate at all, because the wide rules already reach those
+values, and roughly six times the over-redaction.
+
+Two things this measurement corrected are worth knowing if you ran an earlier
+version: the model was asked for character offsets and got 0 of 52 right, so
+its findings were being discarded almost entirely (0.4.0 to 0.6.0); and
+`OTHER_SENSITIVE`, which the default policy blocks, was being proposed for
+weekdays and error codes. Both are fixed in 0.7.0.
+
+Run `mamori eval --compare` against your own data. These are 8B numbers on
+small synthetic sets and they are a floor for judgement, not a substitute.
+
 ### It is not a compliance control
 
 Nothing here has been assessed against GDPR, HIPAA, APPI or any other regime.

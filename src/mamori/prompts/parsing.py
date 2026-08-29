@@ -4,16 +4,30 @@ A model asked for JSON returns JSON most of the time. The rest of the time it
 returns JSON in a code fence, JSON with a sentence in front of it, JSON with a
 trailing comma, or an apology. None of that may reach the pipeline unchecked.
 
-Every field is validated against the text it claims to describe:
+**The value is the answer. Offsets are a hint.**
+
+That is a correction, and it was made by measuring rather than by taste. Asked
+for character offsets against 49 English samples, a local 8B model got 0 of 52
+right -- while 51 of those 52 values were genuinely in the document, most of
+them off by a handful of characters. `'John Smith' said 4..13, actually 4..14`
+is a representative failure. Character arithmetic is close to the one thing a
+tokeniser-based model cannot do, and the earlier contract asked for it and
+threw away every answer that failed.
+
+So a candidate is now validated like this:
 
 - the type must be one that exists, or the candidate is dropped;
-- the offsets must lie inside the text, in order;
-- the reported value must be **exactly** the characters between them.
+- offsets, if given, are used **only** when they already agree with the
+  reported value -- a model that can count is not punished for it;
+- otherwise the reported value is located in the text, on word boundaries
+  where the script has them, and every occurrence becomes a candidate;
+- a value that does not appear in the text at all is dropped.
 
-That last check is the one that matters. A model that hallucinates a span
-produces an entity whose value and offsets disagree, and an entity like that
-would splice the wrong characters out of the user's text. It is cheaper to
-verify than to trust, and the verification is three lines.
+The guarantee is unchanged and is, if anything, stronger: **mamori never
+creates a span it did not locate itself**. A hallucinated value is not found
+and is discarded, so the pipeline still cannot splice the wrong characters out
+of somebody's document -- it simply no longer needs the model to be good at
+counting in order to be useful.
 
 Nothing here decides anything. A candidate that survives is a *proposal*, added
 to the same pile the pattern rules contribute to, and resolved and policed by
@@ -31,6 +45,7 @@ from typing import Final
 
 from ..domain.confidence import Confidence
 from ..domain.entity_types import Category, EntityType, get_type
+from ..domain.occurrences import MIN_LOCATABLE_LENGTH, find_occurrences
 from ..domain.sensitive_entity import SensitiveEntity
 from ..domain.span import Span
 
@@ -43,8 +58,12 @@ __all__ = [
 
 #: The contract the prompt states, in the form a structured-output API wants.
 #: Passed to providers that support it; the validation below runs either way,
-#: because a provider that enforces a schema still cannot check that the
-#: offsets describe the text.
+#: because a provider that enforces a schema still cannot check that the value
+#: it was handed is really in the document.
+#:
+#: Offsets are deliberately absent. Requiring them taught models to produce a
+#: number rather than to read, and the number was wrong every time it was
+#: measured. They are still accepted when volunteered.
 DETECTION_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": False,
@@ -55,11 +74,9 @@ DETECTION_SCHEMA: dict[str, object] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["type", "start", "end", "text"],
+                "required": ["type", "text"],
                 "properties": {
                     "type": {"type": "string"},
-                    "start": {"type": "integer", "minimum": 0},
-                    "end": {"type": "integer", "minimum": 1},
                     "text": {"type": "string"},
                 },
             },
@@ -155,18 +172,25 @@ def parse_detection_response(
     rejected: list[str] = []
 
     for index, item in enumerate(items):
-        result = _entity_from(item, text, source, confidence)
+        result = _entities_from(item, text, source, confidence)
         if isinstance(result, str):
             rejected.append(f"entity {index}: {result}")
         else:
-            entities.append(result)
+            entities.extend(result)
 
     return ParseOutcome(entities=tuple(entities), rejected=tuple(rejected))
 
 
-def _entity_from(
+def _entities_from(
     item: object, text: str, source: str, confidence: Confidence
-) -> SensitiveEntity | str:
+) -> list[SensitiveEntity] | str:
+    """Validate one proposal, and place it in the text.
+
+    Returns the entities it produced, or a string saying why it produced none.
+    A single proposal can yield several: a model reporting a name once has
+    reported it wherever it appears, and protecting one mention while leaving
+    the others is not protecting it.
+    """
     if not isinstance(item, dict):
         return "not an object"
 
@@ -180,28 +204,69 @@ def _entity_from(
             return f"unknown type {type_name!r}"
         entity_type = OTHER_SENSITIVE
 
+    reported = item.get("text")
+    if not isinstance(reported, str) or not reported.strip():
+        return "no text field"
+    reported = reported.strip()
+
+    hinted = _hinted_span(item, text, reported)
+    if hinted is not None:
+        return [_entity(entity_type, hinted, reported, confidence, source)]
+
+    spans = find_occurrences(text, reported)
+    if not spans:
+        if len(reported) < MIN_LOCATABLE_LENGTH:
+            return f"value {_elided(reported)} is too short to locate"
+        # The check that catches a hallucination. A model can infer a name
+        # from an email address and report it as though it were written down;
+        # protecting a value the document does not contain would mean cutting
+        # characters that are not there.
+        return f"value {_elided(reported)} does not appear in the text"
+
+    return [
+        _entity(entity_type, span, text[span.start : span.end], confidence, source)
+        for span in spans
+    ]
+
+
+def _hinted_span(item: object, text: str, reported: str) -> Span | None:
+    """Use the model's offsets only if they already agree with its own answer.
+
+    Almost nothing passes this today, and that is the finding rather than a
+    bug. It costs two comparisons and means a model that can count keeps its
+    exact span -- including the case the search cannot resolve, where the same
+    value appears twice and only one of them was meant.
+    """
+    if not isinstance(item, dict):
+        return None
     try:
         start = int(item["start"])
         end = int(item["end"])
     except (KeyError, TypeError, ValueError):
-        return "offsets missing or not integers"
-
+        return None
     if not 0 <= start < end <= len(text):
-        return f"offsets {start}:{end} outside the text"
+        return None
+    return Span(start, end) if text[start:end] == reported else None
 
-    covered = text[start:end]
-    reported = item.get("text")
-    if not isinstance(reported, str):
-        return "no text field"
-    if reported != covered:
-        # The check that catches a hallucinated span. Without it the pipeline
-        # would splice these offsets out of the user's document.
-        return "text does not match the offsets"
 
+def _entity(
+    entity_type: EntityType,
+    span: Span,
+    value: str,
+    confidence: Confidence,
+    source: str,
+) -> SensitiveEntity:
     return SensitiveEntity(
         entity_type=entity_type,
-        span=Span(start, end),
-        value=covered,
+        span=span,
+        value=value,
         confidence=confidence,
         source=source,
     )
+
+
+def _elided(value: str) -> str:
+    """A rejection reason ends up in diagnostics, so it shows a shape, not a value."""
+    if len(value) <= 2:
+        return f"{value[:1]!r}..."
+    return f"{value[:1]}{'*' * (len(value) - 1)!s}"

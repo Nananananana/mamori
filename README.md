@@ -118,6 +118,46 @@ forwarding it. It binds to this machine only unless you say otherwise, because
 anything that can reach the port can send documents through it. See
 [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md).
 
+
+### What the model tier is actually worth
+
+Measured, not asserted. `llama3.1:8b` running locally, balanced stance, against
+the bundled sets:
+
+| | leak: rules → +model | over-redaction | precision |
+|---|---|---|---|
+| `en-core` | 2.01% → **0.67%** | 0.66% → 4.43% | 1.000 → 0.855 |
+| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
+| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
+
+**At this size it is an English-recall tool.** It closes `en-006` — a name in
+running prose with nothing to anchor on, the gap it was built for — and does
+nothing measurable for Japanese or Chinese while costing over-redaction in all
+three. Earlier versions of this README claimed it reached Chinese given names.
+It does not; the Chinese rules were already at 1.000 recall on that set.
+
+At the **recall-first default** it is worse than useless: the wide rules already
+reach those values, so the leak rate does not move and over-redaction goes from
+1.44% to 9.58%. Leave it off until you have measured it on your own data.
+
+Measure it yourself — the delta is the only thing worth reading:
+
+```bash
+mamori eval --compare --stance balanced -c mamori.json --cache answers.json
+```
+
+`--compare` names the individual samples that changed, because an aggregate
+tells you something moved and not what. `--cache` keys on the model *and the
+prompt*, so re-running is free and rewriting one line of guidance invalidates
+exactly the answers that depended on it.
+
+Two findings from doing this came back into the code. The model was being asked
+for character offsets and got **0 of 52** right while 51 of those values were
+really in the document — so it now reports values and mamori locates them
+([ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)). And every
+English false positive was `OTHER_SENSITIVE` used as a dustbin; one guidance
+rule about what that type is for halved over-redaction from 8.80% to 4.43%.
+
 ---
 
 ## What is this actually doing with my data?
@@ -296,9 +336,11 @@ system = session.external_system_prompt() + "
 Every placeholder that comes back intact is one restoration does not have to
 recover from a mangled form.
 
-**A local model** is asked to find what patterns cannot reach: an English name
-in running prose, a Chinese given name, a codename that looks like an ordinary
-word. Its prompt carries everything the regex work taught —
+**A local model** is asked to find what patterns cannot reach. As of `v0.7`
+that claim comes with numbers instead of an intention — see
+[what the model tier is actually worth](#what-the-model-tier-is-actually-worth)
+below, which is less than this README used to imply. Its prompt carries
+everything the regex work taught —
 
 ```bash
 mamori prompt detection
@@ -564,16 +606,18 @@ detection a pipeline and collected every switch onto one configuration object.
 layer. `v0.5` made the model's location and its client library both
 configuration, and made the layering a test rather than a diagram. `v0.6`
 delivered the proxy, and made the privacy claims answerable and machine-checked.
+`v0.7` measured the model tier for the first time and found it had been
+discarding almost everything the model got right.
 
 | | |
 |---|---|
-| **v0.7** | Evaluation of the model pass against the same datasets, and prompt tuning driven by those numbers rather than by taste. Everything needed to measure it is already here. |
 | **v0.8** | A Presidio adapter and an opt-in encrypted persistent store. |
 | **v0.9** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
-Measuring the model tier is next. It is the one part of this library whose
-quality is asserted rather than measured, and the harness that would settle it
-has been sitting here since `v0.2`.
+A Presidio adapter is next, and an encrypted store for the deployments that
+cannot hold mappings in memory alone. The larger open question is whether a
+model above 8B changes the table above; the harness to settle that now exists
+and takes one command.
 
 Language priority is Japanese and English first, Chinese second. The Chinese
 rules exist and are measured; the design for making them good is written up in

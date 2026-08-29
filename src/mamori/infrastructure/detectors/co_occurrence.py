@@ -20,11 +20,11 @@ needs no model, no dictionary and no network, and it is fully deterministic.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 
 from ...domain import entity_types as t
 from ...domain.entity_types import EntityType
+from ...domain.occurrences import find_occurrences
 from ...domain.sensitive_entity import SensitiveEntity
 from ...domain.span import Span
 from ...ports.detection_pass import DetectionContext
@@ -37,10 +37,6 @@ __all__ = ["DEFAULT_SEED_TYPES", "CoOccurrencePass"]
 DEFAULT_SEED_TYPES: frozenset[EntityType] = frozenset(
     {t.PERSON, t.COMPANY_NAME, t.PROJECT_NAME, t.EMPLOYEE_ID}
 )
-
-#: Latin text has word boundaries and must respect them: seeding on ``Ann``
-#: and matching it inside ``Announcement`` would be worse than the miss.
-_WORD = "A-Za-z0-9"
 
 
 class CoOccurrencePass:
@@ -130,12 +126,5 @@ class CoOccurrencePass:
         return seeds
 
     def _occurrences(self, text: str, value: str) -> list[Span]:
-        pattern = re.escape(value)
-        if value[0] in _LATIN_START:
-            pattern = f"(?<![{_WORD}])" + pattern
-        if value[-1] in _LATIN_START:
-            pattern = pattern + f"(?![{_WORD}])"
-        return [Span(m.start(), m.end()) for m in re.finditer(pattern, text)]
-
-
-_LATIN_START = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        """Shared with the model parser, which locates values for the same reason."""
+        return list(find_occurrences(text, value, min_length=self._min_length))

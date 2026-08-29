@@ -47,11 +47,16 @@ _DETECTION_OUTPUT = """
 Answer with a single JSON object and nothing else -- no prose, no explanation,
 no code fence:
 
-    {"entities": [{"type": "PERSON", "start": 0, "end": 4, "text": "田中太郎"}]}
+    {"entities": [{"type": "PERSON", "text": "田中太郎"}]}
 
 `type` is one of the types named above, or OTHER_SENSITIVE if something is
-clearly sensitive and fits none of them. `start` and `end` are character
-offsets into the text as given. `text` is exactly the characters between them.
+clearly sensitive and fits none of them. `text` is the value itself, copied
+from the text character for character.
+
+Do not count characters and do not report positions. Copying the value exactly
+is the whole job; finding where it sits is done for you, everywhere it appears.
+A value copied with a character added or missing cannot be found, and is
+discarded.
 
 If you find nothing, answer {"entities": []}.
 

@@ -422,3 +422,34 @@ class TestTheReportDescribesEvenABrokenConfiguration:
         from mamori.interfaces.cli.main import main
 
         assert main(["privacy", "--json"]) == 0
+
+
+class TestTheMeasurementCacheCannotBeTurnedOnByAccident:
+    """The one thing in the package that writes model answers to disk.
+
+    A cached answer names the spans it found, so the file is derived from the
+    text. That is fine for measurement against invented data and would not be
+    fine as a default, so it is reachable only by passing a path in Python --
+    which is what keeps the storage claim in `mamori privacy` true for every
+    configuration a user can express.
+    """
+
+    def test_no_configuration_key_names_it(self) -> None:
+        keys = set(MamoriConfig.__dataclass_fields__)
+        assert not {"cache", "cache_path", "response_cache"} & keys
+
+    def test_it_lives_in_the_evaluation_package_not_the_adapters(self) -> None:
+        """Where it is says what it is for."""
+        from mamori.evaluation.cache import CachedProvider
+
+        assert CachedProvider.__module__.startswith("mamori.evaluation")
+
+    def test_a_default_session_writes_nothing(self, tmp_path: Path) -> None:
+        from mamori.infrastructure.llm import ScriptedProvider
+
+        provider = ScriptedProvider('{"entities": []}')
+        assert not hasattr(provider, "save")
+        assert list(tmp_path.iterdir()) == []
+
+    def test_the_privacy_report_still_says_nothing_is_written(self) -> None:
+        assert build_report(MamoriConfig()).storage["written_to_disk"] is False

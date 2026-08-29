@@ -8,6 +8,93 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-29
+
+The model tier gets measured for the first time, and the numbers say it was
+not doing what the documentation claimed. Both are fixed here: the contract
+that was throwing its answers away, and the paragraph that described an
+intention as a result.
+
+### Fixed
+
+- **A model reports values now, not character offsets.** Asked for offsets
+  against 49 English samples, a local 8B model got **0 of 52 right** -- while
+  51 of those 52 values were genuinely in the document, most off by a handful
+  of characters. `'John Smith' said 4..13, actually 4..14`. The verification
+  step then discarded them all, correctly and uselessly, which means **the
+  model tier contributed essentially nothing from 0.4.0 through 0.6.0**.
+
+  Character offsets are close to the one thing a tokeniser-based model cannot
+  produce. The value is now the answer and mamori locates it -- at every
+  occurrence, on word boundaries where the script has them. Offsets are still
+  honoured when volunteered and already correct, which keeps the one case a
+  search cannot resolve: the same value twice, only one meant.
+
+  The guarantee is unchanged and stronger: mamori never creates a span it did
+  not locate itself, so a hallucinated value is still dropped. See
+  [ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md).
+
+  Measured effect at the balanced stance: English leak rate 2.01% to **0.67%**,
+  closing `en-006`, the unanchored name that has been a documented gap since
+  0.1.0.
+
+- **`OTHER_SENSITIVE` was being used as a dustbin.** Every English false
+  positive was that type -- a weekday, a public IP, an error code, a whole
+  sentence about revenue. The default policy *blocks* it, so those would have
+  stopped requests rather than replaced a value. A guidance rule saying what
+  the type is for, what it is not for, and that it stops the request halved
+  over-redaction from 8.80% to 4.43%.
+
+- **`mamori eval` honoured no configuration.** It built a rules-only pipeline
+  and ignored `--config` entirely, so the harness that existed since 0.2.0 had
+  never been pointed at the thing it was most needed for.
+
+### Added
+
+- **`mamori eval --compare`** scores the rules alone alongside the configured
+  run and prints the delta, naming the individual samples that changed. An
+  aggregate says something moved; the list says what, and whether you believe
+  it. Tuning against an aggregate fits a prompt to a number instead of to a
+  language.
+
+- **`mamori eval --cache`** remembers what the model answered, keyed on the
+  model *and the prompt*, so re-running is free and rewriting one line of
+  guidance invalidates exactly the answers that depended on the old wording.
+  **It writes to disk**, which is why it lives in the evaluation package,
+  is named by no configuration key, and has a test in `test_promises.py`
+  pinning that -- the storage claim in `mamori privacy` stays true for every
+  configuration a user can express.
+
+- **`mamori eval --replay`** answers only from the cache, so a change to
+  scoring can be checked without the model's variance in the way.
+
+- **`domain/occurrences.py`**, shared with the co-occurrence pass, which was
+  already locating known values for the same reason.
+
+### Changed
+
+- **The documentation says what was measured.** The README claimed the model
+  tier reached "an English name in running prose, a Chinese given name, a
+  codename". Measured, at 8B: it reaches the English name. It does nothing for
+  Chinese, where the rules were already at 1.000 recall, and nothing for
+  Japanese, while costing over-redaction in all three. At the recall-first
+  default it does not move the leak rate at all and costs roughly six times the
+  over-redaction. See [ADR 0023](docs/adr/0023-the-model-tier-is-measured.md).
+
+  | balanced, `llama3.1:8b` | leak: rules -> +model | over-redaction | precision |
+  |---|---|---|---|
+  | `en-core` | 2.01% -> **0.67%** | 0.66% -> 4.43% | 1.000 -> 0.855 |
+  | `ja-core` | 0.71% -> 0.71% | 0.00% -> 5.41% | 1.000 -> 0.868 |
+  | `zh-core` | 0.00% -> 0.00% | 2.55% -> 10.18% | 0.964 -> 0.871 |
+
+- **One model proposal can produce several detections**, since a value judged
+  sensitive is sensitive wherever it appears. A behaviour change for anyone
+  counting entities.
+
+- The CI quality floors stay rules-only. Pinning one to a model's output would
+  make the build depend on a model being installed and on it answering the same
+  way twice.
+
 ## [0.6.0] - 2026-08-29
 
 The proxy, and the machinery that says what it does. An application that
@@ -439,7 +526,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Nananananana/mamori/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Nananananana/mamori/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nananananana/mamori/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Nananananana/mamori/compare/v0.3.0...v0.4.0

@@ -27,3 +27,5 @@ it, and — the part that is usually missing — what it costs.
 | [0019](0019-privacy-is-a-report-not-a-promise.md) | Privacy is a report, not a promise |
 | [0020](0020-the-promises-are-checked-by-machine.md) | The promises are checked by machine |
 | [0021](0021-a-long-document-is-windowed.md) | A long document is windowed, not skipped |
+| [0022](0022-a-model-reports-values-not-offsets.md) | A model reports values, not offsets |
+| [0023](0023-the-model-tier-is-measured.md) | The model tier is measured, and the numbers are not what was claimed |

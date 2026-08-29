@@ -206,16 +206,30 @@ _UNIVERSAL = (
         _BOUNDARY,
     ),
     _rule(
-        "any.offsets",
-        "Offsets are character positions in the text exactly as given, "
-        "counting from zero. Do not normalise, translate or re-wrap the text "
-        "before counting.",
+        "any.verbatim",
+        "Copy the value exactly as it appears, character for character. Do "
+        "not normalise it, translate it, trim it, expand an abbreviation or "
+        "correct a typo in it. A value that does not appear in the text "
+        "exactly as reported cannot be located, and is discarded.",
         _BOUNDARY,
     ),
     _rule(
-        "any.verbatim",
-        "The reported value must be exactly the characters between the "
-        "offsets you give, copied without alteration.",
+        "any.other-sensitive",
+        "OTHER_SENSITIVE is for a value that identifies a particular person "
+        "or organisation, or grants access to something, and fits none of the "
+        "named types -- an internal case number, a customer reference. It is "
+        "not a label for anything that merely looks like data. A date, a "
+        "weekday, a public web address, a public IP address, a version or "
+        "part number, a quantity, a percentage, an error code and an ordinary "
+        "sentence are all not sensitive. If you are unsure, leave it out: "
+        "this type stops the request rather than replacing a value in it.",
+        _IGNORE,
+    ),
+    _rule(
+        "any.no-positions",
+        "Do not report character positions, and do not count characters. "
+        "Report what you found; where it appears is worked out for you, at "
+        "every occurrence.",
         _BOUNDARY,
     ),
     _rule(
@@ -315,8 +329,8 @@ _JAPANESE = (
     _rule(
         "ja.fullwidth",
         "Full-width characters are the same values as their half-width forms. "
-        "ｔａｎａｋａ＠ｅｘａｍｐｌｅ．ｃｏｍ is an email address. Report the "
-        "offsets of the characters as they appear.",
+        "ｔａｎａｋａ＠ｅｘａｍｐｌｅ．ｃｏｍ is an email address. Copy it back in "
+        "the full-width form it appears in, not the half-width one.",
         _BOUNDARY,
         locales=("ja",),
     ),
