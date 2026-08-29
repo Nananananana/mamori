@@ -494,3 +494,110 @@ class TestCliStance:
         recall = json.loads(capsys.readouterr().out)[0]
         assert recall["leak_rate"] <= balanced["leak_rate"]
         assert recall["over_redaction_rate"] >= balanced["over_redaction_rate"]
+
+
+class TestCliLlm:
+    """``mamori llm`` answers "where is the model, and will it be used".
+
+    Both halves matter. A team pointing this at a server down the hall needs to
+    see that the address was accepted before they send a document through it,
+    and a team that accidentally aimed it at a public API needs to find that
+    out here rather than never.
+    """
+
+    @staticmethod
+    def _config(tmp_path: Path, llm: dict[str, object]) -> str:
+        path = tmp_path / "mamori.json"
+        path.write_text(json.dumps({"llm": llm}), encoding="utf-8")
+        return str(path)
+
+    def test_with_no_model_it_says_so_without_failing(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Patterns-only is a complete configuration, not an error."""
+        assert main(["llm"]) == 0
+        assert "no model configured" in capsys.readouterr().out
+
+    def test_a_model_on_this_machine_reads_as_local(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = self._config(tmp_path, {"model": "qwen2.5:7b"})
+        assert main(["llm", "--config", config]) == 0
+        out = capsys.readouterr().out
+        assert "loopback (this machine)" in out
+        assert "qwen2.5:7b" in out
+
+    def test_a_model_on_the_network_reads_as_remote_and_is_allowed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The in-house server case: a different host, still inside the wall."""
+        config = self._config(
+            tmp_path, {"model": "qwen2.5:72b", "base_url": "http://llm01.corp:8000/v1/"}
+        )
+        assert main(["llm", "--config", config]) == 0
+        out = capsys.readouterr().out
+        assert "private (another machine)" in out
+        assert "REFUSED" not in out
+
+    def test_a_public_endpoint_is_reported_as_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The whole point of the boundary, surfaced before any document moves."""
+        config = self._config(
+            tmp_path, {"model": "gpt-4o", "base_url": "https://api.openai.com/v1/"}
+        )
+        assert main(["llm", "--config", config]) == 1
+        out = capsys.readouterr().out
+        assert "REFUSED" in out
+        assert "trusted_hosts" in out
+
+    def test_a_declared_host_is_admitted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = self._config(
+            tmp_path,
+            {
+                "model": "qwen2.5:7b",
+                "base_url": "https://llm.vendor.example.com/v1/",
+                "trusted_hosts": ["llm.vendor.example.com"],
+            },
+        )
+        assert main(["llm", "--config", config]) == 0
+        assert "REFUSED" not in capsys.readouterr().out
+
+    def test_json_carries_the_verdict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = self._config(tmp_path, {"model": "m", "base_url": "http://10.0.4.17:8000/v1/"})
+        assert main(["llm", "--config", config, "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["host_kind"] == "private"
+        assert payload["is_remote"] is True
+        assert payload["admitted"] is True
+
+    def test_no_api_key_is_ever_printed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The command names the variable. It must never read it out."""
+        monkeypatch.setenv("LLM_KEY_FOR_TEST", "super-secret-value")
+        config = self._config(tmp_path, {"model": "m", "api_key_env": "LLM_KEY_FOR_TEST"})
+        assert main(["llm", "--config", config]) == 0
+        assert main(["llm", "--config", config, "--json"]) == 0
+        out = capsys.readouterr().out
+        assert "LLM_KEY_FOR_TEST" in out
+        assert "super-secret-value" not in out
+
+    def test_config_output_mentions_the_model(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = self._config(tmp_path, {"model": "qwen2.5:7b"})
+        assert main(["config", "--config", config]) == 0
+        assert "qwen2.5:7b" in capsys.readouterr().out
+        assert main(["config", "--json", "--config", config]) == 0
+        assert json.loads(capsys.readouterr().out)["llm"]["model"] == "qwen2.5:7b"
+
+    def test_config_json_says_none_when_there_is_no_model(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["config", "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["llm"] is None

@@ -7,6 +7,7 @@
     mamori locales  -- show the language packs and when each one runs
     mamori config   -- show the settings that would be used, and where from
     mamori prompt   -- show exactly what would be sent to a model
+    mamori llm      -- where the model is, and whether it answers
     mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
 
@@ -158,6 +159,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="list the guidance ids instead of the text, so they can be disabled",
     )
+
+    llm_cmd = sub.add_parser("llm", help="where the model is, and whether it answers")
+    add_config_args(llm_cmd)
+    llm_cmd.add_argument(
+        "--check",
+        action="store_true",
+        help="ask the endpoint whether it is there; worth running once after "
+        "pointing this at a server on another machine",
+    )
+    llm_cmd.add_argument("--json", action="store_true", help="emit JSON")
     sub.add_parser("demo", help="run a full round trip on a sample text")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
@@ -264,6 +275,11 @@ def _cmd_config(args: argparse.Namespace) -> int:
     print(f"  co-occurrence                {'on' if settings.co_occurrence else 'off'}")
     print(f"  co-occurrence min confidence {settings.co_occurrence_min_confidence}")
     print(f"  mask token                   {settings.mask_token}")
+    if settings.llm is not None and settings.llm.model:
+        model = f"{settings.llm.model} at {settings.llm.base_url}"
+    else:
+        model = "(none -- patterns only)"
+    print(f"  model                        {model}")
     if settings.rules:
         print("\n  rules")
         for name, action in sorted(settings.rules.items()):
@@ -288,7 +304,81 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
         "co_occurrence": settings.co_occurrence,
         "co_occurrence_min_confidence": settings.co_occurrence_min_confidence,
         "mask_token": settings.mask_token,
+        "llm": settings.llm.as_mapping() if settings.llm is not None else None,
     }
+
+
+def _cmd_llm(args: argparse.Namespace) -> int:
+    settings = _settings_from(args)
+    llm = settings.llm
+    if llm is None or not llm.model:
+        print("no model configured. Detection is patterns only, which is a complete")
+        print("configuration: the rules are the guarantee and a model is the improvement.")
+        print()
+        print("To use one, on this machine or anywhere on your network:")
+        print('  {"llm": {"model": "qwen2.5:7b", "base_url": "http://llm01.corp:8000/v1/"}}')
+        return _EXIT_OK
+
+    endpoint = llm.endpoint()
+    kind = endpoint.policy.classify(llm.base_url)
+    where = "another machine" if endpoint.is_remote else "this machine"
+    admitted = endpoint.policy.admits(llm.base_url)
+
+    if args.json:
+        payload = dict(llm.as_mapping())
+        payload["host_kind"] = kind.value
+        payload["is_remote"] = endpoint.is_remote
+        payload["admitted"] = admitted
+        if args.check and admitted:
+            payload["reachable"] = _health(settings)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return _EXIT_OK if admitted else _EXIT_ERROR
+
+    on_failure = "stop the request" if llm.require_model else "carry on with the rules"
+    print("model")
+    print()
+    print(f"  provider        {llm.provider}")
+    print(f"  model           {llm.model}")
+    print(f"  endpoint        {llm.base_url}")
+    print(f"  host            {kind.value} ({where})")
+    print(f"  trust boundary  {llm.trust.value}")
+    if llm.trusted_hosts:
+        print(f"  trusted hosts   {', '.join(sorted(llm.trusted_hosts))}")
+    print(f"  api key from    {llm.api_key_env or '(none)'}")
+    print(f"  timeout         {llm.timeout}s, {llm.retries} retries")
+    print(f"  on failure      {on_failure}")
+
+    if not admitted:
+        # Reported here rather than on the first document. This endpoint is
+        # refused when the pass is built, and finding that out mid-request is
+        # too late to be useful.
+        print()
+        print("REFUSED. This model will not be used:")
+        print()
+        for line in endpoint.policy.explain(llm.base_url).splitlines():
+            print(f"  {line}")
+        return _EXIT_ERROR
+
+    if args.check:
+        reachable = _health(settings)
+        print()
+        print(f"  reachable       {'yes' if reachable else 'NO'}")
+        if not reachable:
+            print()
+            print("The endpoint did not answer. Detection still works, because the rules")
+            print("run either way and the model pass degrades to nothing, but nothing is")
+            print("gained from the model until this is fixed.")
+            return _EXIT_ERROR
+    return _EXIT_OK
+
+
+def _health(settings: MamoriConfig) -> bool:
+    """Ask the configured provider whether it is there, if it can say."""
+    passes = settings.llm_passes()
+    if not passes:
+        return False
+    check = getattr(passes[0].provider, "health_check", None)
+    return bool(check()) if check is not None else False
 
 
 def _cmd_prompt(args: argparse.Namespace) -> int:
@@ -326,7 +416,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     # permissive policy. It never prints a protected text, so nothing here is
     # a step towards sending anything.
     policy = PrivacyPolicy.permissive().with_min_confidence(settings.min_confidence)
-    with PrivacySession(config=settings, policy=policy) as session:
+    with settings.session(policy=policy) as session:
         result = session.protect(text)
         if args.json:
             print(json.dumps({"entities": _reports_as_json(result)}, ensure_ascii=False, indent=2))
@@ -344,7 +434,7 @@ def _cmd_protect(args: argparse.Namespace) -> int:
         else settings.policy()
     )
     store = InMemoryMappingStore()
-    session = PrivacySession(config=settings, policy=policy, store=store)
+    session = settings.session(policy=policy, store=store)
     try:
         result = session.protect(text)
     except PolicyViolationError as exc:
@@ -583,6 +673,7 @@ _COMMANDS = {
     "policy": _cmd_policy,
     "config": _cmd_config,
     "prompt": _cmd_prompt,
+    "llm": _cmd_llm,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
     "eval": _cmd_eval,

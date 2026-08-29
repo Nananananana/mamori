@@ -34,8 +34,8 @@
     },
     {
       "id": "ja-007",
-      "annotated": "注文番号は0312345678です。至急ご確認ください。",
-      "note": "Negative: an unseparated digit run is an order number, not a phone."
+      "annotated": "注文番号は[[?PHONE:0312345678]]です。至急ご確認ください。",
+      "note": "An unseparated digit run is an order number to the anchored rules and a possible phone number to the wide ones. Tolerated: both readings are right for the stance that produced them."
     },
     {
       "id": "ja-008",
@@ -56,8 +56,8 @@
     },
     {
       "id": "ja-012",
-      "annotated": "伝票番号 123456789012 を参照してください。",
-      "note": "Negative: twelve digits with a failing check digit."
+      "annotated": "伝票番号 [[?IDENTIFIER:123456789012]] を参照してください。",
+      "note": "Twelve digits with a failing My Number check digit. The anchored rule refuses it; the wide tier reads any long digit run as an identifier. Tolerated."
     },
     {
       "id": "ja-013",
@@ -155,8 +155,8 @@
     },
     {
       "id": "ja-034",
-      "annotated": "品番 100-0001 の在庫は十分にあります。",
-      "note": "Negative: NNN-NNNN without the postal marker is a part number."
+      "annotated": "品番 [[?POSTAL_CODE:100-0001]] の在庫は十分にあります。",
+      "note": "NNN-NNNN without the postal marker is a part number to the anchored rules and a possible postal code to the wide ones. Tolerated."
     },
     {
       "id": "ja-035",

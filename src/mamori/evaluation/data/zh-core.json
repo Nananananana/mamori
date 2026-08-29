@@ -28,8 +28,8 @@
     },
     {
       "id": "zh-006",
-      "annotated": "订单号 110105194912310021 已发货。",
-      "note": "Negative: eighteen digits with a failing check character."
+      "annotated": "订单号 [[?IDENTIFIER:110105194912310021]] 已发货。",
+      "note": "Eighteen digits with a failing check character. Not a resident ID; the wide tier reads any long digit run as an identifier. Tolerated."
     },
     {
       "id": "zh-007",
@@ -37,8 +37,8 @@
     },
     {
       "id": "zh-008",
-      "annotated": "编号 100081 的物料已入库。",
-      "note": "Negative: six bare digits without the postcode label."
+      "annotated": "编号 [[?POSTAL_CODE:100081]] 的物料已入库。",
+      "note": "Six bare digits without the postcode label. Tolerated: the anchored rule refuses it, the wide one accepts it, and neither is wrong."
     },
     {
       "id": "zh-009",

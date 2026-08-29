@@ -90,7 +90,7 @@ class TestPackSelection:
 class TestCrossLanguageBehaviour:
     def test_japanese_text_is_not_scanned_with_chinese_rules(self) -> None:
         """13812345678 is a Chinese mobile number and nothing in Japanese."""
-        with PrivacySession(config=MamoriConfig(stance=Stance.BALANCED)) as session:
+        with MamoriConfig(stance=Stance.BALANCED).session() as session:
             protected = session.protect("受付番号は13812345678です。")
         assert protected.protected_text == "受付番号は13812345678です。"
 

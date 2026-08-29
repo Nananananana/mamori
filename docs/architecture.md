@@ -60,16 +60,31 @@ interfaces ──> application ──> domain
 
 | Layer | Holds | May import |
 |---|---|---|
-| `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity | stdlib only |
-| `ports/` | `Detector`, `DetectionPass`, `MappingStore`, `LLMProvider` protocols | `domain` |
+| `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity, host trust | stdlib only |
+| `ports/` | `Detector`, `DetectionPass`, `MappingStore`, `LLMProvider` protocols, `LLMEndpoint` | `domain` |
 | `prompts/` | Guidance, prompt definitions, overlays, response parsing | `domain` |
-| `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports` |
-| `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file | `domain`, `ports` |
-| `evaluation/` | Labelled datasets, scoring, quality metrics | `application`, `domain` |
-| `interfaces/cli/` | Argument parsing, output formatting | `application`, `domain` |
+| `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports`, `prompts`, and `infrastructure` for default construction only |
+| `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file, LLM providers | `domain`, `ports`, `prompts` |
+| `evaluation/` | Labelled datasets, scoring, quality metrics | `domain`, `ports`, `application`, `infrastructure` |
+| `llm_settings.py` | Model settings, and the endpoint they build | `domain`, `ports` |
+| `config.py` | Every switch, and the factories that assemble them | everything above |
+| `interfaces/cli/` | Argument parsing, output formatting | everything above |
 
 `domain` imports nothing else, including nothing outside the standard library.
 See [ADR 0001](adr/0001-domain-depends-on-nothing.md).
+
+**This table is executable.** `tests/test_architecture.py` parses every module
+and asserts these rules, so a diagram that stops matching the code turns the
+build red instead of quietly becoming fiction. The `ALLOWED` table in that file
+is the authority; this one describes it. See
+[ADR 0017](adr/0017-the-layering-is-a-test.md).
+
+The one deliberate exception is marked above: `application/session.py` imports
+`default_detectors` and `InMemoryMappingStore` so that `PrivacySession()` works
+with no arguments at all. The test pins that to those two symbols in that one
+file. Settings assemble a session -- `MamoriConfig.session()` -- and a session
+never reads settings, which is what keeps the rest of the application layer
+clear of the adapters a configuration happens to name.
 
 ## Where the security decisions live
 

@@ -555,7 +555,7 @@ class TestLLMPassInAPipeline:
             policy=settings.policy(),
         ) as session:
             with_model = session.protect(text).protected_text
-        with PrivacySession(config=settings) as session:
+        with settings.session() as session:
             without_model = session.protect(text).protected_text
         assert with_model == without_model
 

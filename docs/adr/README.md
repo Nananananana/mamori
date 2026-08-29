@@ -20,3 +20,6 @@ it, and — the part that is usually missing — what it costs.
 | [0012](0012-configuration-without-a-format.md) | One configuration object, no configuration format |
 | [0013](0013-recall-first-by-default.md) | Recall first, by default |
 | [0014](0014-prompts-are-documents.md) | Prompts are documents with addressable parts |
+| [0015](0015-a-trust-boundary-not-a-localhost-check.md) | A trust boundary, not a localhost check |
+| [0016](0016-the-model-and-the-client-are-both-replaceable.md) | The model and the client are both replaceable |
+| [0017](0017-the-layering-is-a-test.md) | The layering is a test |

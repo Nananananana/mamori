@@ -1,78 +1,68 @@
-"""Any local server that speaks the OpenAI chat API.
+"""Any server that speaks the OpenAI chat API, here or on the network.
 
 Ollama, llama.cpp's server, vLLM, LM Studio and text-generation-webui all
 expose ``/v1/chat/completions``. One adapter covers all of them, which is why
 this shape was chosen over any single vendor's SDK.
 
-Written against ``urllib`` rather than ``httpx`` or ``requests``, so the
-library still installs with no runtime dependencies. The request is a JSON POST
-and the response is JSON; nothing here needs a client library.
+It does not care whether the server is on this machine or a GPU box in the
+server room. That is a hostname, and treating the two as different code paths
+was a mistake worth not making: a model on this machine can be busy too --
+Ollama loading weights, vLLM working through a queue -- so a retryable failure
+is retryable wherever it came from. What distance changes is how long to wait,
+which is a number, not a branch.
 
-**This is for a model on your machine.** The default base URL is localhost. A
-detector that sends the unprotected text somewhere is not a detector, it is the
-leak — pointing this at a hosted endpoint sends every document, before
-protection, to that endpoint. The constructor refuses a non-local URL unless
-you say ``allow_remote=True``, which nobody handling real data should.
+Written against ``urllib``, so the library still installs with no runtime
+dependencies. A team that would rather use ``httpx``, a vendor SDK, or anything
+that goes through their corporate proxy registers their own factory under the
+same name; nothing else changes.
 """
 
 from __future__ import annotations
 
+import http.client
 import json
+import time
 import urllib.error
 import urllib.request
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from ...errors import ConfigurationError, ProviderError
 from ...ports.llm import LLMRequest, LLMResponse
+from ...ports.llm_endpoint import LLMEndpoint
 
-__all__ = ["OpenAICompatibleProvider"]
+__all__ = ["OpenAICompatibleProvider", "open_ai_compatible_factory"]
 
-# Matched against the host in a URL, never bound to.
-_LOCAL_HOSTS = frozenset(
-    {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "host.docker.internal"}  # noqa: S104
+#: Statuses worth trying again: the server is busy, restarting, or a gateway in
+#: between hiccuped. A 4xx means the request was wrong and will be wrong again.
+_RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+_TRANSIENT = (
+    TimeoutError,
+    ConnectionError,
+    http.client.RemoteDisconnected,
+    http.client.IncompleteRead,
 )
 
 
 class OpenAICompatibleProvider:
-    """Talks to a local OpenAI-compatible chat endpoint.
+    """Talks to an OpenAI-compatible chat endpoint.
 
     Args:
-        model: Model name the server knows, e.g. ``qwen2.5:7b``.
-        base_url: Root of the API. Defaults to Ollama's.
-        api_key: Sent as a bearer token if the server wants one. Most local
-            servers do not.
-        timeout: Seconds. A local model on CPU is slow; the default is
-            generous, and the pass gives up rather than blocking a request
-            forever.
-        allow_remote: Permit a non-local ``base_url``. Off, on purpose.
+        endpoint: Where the model is and how long to wait for it.
         name: Recorded on every entity produced from this provider's answers.
+
+    Raises:
+        ConfigurationError: no model name, or an endpoint outside its own
+            trust boundary.
     """
 
-    def __init__(
-        self,
-        model: str,
-        *,
-        base_url: str = "http://localhost:11434/v1/",
-        api_key: str | None = None,
-        timeout: float = 60.0,
-        allow_remote: bool = False,
-        name: str = "local-llm",
-    ) -> None:
-        if not model:
+    def __init__(self, endpoint: LLMEndpoint, *, name: str = "local-llm") -> None:
+        if not endpoint.model:
             raise ConfigurationError("a model name is required")
-        host = (urlparse(base_url).hostname or "").lower()
-        if host not in _LOCAL_HOSTS and not allow_remote:
-            raise ConfigurationError(
-                f"base_url {base_url!r} is not local. This provider is sent the text "
-                "*before* it is protected, so pointing it at a remote endpoint sends "
-                "every document there in the clear. Pass allow_remote=True only if "
-                "that endpoint is inside your trust boundary."
-            )
-        self._model = model
-        self._base_url = base_url if base_url.endswith("/") else base_url + "/"
-        self._api_key = api_key
-        self._timeout = timeout
+        if not endpoint.policy.admits(endpoint.base_url):
+            raise ConfigurationError(endpoint.policy.explain(endpoint.base_url))
+        self._endpoint = endpoint
         self._name = name
 
     @property
@@ -81,7 +71,11 @@ class OpenAICompatibleProvider:
 
     @property
     def model(self) -> str:
-        return self._model
+        return self._endpoint.model
+
+    @property
+    def endpoint(self) -> LLMEndpoint:
+        return self._endpoint
 
     @property
     def supports_structured_output(self) -> bool:
@@ -93,15 +87,64 @@ class OpenAICompatibleProvider:
         """
         return False
 
+    def health_check(self) -> bool:
+        """Whether the server answers at all.
+
+        Worth calling at startup when the model is on another machine: finding
+        out that the GPU box is unreachable is better done then than on the
+        first document.
+        """
+        url = urljoin(self._endpoint.normalised_base_url(), "models")
+        # The suppressions below are safe because __init__ checked this URL
+        # against the endpoint's trust boundary, which settles the scheme too.
+        request = urllib.request.Request(  # noqa: S310
+            url, headers=self._headers(), method="GET"
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5.0):  # noqa: S310
+                return True
+        except Exception:
+            return False
+
     def generate(self, request: LLMRequest) -> LLMResponse:
-        """Ask the model.
+        """Ask the model, retrying transient failures.
+
+        Only transient ones. A rejected key or a malformed request will be
+        rejected again, and retrying a rate limit that is not backed off makes
+        it worse.
+
 
         Raises:
-            ProviderError: the server was unreachable, refused the request, or
-                answered with something that was not a chat completion.
+            ProviderError: unreachable, refused, or something that was not a
+                chat completion. The message carries a reason and never the
+                prompt, the answer or the server's body.
         """
+        attempts = 1 + self._endpoint.retries
+        delay = self._endpoint.backoff
+
+        for attempt in range(attempts):
+            try:
+                return self._attempt(request)
+            except ProviderError as exc:
+                if not exc.retryable or attempt == attempts - 1:
+                    raise
+                time.sleep(delay)
+                delay *= 2
+
+        raise ProviderError(self._name, "no attempt was made")  # pragma: no cover
+
+    # -- internals ---------------------------------------------------------
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        key = self._endpoint.api_key()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        return headers
+
+    def _attempt(self, request: LLMRequest) -> LLMResponse:
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": self._endpoint.model,
             "messages": [
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": request.user},
@@ -110,30 +153,34 @@ class OpenAICompatibleProvider:
             "max_tokens": request.max_tokens,
             "stream": False,
         }
-
         body = json.dumps(payload).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-
-        url = urljoin(self._base_url, "chat/completions")
-
-        # __init__, which also refuses anything that is not a local host.
+        url = urljoin(self._endpoint.normalised_base_url(), "chat/completions")
+        timeout = min(self._endpoint.timeout, request.timeout or self._endpoint.timeout)
+        # The suppressions below are safe because __init__ checked this URL
+        # against the endpoint's trust boundary, which settles the scheme too.
         http_request = urllib.request.Request(  # noqa: S310
-            url, data=body, headers=headers, method="POST"
+            url, data=body, headers=self._headers(), method="POST"
         )
 
         try:
-            with urllib.request.urlopen(  # noqa: S310 - scheme is checked in __init__
-                http_request, timeout=min(self._timeout, request.timeout or self._timeout)
-            ) as response:
+            with urllib.request.urlopen(http_request, timeout=timeout) as response:  # noqa: S310
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            # The body may contain the prompt the server rejected, so only the
-            # status is reported.
-            raise ProviderError(self._name, f"HTTP {exc.code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise ProviderError(self._name, type(exc).__name__) from None
+            # The body may quote the prompt the server rejected, so only the
+            # status crosses this line.
+            raise ProviderError(
+                self._name, f"HTTP {exc.code}", retryable=exc.code in _RETRYABLE_STATUS
+            ) from None
+        except urllib.error.URLError as exc:
+            raise ProviderError(
+                self._name,
+                f"unreachable ({type(exc.reason).__name__})",
+                retryable=True,
+            ) from None
+        except _TRANSIENT as exc:
+            raise ProviderError(self._name, type(exc).__name__, retryable=True) from None
+        except OSError as exc:
+            raise ProviderError(self._name, type(exc).__name__, retryable=True) from None
 
         return self._parse(raw)
 
@@ -147,6 +194,11 @@ class OpenAICompatibleProvider:
         usage = payload.get("usage") or {}
         return LLMResponse(
             text=str(content),
-            model=str(payload.get("model", self._model)),
+            model=str(payload.get("model", self._endpoint.model)),
             usage={k: int(v) for k, v in usage.items() if isinstance(v, int)},
         )
+
+
+def open_ai_compatible_factory(endpoint: LLMEndpoint) -> OpenAICompatibleProvider:
+    """Factory for the registry."""
+    return OpenAICompatibleProvider(endpoint)

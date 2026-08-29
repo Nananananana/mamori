@@ -226,30 +226,29 @@ class TestBuildingBlocks:
 
 
 class TestSessionIntegration:
-    def test_a_session_takes_a_config(self) -> None:
+    def test_settings_build_a_session(self) -> None:
         settings = MamoriConfig(locales=("en",), min_confidence=0.6)
-        with PrivacySession(config=settings) as session:
-            assert session.config is settings
+        with settings.session() as session:
             assert session.policy.min_confidence == 0.6
 
-    def test_an_explicit_argument_beats_the_config(self) -> None:
+    def test_a_session_can_still_be_built_by_hand(self) -> None:
+        """Settings assemble a session; they are not the only way to get one."""
         from mamori.domain.policy import PrivacyPolicy
 
-        settings = MamoriConfig(min_confidence=0.6)
         policy = PrivacyPolicy.permissive()
-        with PrivacySession(config=settings, policy=policy) as session:
+        with PrivacySession(policy=policy) as session:
             assert session.policy is policy
 
     def test_the_confidence_floor_reaches_detection(self) -> None:
         text = "张伟先生您好。项目名称: 夜莺。"
-        with PrivacySession(config=MamoriConfig(min_confidence=0.6)) as session:
+        with MamoriConfig(min_confidence=0.6).session() as session:
             types = {e.entity_type for e in session.protect(text).entities}
         assert "PROJECT_NAME" not in types
         assert "PERSON" in types
 
     def test_the_locale_choice_reaches_detection(self) -> None:
         settings = MamoriConfig(locales=("ja",), stance=Stance.BALANCED)
-        with PrivacySession(config=settings) as session:
+        with settings.session() as session:
             protected = session.protect("请拨打 13812345678")
         assert "13812345678" in protected.protected_text
 
@@ -258,3 +257,33 @@ class TestSessionIntegration:
             protected = session.protect("田中太郎さんへ tanaka@example.com")
         assert "<PERSON_001>" in protected.protected_text
         assert "<EMAIL_001>" in protected.protected_text
+
+
+class TestTheEnvironmentPrefixIsReserved:
+    """``MAMORI_*`` names settings and nothing else.
+
+    Refusing an unknown one is what catches a misspelled privacy variable, but
+    it also means the obvious name for an API key variable is a trap. The error
+    has to say which, or the reader concludes mamori is broken.
+    """
+
+    def test_an_unknown_variable_is_refused(self) -> None:
+        with pytest.raises(ConfigurationError):
+            MamoriConfig.from_env({"MAMORI_LLM_KEY": "secret"})
+
+    def test_the_error_names_the_variable_and_the_rule(self) -> None:
+        with pytest.raises(ConfigurationError) as caught:
+            MamoriConfig.from_env({"MAMORI_LLM_KEY": "secret"})
+        message = str(caught.value)
+        assert "MAMORI_LLM_KEY" in message
+        assert "reserved" in message
+
+    def test_the_value_is_not_echoed(self) -> None:
+        """It is probably a secret. That is the whole reason it is here."""
+        with pytest.raises(ConfigurationError) as caught:
+            MamoriConfig.from_env({"MAMORI_LLM_KEY": "super-secret-value"})
+        assert "super-secret-value" not in str(caught.value)
+
+    def test_a_key_variable_outside_the_prefix_is_left_alone(self) -> None:
+        config = MamoriConfig.from_env({"LLM_API_KEY": "secret", "MAMORI_LOCALES": "ja"})
+        assert config.locales == ("ja",)

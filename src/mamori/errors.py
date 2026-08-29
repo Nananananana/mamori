@@ -71,7 +71,11 @@ class ProviderError(MamoriError):
     places the unprotected text is in scope, so nothing from it is repeated.
     """
 
-    def __init__(self, provider: str, reason: str) -> None:
+    def __init__(self, provider: str, reason: str, *, retryable: bool = False) -> None:
         super().__init__(f"provider {provider!r} failed: {reason}")
         self.provider = provider
         self.reason = reason
+        #: Whether trying again could plausibly work. A busy server or a
+        #: dropped connection, yes; a malformed request or a rejected key, no
+        #: -- retrying those burns time and, on a rate limit, makes it worse.
+        self.retryable = retryable

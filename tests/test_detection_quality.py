@@ -50,11 +50,13 @@ FLOORS = (
     Floor("ja", _BALANCED, 0.015, 0.02, 0.97, 0.97),
     Floor("en", _BALANCED, 0.035, 0.02, 0.94, 0.97),
     Floor("zh", _BALANCED, 0.050, 0.05, 0.95, 0.90),
-    # The shipping default. Leak floors are tight, precision floors are loose,
+    # The shipping default. Leak floors are tight, precision floors are looser,
     # and that asymmetry is the setting doing its job rather than a regression.
-    Floor("ja", _RECALL, 0.005, 0.10, 0.97, 0.78),
-    Floor("en", _RECALL, 0.015, 0.06, 0.92, 0.85),
-    Floor("zh", _RECALL, 0.020, 0.16, 0.95, 0.78),
+    # Tightened in 0.5.0 once tolerated spans stopped charging the wide tier for
+    # readings that are correct under the stance that produced them.
+    Floor("ja", _RECALL, 0.005, 0.05, 0.97, 0.85),
+    Floor("en", _RECALL, 0.015, 0.03, 0.92, 0.90),
+    Floor("zh", _RECALL, 0.020, 0.07, 0.95, 0.85),
 )
 
 

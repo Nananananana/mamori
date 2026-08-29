@@ -9,6 +9,21 @@ wrong often enough that a corpus annotated that way ends up measuring the
 annotator rather than the detector, and a contributor adding a case should not
 have to count characters.
 
+A second form marks a span as **tolerated**::
+
+    注文番号は[[?PHONE:0312345678]]です。
+
+Tolerated means: detecting this is neither required nor wrong. It exists
+because the same text is judged under two stances. An unseparated digit run is
+an order number to the anchored rules and a possible phone number to the wide
+ones, and both readings are right for the stance that produced them. Counting it
+as over-redaction under recall-first would charge the wide tier for doing
+exactly its job, and would publish a worse cost than the real one.
+
+Use it sparingly, and only where the ambiguity is genuine. A tolerated span is a
+place the corpus declines to have an opinion, and a corpus full of those
+measures nothing.
+
 **Every sample must be invented.** These files ship inside the package, so a
 real name or a real key committed here is published to everyone who installs
 mamori. See ``CONTRIBUTING.md``.
@@ -27,9 +42,10 @@ from ..errors import ConfigurationError
 
 __all__ = ["Annotation", "Dataset", "Sample", "bundled_datasets", "parse_annotated"]
 
-#: ``[[TYPE:value]]``. The value may not contain ``]]``, which keeps the parse
-#: unambiguous without an escaping scheme nobody would remember.
-_MARKUP_RE = re.compile(r"\[\[([A-Z][A-Z0-9_]{0,62}):((?:(?!\]\]).)+)\]\]", re.DOTALL)
+#: ``[[TYPE:value]]``, or ``[[?TYPE:value]]`` for a tolerated span. The value
+#: may not contain ``]]``, which keeps the parse unambiguous without an escaping
+#: scheme nobody would remember.
+_MARKUP_RE = re.compile(r"\[\[(\?)?([A-Z][A-Z0-9_]{0,62}):((?:(?!\]\]).)+)\]\]", re.DOTALL)
 
 _FORMAT_VERSION = 1
 _DATA_DIR = Path(__file__).parent / "data"
@@ -41,6 +57,8 @@ class Annotation:
 
     entity_type: str
     span: Span
+    #: Detecting this is neither required nor wrong. See the module docstring.
+    tolerated: bool = False
 
     @property
     def length(self) -> int:
@@ -58,13 +76,24 @@ class Sample:
     note: str = ""
 
     @property
+    def required(self) -> tuple[Annotation, ...]:
+        """Annotations a detector is expected to find."""
+        return tuple(a for a in self.annotations if not a.tolerated)
+
+    @property
+    def tolerated(self) -> tuple[Annotation, ...]:
+        """Annotations that may be found without being wrong either way."""
+        return tuple(a for a in self.annotations if a.tolerated)
+
+    @property
     def sensitive_characters(self) -> frozenset[int]:
-        """Indices covered by an annotation."""
-        return frozenset(
-            index
-            for annotation in self.annotations
-            for index in range(annotation.span.start, annotation.span.end)
-        )
+        """Indices a detector is expected to cover."""
+        return _indices(self.required)
+
+    @property
+    def tolerated_characters(self) -> frozenset[int]:
+        """Indices excluded from both sides of the score."""
+        return _indices(self.tolerated)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +114,11 @@ class Dataset:
 
     @property
     def annotation_count(self) -> int:
-        return sum(len(sample.annotations) for sample in self.samples)
+        return sum(len(sample.required) for sample in self.samples)
+
+    @property
+    def tolerated_count(self) -> int:
+        return sum(len(sample.tolerated) for sample in self.samples)
 
     def types(self) -> frozenset[str]:
         """Every entity type that appears in the labels."""
@@ -161,12 +194,16 @@ def parse_annotated(annotated: str) -> tuple[str, tuple[Annotation, ...]]:
         pieces.append(before)
         length += len(before)
 
-        value = match.group(2)
+        value = match.group(3)
         if not value:
             raise ConfigurationError(f"empty annotation in: {annotated[:60]!r}")
         pieces.append(value)
         annotations.append(
-            Annotation(entity_type=match.group(1), span=Span(length, length + len(value)))
+            Annotation(
+                entity_type=match.group(2),
+                span=Span(length, length + len(value)),
+                tolerated=match.group(1) is not None,
+            )
         )
         length += len(value)
         cursor = match.end()
@@ -189,6 +226,14 @@ def _assert_disjoint(annotations: Sequence[Annotation], origin: str) -> None:
         if annotation.span.start < previous_end:
             raise ConfigurationError(f"overlapping annotations in: {origin[:60]!r}")
         previous_end = annotation.span.end
+
+
+def _indices(annotations: Sequence[Annotation]) -> frozenset[int]:
+    return frozenset(
+        index
+        for annotation in annotations
+        for index in range(annotation.span.start, annotation.span.end)
+    )
 
 
 def bundled_datasets(locale: str | None = None) -> tuple[Dataset, ...]:

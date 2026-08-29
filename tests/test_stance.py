@@ -129,7 +129,7 @@ class TestWideChineseRules:
 class TestEndToEnd:
     def test_the_stance_reaches_a_session(self) -> None:
         text = "I spoke to Jane Doe yesterday."
-        with PrivacySession(config=MamoriConfig(stance=CORE)) as session:
+        with MamoriConfig(stance=CORE).session() as session:
             assert "Jane Doe" in session.protect(text).protected_text
         with PrivacySession() as session:
             assert "Jane Doe" not in session.protect(text).protected_text
@@ -148,5 +148,5 @@ class TestEndToEnd:
 
     def test_a_confidence_floor_can_undo_the_wide_tier(self) -> None:
         settings = MamoriConfig(min_confidence=0.6)
-        with PrivacySession(config=settings) as session:
+        with settings.session() as session:
             assert "Jane Doe" in session.protect("I spoke to Jane Doe yesterday.").protected_text

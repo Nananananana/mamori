@@ -307,3 +307,81 @@ class TestBundledDatasets:
         assert sizes["ja"] >= 40
         assert sizes["en"] >= 40
         assert sizes["zh"] >= 20
+
+
+class TestToleratedSpans:
+    """``[[?TYPE:value]]``: a place the corpus declines to have an opinion.
+
+    The same digit run is an order number to the anchored rules and a possible
+    phone number to the wide ones. Both readings are correct for the stance
+    that produced them, so scoring either as a mistake publishes a cost that is
+    not real. These spans leave both denominators.
+    """
+
+    def test_the_marker_is_parsed(self) -> None:
+        text, annotations = parse_annotated("Order [[?PHONE:4155550198]] shipped.")
+        assert text == "Order 4155550198 shipped."
+        assert len(annotations) == 1
+        assert annotations[0].tolerated is True
+        assert annotations[0].entity_type == "PHONE"
+
+    def test_plain_annotations_are_not_tolerated(self) -> None:
+        _, annotations = parse_annotated("Call [[PHONE:415-555-0198]].")
+        assert annotations[0].tolerated is False
+
+    def test_required_and_tolerated_are_separated(self) -> None:
+        _, annotations = parse_annotated("[[PERSON:Ann]] and [[?PHONE:4155550198]]")
+        sample = Sample(id="s", text="x", annotations=annotations)
+        assert [a.entity_type for a in sample.required] == ["PERSON"]
+        assert [a.entity_type for a in sample.tolerated] == ["PHONE"]
+
+    def test_a_tolerated_span_is_not_required_coverage(self) -> None:
+        """Missing one is not a leak."""
+        text, annotations = parse_annotated("Order [[?PHONE:4155550198]] shipped.")
+        sample = Sample(id="s", text=text, annotations=annotations)
+        assert sample.sensitive_characters == frozenset()
+        assert sample.tolerated_characters
+
+    def test_finding_one_is_not_over_redaction(self) -> None:
+        text, annotations = parse_annotated("Order [[?PHONE:4155550198]] shipped.")
+        sample = Sample(id="s", text=text, annotations=annotations)
+        found = [prediction("PHONE", 6, 16)]
+        score = score_sample(sample, found)
+        assert score.over_redacted_characters == 0
+        assert score.spurious == ()
+
+    def test_ignoring_one_costs_nothing_either(self) -> None:
+        text, annotations = parse_annotated("Order [[?PHONE:4155550198]] shipped.")
+        sample = Sample(id="s", text=text, annotations=annotations)
+        score = score_sample(sample, [])
+        assert score.leaked_characters == 0
+        assert score.missed == ()
+
+    def test_a_required_span_next_to_a_tolerated_one_still_counts(self) -> None:
+        """Tolerance must not spread to its neighbours."""
+        text, annotations = parse_annotated("[[PERSON:Ann]] left order [[?PHONE:4155550198]].")
+        sample = Sample(id="s", text=text, annotations=annotations)
+        score = score_sample(sample, [])
+        assert len(score.missed) == 1
+        assert score.leaked_characters == len("Ann")
+
+    def test_the_counts_are_reported_separately(self) -> None:
+        dataset = bundled_datasets("en")[0]
+        assert dataset.tolerated_count > 0
+        assert dataset.annotation_count > dataset.tolerated_count
+
+    def test_the_bundled_sets_use_it_sparingly(self) -> None:
+        """A corpus full of tolerated spans measures nothing."""
+        for dataset in bundled_datasets():
+            required = dataset.annotation_count
+            assert dataset.tolerated_count <= required * 0.1, (
+                f"{dataset.name}: {dataset.tolerated_count} tolerated against "
+                f"{required} required -- the set is becoming an opinion-free zone"
+            )
+
+    def test_every_tolerated_span_is_explained(self) -> None:
+        """Without a note the next reader deletes the marker as a typo."""
+        for dataset in bundled_datasets():
+            for sample in dataset:
+                if sample.tolerated:
+                    assert sample.note, f"{dataset.name}/{sample.id} tolerates a span silently"

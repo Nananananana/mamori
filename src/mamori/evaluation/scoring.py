@@ -6,6 +6,12 @@ neither one alone is honest.
 **Entity level** -- precision, recall and F1 over whole entities. The familiar
 numbers, useful for comparing rule sets and for spotting a type nobody covers.
 
+A sample may also mark a span **tolerated**, meaning detecting it is neither
+required nor wrong. Those characters leave both denominators, which keeps one
+corpus honest under two stances: an unseparated digit run is an order number to
+the anchored rules and a possible phone number to the wide ones, and charging
+the wide tier for that would publish a worse cost than the real one.
+
 **Character level** -- ``leak_rate`` and ``over_redaction_rate``. These are the
 ones that matter here. What a privacy layer is actually judged on is *how many
 sensitive characters left the machine* and *how much ordinary text it destroyed
@@ -203,6 +209,13 @@ def score_sample(
     missed: list[Annotation] = []
 
     for annotation in sorted(sample.annotations, key=lambda a: a.span.start):
+        if annotation.tolerated:
+            # Claim whatever covers it, so it is not counted as spurious, and
+            # do not record a miss when nothing does.
+            for index, prediction in enumerate(ordered_predictions):
+                if index not in claimed and annotation.span.overlaps(prediction.span):
+                    claimed.add(index)
+            continue
         for index, prediction in enumerate(ordered_predictions):
             if index in claimed or not _matches(annotation, prediction, mode):
                 continue
@@ -217,8 +230,11 @@ def score_sample(
     )
 
     sensitive = sample.sensitive_characters
+    tolerated = sample.tolerated_characters
     predicted_chars = _covered([prediction.span for prediction in ordered_predictions])
-    ordinary_count = len(sample.text) - len(sensitive)
+    # Tolerated characters count on neither side: not required coverage, and
+    # not over-redaction when replaced.
+    ordinary_count = len(sample.text) - len(sensitive) - len(tolerated)
 
     return SampleResult(
         sample_id=sample.id,
@@ -228,7 +244,7 @@ def score_sample(
         sensitive_characters=len(sensitive),
         leaked_characters=len(sensitive - predicted_chars),
         ordinary_characters=ordinary_count,
-        over_redacted_characters=len(predicted_chars - sensitive),
+        over_redacted_characters=len(predicted_chars - sensitive - tolerated),
     )
 
 

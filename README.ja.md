@@ -189,9 +189,9 @@ mamori protect --min-confidence 0.7 -f draft.txt
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall_first** | balanced | **recall_first** |
-| `ja-core` | 0.71% | **0.00%** | 0.00% | **6.34%** |
-| `en-core` | 2.01% | **0.67%** | 0.65% | **2.95%** |
-| `zh-core` | 0.00% | **0.00%** | 2.34% | **11.71%** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **3.11%** |
+| `en-core` | 2.01% | **0.67%** | 0.66% | **1.44%** |
+| `zh-core` | 0.00% | **0.00%** | 2.55% | **4.00%** |
 
 これがトレードオフである。埋もれさせずに書いておく。
 **見逃しは静かで取り返しがつかない。誤検出は「置換すべきでない語が置換された」
@@ -266,18 +266,67 @@ mamori prompt detection --guidance   # ID一覧。ここから disable できる
 **存在しない ID の disable は拒否する。** しかも設定を読み込んだ時点で拒否する
 （何ヶ月も後ではなく）。外したつもりで外れていない状態を作らないためである。
 
-### ローカルLLMを繋ぐ
+### モデルを繋ぐ ― 同じPCでも、社内サーバーでも
+
+現実的な構成はノートPCではない。チームで共有する1台のGPUマシンである。
+
+```json
+{"llm": {"model": "qwen2.5:72b", "base_url": "http://llm01.corp:8000/v1/"}}
+```
+
+```bash
+mamori llm --check     # どこにあるか、許可されるか、応答するか
+```
+
+```text
+  model           qwen2.5:72b
+  endpoint        http://llm01.corp:8000/v1/
+  host            private (another machine)
+  trust boundary  private_network
+  reachable       yes
+```
+
+`base_url` を書かなければ同じPC上のモデルを使う。他に変えるものは何もない。
+
+拒否されるのは**公開エンドポイント**である。検出器は保護*前*のテキストを
+受け取るので、社内ネットワークの外にあるエンドポイントは検出器ではなく
+漏洩経路そのものである。しかもそれを最初の1件を処理する時ではなく、
+起動時に告げる。
+
+```text
+REFUSED. This model will not be used:
+  'api.openai.com' looks external, which is outside the private_network trust
+  boundary.
+```
+
+境界は3つ。`same_host` / `private_network`（既定）/ `anywhere`。
+`trusted_hosts` に明記されたホストはどの境界でも許可される ―
+運用者がホストを名指しするのは「判断した」ということだからである。
+→ [ADR 0015](docs/adr/0015-a-trust-boundary-not-a-localhost-check.md)
+
+### モデルもライブラリも差し替えられる
+
+モデルの切り替えは設定項目1つ。*繋ぎ方*の切り替えも1行で、
+このライブラリに依存関係は増えない。
 
 ```python
-from mamori.infrastructure.llm import OpenAICompatibleProvider
-from mamori.infrastructure.detectors import build_pipeline, CoOccurrencePass
-from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+from mamori.infrastructure.llm import CallableProvider, register_llm_provider
 
-provider = OpenAICompatibleProvider("qwen2.5:7b")  # Ollama / llama.cpp / vLLM / LM Studio
-pipeline = build_pipeline(
-    co_occurrence=CoOccurrencePass(), extra_passes=[LLMDetectionPass(provider)]
-)
+# 既に同一プロセス内に読み込まれているモデル。ライブラリは何でもよく、HTTPも不要。
+provider = CallableProvider(my_pipeline, name="local-transformers")
+
+# 設定ファイルから名前で選べるようにする。
+register_llm_provider("vllm", lambda endpoint: MyVLLMProvider(endpoint))
 ```
+
+```python
+from mamori import MamoriConfig
+session = MamoriConfig.from_mapping(settings).session()
+```
+
+同梱の Provider は `urllib` だけで OpenAI 互換 HTTP を話す。
+実行時依存ゼロはゼロのままである。
+→ [ADR 0016](docs/adr/0016-the-model-and-the-client-are-both-replaceable.md)
 
 モデルが何をしようと、次の3つが成り立つ。
 
@@ -288,10 +337,10 @@ pipeline = build_pipeline(
   切り取られることはない。
 - **モデルの失敗はリクエストの失敗ではない。** モデルが無い・遅い・壊れている
   のは「検出器が弱い」状態であって、処理停止ではない。
-  `require_model=True` で逆にできる。
+  `require_model` で逆にできる。
 
-Provider は**ローカル以外のURLを拒否する**。検出器は保護*前*のテキストを
-受け取るので、ローカルでない検出器は検出器ではなく漏洩経路そのものである。
+APIキーは設定ファイルには書かない。環境変数名を指定する
+（`{"api_key_env": "LLM_API_KEY"}`）。リテラルの `api_key` は拒否する。
 
 ---
 
@@ -332,7 +381,7 @@ mamori eval
 ```text
 ja-core  (ja, 49 samples)
   leak rate             0.00%   (0/561 sensitive chars left uncovered)
-  over-redaction        6.34%   (57/899 ordinary chars replaced)
+  over-redaction        3.11%   (27/869 ordinary chars replaced)
   entity P / R / F1   0.868 / 0.983 / 0.922   (match: overlap)
   clean samples       49/49
 ```
@@ -438,13 +487,15 @@ Pythonからもシェルからも。
 `v0.2` で測定基盤とストリーミング復元を追加。
 `v0.3` で検出をパイプライン化し、切り替え可能な設定を1つに集約。
 `v0.4` で既定を「漏らさない側」に倒し、プロンプト層を構築した。
+`v0.5` でモデルの所在もクライアントライブラリも設定項目にし、
+層構造を「図」ではなく「テスト」にした。
 
 | | |
 |---|---|
-| **v0.5** | OpenAI互換のローカルプロキシ。既存アプリは `base_url` を変えるだけで移行できる。 |
-| **v0.6** | ローカルモデルパスを同じ評価セットで測定し、その数値に基づいてプロンプトを調整する（好みではなく）。測定に必要なものは既に揃っている。 |
-| **v0.7** | Presidioアダプタ、opt-inの暗号化永続ストア。 |
-| **v0.8** | 代替値方式（`田中太郎` → `山田一郎`）をポリシー選択肢として追加。 |
+| **v0.6** | OpenAI互換のローカルプロキシ。既存アプリは `base_url` を変えるだけで移行できる。 |
+| **v0.7** | モデルパスを同じ評価セットで測定し、その数値に基づいてプロンプトを調整する（好みではなく）。測定に必要なものは既に揃っている。 |
+| **v0.8** | Presidioアダプタ、opt-inの暗号化永続ストア。 |
+| **v0.9** | 代替値方式（`田中太郎` → `山田一郎`）をポリシー選択肢として追加。 |
 
 次はプロキシである。動いているアプリをライブラリのために書き直す人はいない。
 新規コードしか守れないプライバシー層が守れる範囲はごくわずかである。

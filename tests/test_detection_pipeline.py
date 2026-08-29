@@ -248,7 +248,7 @@ class TestCoOccurrenceEndToEnd:
         from mamori import MamoriConfig
 
         text = "尊敬的张伟先生：\n本次评审由张伟主持。"
-        with PrivacySession(config=MamoriConfig(co_occurrence=False)) as session:
+        with MamoriConfig(co_occurrence=False).session() as session:
             protected = session.protect(text)
         assert "张伟" in protected.protected_text
 
@@ -257,7 +257,7 @@ class TestCoOccurrenceEndToEnd:
         from mamori import MamoriConfig
 
         text = "Dear Jane Doe,\n\nJane Doe will attend. Regards,\nBob"
-        with PrivacySession(config=MamoriConfig(co_occurrence=False)) as off:
+        with MamoriConfig(co_occurrence=False).session() as off:
             without = off.protect(text).entity_count
         with PrivacySession() as on:
             with_pass = on.protect(text).entity_count
@@ -270,7 +270,7 @@ class TestCoOccurrenceEndToEnd:
         # Balanced, so the wide English rule does not reach the second mention
         # on its own and the propagation is what is being observed.
         text = "Dear Priya Raman,\n\nPriya Raman is leading it."
-        with PrivacySession(config=MamoriConfig(stance=Stance.BALANCED)) as session:
+        with MamoriConfig(stance=Stance.BALANCED).session() as session:
             sources = {e.source for e in session.protect(text).entities}
         assert "co-occurrence" in sources
 

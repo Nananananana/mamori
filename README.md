@@ -191,9 +191,9 @@ default**:
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall-first** | balanced | **recall-first** |
-| `ja-core` | 0.71% | **0.00%** | 0.00% | **6.34%** |
-| `en-core` | 2.01% | **0.67%** | 0.65% | **2.95%** |
-| `zh-core` | 0.00% | **0.00%** | 2.34% | **11.71%** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **3.11%** |
+| `en-core` | 2.01% | **0.67%** | 0.66% | **1.44%** |
+| `zh-core` | 0.00% | **0.00%** | 2.55% | **4.00%** |
 
 That is the trade, stated rather than buried. A miss is silent and permanent; a
 false positive is a word visibly replaced that should not have been. Somebody
@@ -266,18 +266,67 @@ mamori prompt detection --guidance   # list the ids, so they can be disabled
 A disable that matches nothing is refused, when the config is loaded rather than
 months later.
 
-### Wiring up a local model
+### Wiring up a model, wherever it runs
+
+The realistic deployment is not a laptop. It is one GPU machine the team shares:
+
+```json
+{"llm": {"model": "qwen2.5:72b", "base_url": "http://llm01.corp:8000/v1/"}}
+```
+
+```bash
+mamori llm --check     # where it is, whether it is allowed, whether it answers
+```
+
+```text
+  model           qwen2.5:72b
+  endpoint        http://llm01.corp:8000/v1/
+  host            private (another machine)
+  trust boundary  private_network
+  reachable       yes
+```
+
+The same file with no `base_url` uses a model on this machine. Nothing else
+changes.
+
+What is refused is a **public** endpoint. A detector is sent the text *before*
+it is protected, so an endpoint outside your network is the leak, and mamori
+says so at startup rather than on the first document:
+
+```text
+REFUSED. This model will not be used:
+  'api.openai.com' looks external, which is outside the private_network trust
+  boundary.
+```
+
+Three boundaries: `same_host`, `private_network` (the default), `anywhere`. A
+host named in `trusted_hosts` is admitted under all of them, because an
+operator naming a host is making a decision. See
+[ADR 0015](docs/adr/0015-a-trust-boundary-not-a-localhost-check.md).
+
+### Any model, any client library
+
+Switching models is a field. Switching *how* the model is reached is one line,
+and needs no dependency here:
 
 ```python
-from mamori.infrastructure.llm import OpenAICompatibleProvider
-from mamori.infrastructure.detectors import build_pipeline, CoOccurrencePass
-from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+from mamori.infrastructure.llm import CallableProvider, register_llm_provider
 
-provider = OpenAICompatibleProvider("qwen2.5:7b")  # Ollama, llama.cpp, vLLM, LM Studio
-pipeline = build_pipeline(
-    co_occurrence=CoOccurrencePass(), extra_passes=[LLMDetectionPass(provider)]
-)
+# A model already loaded in this process -- any library, no HTTP at all.
+provider = CallableProvider(my_pipeline, name="local-transformers")
+
+# Or make it selectable by name from configuration.
+register_llm_provider("vllm", lambda endpoint: MyVLLMProvider(endpoint))
 ```
+
+```python
+from mamori import MamoriConfig
+session = MamoriConfig.from_mapping(settings).session()
+```
+
+The bundled provider speaks OpenAI-compatible HTTP over `urllib`, so the zero
+runtime dependencies stay zero. See
+[ADR 0016](docs/adr/0016-the-model-and-the-client-are-both-replaceable.md).
 
 Three properties hold whatever the model does:
 
@@ -287,10 +336,10 @@ Three properties hold whatever the model does:
   reported value must be exactly the characters between them, so a hallucinated
   span is dropped rather than spliced out of your document.
 - **Its failure is not your request's failure.** A missing model is a weaker
-  detector, not a stopped pipeline. Pass `require_model=True` to invert that.
+  detector, not a stopped pipeline. Set `require_model` to invert that.
 
-The provider refuses a non-local URL. A detector sees the text *before* it is
-protected, so a detector that is not local is the leak.
+Keys are read from an environment variable you name, never from the config file:
+`{"api_key_env": "LLM_API_KEY"}`. A literal `api_key` is refused.
 
 ---
 
@@ -333,7 +382,7 @@ mamori eval
 ```text
 ja-core  (ja, 49 samples)
   leak rate             0.00%   (0/561 sensitive chars left uncovered)
-  over-redaction        6.34%   (57/899 ordinary chars replaced)
+  over-redaction        3.11%   (27/869 ordinary chars replaced)
   entity P / R / F1   0.868 / 0.983 / 0.922   (match: overlap)
   clean samples       49/49
 ```
@@ -443,14 +492,15 @@ Python or the shell.
 `v0.2` added the measurement harness and streaming restoration. `v0.3` made
 detection a pipeline and collected every switch onto one configuration object.
 `v0.4` leaned the default towards catching everything, and built the prompt
-layer.
+layer. `v0.5` made the model's location and its client library both
+configuration, and made the layering a test rather than a diagram.
 
 | | |
 |---|---|
-| **v0.5** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. |
-| **v0.6** | Evaluation of the local-model pass against the same datasets, and prompt tuning driven by those numbers rather than by taste. Everything needed to measure it is already here. |
-| **v0.7** | A Presidio adapter and an opt-in encrypted persistent store. |
-| **v0.8** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
+| **v0.6** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. |
+| **v0.7** | Evaluation of the model pass against the same datasets, and prompt tuning driven by those numbers rather than by taste. Everything needed to measure it is already here. |
+| **v0.8** | A Presidio adapter and an opt-in encrypted persistent store. |
+| **v0.9** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
 The proxy is next. Nobody rewrites a working application to adopt a library, and
 a privacy layer that only protects new code protects very little.

@@ -176,9 +176,9 @@ mamori protect --min-confidence 0.7 -f draft.txt
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall_first** | balanced | **recall_first** |
-| `ja-core` | 0.71% | **0.00%** | 0.00% | **6.34%** |
-| `en-core` | 2.01% | **0.67%** | 0.65% | **2.95%** |
-| `zh-core` | 0.00% | **0.00%** | 2.34% | **11.71%** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **3.11%** |
+| `en-core` | 2.01% | **0.67%** | 0.66% | **1.44%** |
+| `zh-core` | 0.00% | **0.00%** | 2.55% | **4.00%** |
 
 这就是取舍，写出来而不是藏起来。**漏掉是无声且不可挽回的；误报则表现为
 「本不该被替换的词被替换了」，是看得见的。** 读保护后文本的人会注意到后者，
@@ -248,18 +248,64 @@ mamori prompt detection --guidance   # 列出 ID，可据此 disable
 **disable 一个不存在的 ID 会被拒绝**，而且是在加载配置时就拒绝，
 不会拖到几个月后。
 
-### 接入本地模型
+### 接入模型：同一台机器，或内网服务器
+
+现实的部署形态不是笔记本，而是团队共用的一台 GPU 机器：
+
+```json
+{"llm": {"model": "qwen2.5:72b", "base_url": "http://llm01.corp:8000/v1/"}}
+```
+
+```bash
+mamori llm --check     # 在哪里、是否被允许、是否应答
+```
+
+```text
+  model           qwen2.5:72b
+  endpoint        http://llm01.corp:8000/v1/
+  host            private (another machine)
+  trust boundary  private_network
+  reachable       yes
+```
+
+同一份配置去掉 `base_url`，用的就是本机模型。其余什么都不用改。
+
+被拒绝的是**公网端点**。检测器拿到的是保护*之前*的文本，
+所以位于内网之外的端点不是检测器，而是泄漏本身。这一点会在启动时告知，
+而不是等到处理第一份文档时：
+
+```text
+REFUSED. This model will not be used:
+  'api.openai.com' looks external, which is outside the private_network trust
+  boundary.
+```
+
+三种边界：`same_host`、`private_network`（默认）、`anywhere`。
+写进 `trusted_hosts` 的主机在任何边界下都被允许——
+运维人员点名一台主机，本身就是一个判断。
+参见 [ADR 0015](docs/adr/0015-a-trust-boundary-not-a-localhost-check.md)。
+
+### 模型和客户端库都可替换
+
+换模型是改一个字段；换*连接方式*是一行代码，而且不给本库增加任何依赖：
 
 ```python
-from mamori.infrastructure.llm import OpenAICompatibleProvider
-from mamori.infrastructure.detectors import build_pipeline, CoOccurrencePass
-from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+from mamori.infrastructure.llm import CallableProvider, register_llm_provider
 
-provider = OpenAICompatibleProvider("qwen2.5:7b")  # Ollama / llama.cpp / vLLM / LM Studio
-pipeline = build_pipeline(
-    co_occurrence=CoOccurrencePass(), extra_passes=[LLMDetectionPass(provider)]
-)
+# 已经加载在同一进程里的模型：任意库，完全不经过 HTTP。
+provider = CallableProvider(my_pipeline, name="local-transformers")
+
+# 或者让它可以从配置里按名字选择。
+register_llm_provider("vllm", lambda endpoint: MyVLLMProvider(endpoint))
 ```
+
+```python
+from mamori import MamoriConfig
+session = MamoriConfig.from_mapping(settings).session()
+```
+
+内置 Provider 只用 `urllib` 说 OpenAI 兼容 HTTP，运行时零依赖依然是零。
+参见 [ADR 0016](docs/adr/0016-the-model-and-the-client-are-both-replaceable.md)。
 
 无论模型做什么，以下三点都成立：
 
@@ -268,10 +314,10 @@ pipeline = build_pipeline(
 - **它的输出会与文本核对。** 偏移必须落在范围内，报告的值必须与该区间的字符
   完全一致，否则丢弃。幻觉出来的区间不会被从文档中切走。
 - **它的失败不是请求的失败。** 模型缺失、缓慢或损坏，意味着检测器变弱，
-  而不是流程停止。用 `require_model=True` 可以反过来。
+  而不是流程停止。用 `require_model` 可以反过来。
 
-Provider **拒绝非本地 URL**。检测器拿到的是保护*之前*的文本，
-所以不在本地的检测器不是检测器，而是泄漏本身。
+API key 不写进配置文件，只写环境变量名（`{"api_key_env": "LLM_API_KEY"}`）。
+字面量 `api_key` 会被拒绝。
 
 ---
 
@@ -309,7 +355,7 @@ mamori eval
 ```text
 zh-core  (zh, 25 samples)
   leak rate             0.00%   (0/202 sensitive chars left uncovered)
-  over-redaction       11.71%   (35/299 ordinary chars replaced)
+  over-redaction        4.00%   (11/275 ordinary chars replaced)
   entity P / R / F1   0.844 / 1.000 / 0.915   (match: overlap)
   clean samples       25/25
 ```
@@ -404,13 +450,15 @@ infrastructure ──> ports
 `v0.2` 加入测量框架与流式还原。`v0.3` 把检测改成 pipeline，
 并把所有可切换项集中到一个配置对象上。
 `v0.4` 把默认值倒向「不漏」，并搭好了提示词层。
+`v0.5` 把模型的所在位置和客户端库都变成配置项，
+并把分层从一张图变成一个测试。
 
 | | |
 |---|---|
-| **v0.5** | OpenAI 兼容的本地代理，现有应用只改 `base_url` 即可接入。 |
-| **v0.6** | 用同一套评测集测量本地模型 pass，并据此调整提示词（而不是凭感觉）。测量所需的一切都已就位。 |
-| **v0.7** | Presidio 适配器、可选启用的加密持久化存储。 |
-| **v0.8** | 替身值（`张伟` → `王强`）作为策略选项。 |
+| **v0.6** | OpenAI 兼容的本地代理，现有应用只改 `base_url` 即可接入。 |
+| **v0.7** | 用同一套评测集测量模型 pass，并据此调整提示词（而不是凭感觉）。测量所需的一切都已就位。 |
+| **v0.8** | Presidio 适配器、可选启用的加密持久化存储。 |
+| **v0.9** | 替身值（`张伟` → `王强`）作为策略选项。 |
 
 下一步是代理。没有人会为了采用一个库去重写一个正在运行的应用，
 而只能保护新代码的隐私层，能保护的范围非常有限。

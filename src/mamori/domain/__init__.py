@@ -18,6 +18,8 @@ from .policy import Action, PrivacyPolicy
 from .resolution import resolve_overlaps
 from .sensitive_entity import SensitiveEntity
 from .span import Span
+from .stance import RuleTier, Stance
+from .trust import EndpointPolicy, HostKind, TrustBoundary
 
 __all__ = [
     "BUILTIN_TYPES",
@@ -28,14 +30,19 @@ __all__ = [
     "Action",
     "Category",
     "Confidence",
+    "EndpointPolicy",
     "EntityType",
+    "HostKind",
     "Mapping",
     "NormalizedText",
     "Placeholder",
     "PlaceholderOccurrence",
     "PrivacyPolicy",
+    "RuleTier",
     "SensitiveEntity",
     "Span",
+    "Stance",
+    "TrustBoundary",
     "get_type",
     "normalize_value",
     "register_type",

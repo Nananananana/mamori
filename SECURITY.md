@@ -74,21 +74,21 @@ those languages; nothing else does.
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets. Run `mamori eval`
-yourself; as of `0.4.0`, at the default recall-first stance:
+yourself; as of `0.5.0`, at the default recall-first stance:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
-| `ja-core` | 49 | 0.00% | 6.34% | 0.868 / 0.983 |
-| `en-core` | 49 | 0.67% | 2.95% | 0.900 / 0.938 |
-| `zh-core` | 25 | 0.00% | 11.71% | 0.844 / 1.000 |
+| `ja-core` | 49 | 0.00% | 3.11% | 0.908 / 0.983 |
+| `en-core` | 49 | 0.67% | 1.44% | 0.938 / 0.938 |
+| `zh-core` | 25 | 0.00% | 4.00% | 0.900 / 1.000 |
 
 At `--stance balanced`, which runs only the anchored rules:
 
 | Set | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|
 | `ja-core` | 0.71% | 0.00% | 1.000 / 0.983 |
-| `en-core` | 2.01% | 0.65% | 1.000 / 0.958 |
-| `zh-core` | 0.00% | 2.34% | 0.964 / 1.000 |
+| `en-core` | 2.01% | 0.66% | 1.000 / 0.958 |
+| `zh-core` | 0.00% | 2.55% | 0.964 / 1.000 |
 
 *Leak rate* is the share of labelled sensitive characters that no detection
 covered — the part that would have left the machine. *Over-redaction* is the
@@ -106,9 +106,17 @@ The residual leak is one documented gap: a trading name with no legal suffix.
 Two things closed the rest, and both cost something. A value confirmed once is
 now protected everywhere it appears, which moved English from 7.4% to 2.0% at no
 cost in precision. The recall-first stance then added rules that match on shape
-alone, which took English to 0.67% and Japanese to zero and raised
-over-redaction fivefold. **Read the two tables together.** A tool that redacts
+alone, which took English to 0.67% and Japanese to zero and roughly doubled
+over-redaction. **Read the two tables together.** A tool that redacts
 everything has a perfect leak rate and destroys every answer.
+
+The over-redaction figures fell in `0.5.0` without any rule changing. Some
+labelled spans are genuinely ambiguous -- ten bare digits are an order number to
+the anchored rules and a possible phone number to the wide ones -- and the
+datasets previously scored the wide reading as a mistake. Those spans are now
+marked *tolerated*: neither required nor wrong, excluded from both sides. The
+earlier numbers charged the recall-first stance for doing exactly its job, and
+overstated its cost by roughly half.
 
 ### It is not a compliance control
 

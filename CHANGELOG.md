@@ -8,6 +8,98 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-29
+
+The model tier stops assuming a laptop. Where the model runs, and which library
+talks to it, are both configuration now -- and the layering that keeps all of
+this from tangling is enforced by a test instead of a diagram.
+
+### Added
+
+- **A trust boundary, replacing the localhost check.** The realistic deployment
+  is one high-specification machine the team shares, not a model on every
+  laptop, and 0.4.0 made that impossible. A host is now classified by
+  inspection -- `loopback`, `private`, `declared`, `external` -- and a boundary
+  decides what is admitted. The default, `private_network`, accepts a model on
+  this machine *and* a model at `http://llm01.corp:8000/v1/`, and refuses a
+  public API. See
+  [ADR 0015](docs/adr/0015-a-trust-boundary-not-a-localhost-check.md).
+
+  ```json
+  {"llm": {"model": "qwen2.5:72b", "base_url": "http://llm01.corp:8000/v1/"}}
+  ```
+
+  A refusal arrives when the provider is built, not on the first document, and
+  the message says what was classified and which of the two remedies applies.
+  `trusted_hosts` names an exception; `"trust": "anywhere"` removes the check
+  and is visible to anyone reviewing the config.
+
+- **A provider registry, a callable provider, and `LLMEndpoint`.** Switching
+  models is a field. Switching the *client library* is one line, and adds no
+  dependency here: `CallableProvider(fn)` wraps anything already loaded in the
+  process, and `register_llm_provider(name, factory)` makes an alternative
+  selectable from configuration. The bundled OpenAI-compatible provider still
+  speaks `urllib`, so the runtime dependencies remain zero. See
+  [ADR 0016](docs/adr/0016-the-model-and-the-client-are-both-replaceable.md).
+
+- **`mamori llm`** -- where the model is, whether the boundary admits it, and
+  with `--check`, whether it answers. Worth running once after pointing it at a
+  machine down the hall. `mamori config` now shows the model too.
+
+- **`LLMSettings`, and `MamoriConfig.session()`.** Settings assemble a session;
+  a session never reads settings. A literal `api_key` in a config file is
+  refused with a pointer to `api_key_env`, so a key cannot arrive by being
+  committed.
+
+- **Retries with backoff** on transient endpoint failures (408, 425, 429, and
+  5xx). Deliberately not conditional on the endpoint being remote: a model on
+  this machine is just as capable of being busy loading weights.
+
+- **`tests/test_architecture.py`** -- the layer rules parsed out of the source
+  with `ast` and asserted. Domain purity against a standard-library allowlist,
+  an explicit table of permitted imports per layer, no cycles, and the one
+  default-construction exception pinned to the file and symbols it covers. See
+  [ADR 0017](docs/adr/0017-the-layering-is-a-test.md).
+
+- **Tolerated spans in the evaluation format.** `[[?TYPE:value]]` marks a span
+  as neither required nor wrong. Ten bare digits are an order number to the
+  anchored rules and a possible phone number to the wide ones; scoring the wide
+  reading as a mistake charged the recall-first stance for doing its job.
+
+### Changed
+
+- **Over-redaction figures fell by roughly half, with no rule changing.** The
+  earlier numbers were an artefact of datasets written for the balanced stance.
+  What the recall-first default actually costs:
+
+  | | leak rate | over-redaction (was) |
+  |---|---|---|
+  | `ja-core` | 0.00% | **3.11%** (6.34%) |
+  | `en-core` | 0.67% | **1.44%** (2.95%) |
+  | `zh-core` | 0.00% | **4.00%** (11.71%) |
+
+  Entity precision rose with it: `ja` 0.868 to 0.908, `en` 0.900 to 0.938, `zh`
+  0.844 to 0.900. The quality floors were tightened to match.
+
+- **`PrivacySession` no longer takes `config=`.** The architecture test found
+  it: the application layer was reaching through configuration to every adapter
+  in the project. Build a session from settings with `MamoriConfig.session()`,
+  which is the direction the dependency was always supposed to run.
+
+- **`OpenAICompatibleProvider` takes an `LLMEndpoint`** rather than loose
+  keyword arguments, and gained `health_check()`. Errors still never repeat the
+  prompt, the answer, or the server's response body.
+
+- **`MAMORI_*` is reserved for settings, and the error now says so.** An unknown
+  one is still refused -- that is what catches a misspelled privacy variable --
+  but the message no longer leaves a reader wondering why their API key
+  variable broke the CLI. The value is never echoed.
+
+### Fixed
+
+- The `docs/architecture.md` layer table now matches what the code does, and a
+  test fails if it stops matching again.
+
 ## [0.4.0] - 2026-08-29
 
 Two themes: lean harder towards catching everything, and build the prompt layer
@@ -246,7 +338,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Nananananana/mamori/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Nananananana/mamori/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Nananananana/mamori/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nananananana/mamori/compare/v0.1.0...v0.2.0

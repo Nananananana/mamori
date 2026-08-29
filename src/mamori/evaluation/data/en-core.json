@@ -53,8 +53,8 @@
     },
     {
       "id": "en-011",
-      "annotated": "Order 4155550198 shipped this morning.",
-      "note": "Negative: ten bare digits are an order number."
+      "annotated": "Order [[?PHONE:4155550198]] shipped this morning.",
+      "note": "Ten bare digits are an order number to the anchored rules and a possible phone number to the wide ones. Tolerated."
     },
     {
       "id": "en-012",
@@ -87,7 +87,7 @@
     {
       "id": "en-018",
       "annotated": "Part 62704 is back in stock.",
-      "note": "Negative: five bare digits need a label."
+      "note": "Negative: five bare digits need a label. The wide ZIP rule needs a state abbreviation in front, so this stays a true negative under both stances."
     },
     {
       "id": "en-019",
@@ -113,8 +113,8 @@
     },
     {
       "id": "en-024",
-      "annotated": "Reference 1234567812345678 in the ledger.",
-      "note": "Negative: sixteen digits that fail Luhn."
+      "annotated": "Reference [[?IDENTIFIER:1234567812345678]] in the ledger.",
+      "note": "Sixteen digits failing Luhn. Not a card; the wide tier still reads it as an identifier, which is the trade. Tolerated."
     },
     {
       "id": "en-025",

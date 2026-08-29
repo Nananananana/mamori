@@ -31,12 +31,17 @@ import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .domain.entity_types import Category
 from .domain.policy import Action, PrivacyPolicy
 from .domain.stance import Stance
 from .errors import ConfigurationError
+from .llm_settings import LLMSettings
+
+if TYPE_CHECKING:  # imported for types only; the runtime import stays lazy
+    from .application.session import PrivacySession
+    from .ports.mapping_store import MappingStore
 from .prompts.library import PromptLibrary, default_library
 
 __all__ = ["MamoriConfig", "load_config_file"]
@@ -73,6 +78,9 @@ class MamoriConfig:
             sections to replace. This is where an organisation puts what the
             library cannot know: that their case numbers look like ACME-12345,
             or that a product name keeps coming back as a person.
+        llm: A model to run as a final detection pass, on this machine or on
+            the network. ``None`` means patterns only, which is what every
+            release before this one did and remains a complete configuration.
     """
 
     locales: tuple[str, ...] | None = None
@@ -85,6 +93,7 @@ class MamoriConfig:
     co_occurrence_min_confidence: float = 0.85
     mask_token: str = "[REDACTED]"  # noqa: S105 - a redaction marker, not a credential
     prompts: Mapping[str, object] = field(default_factory=dict)
+    llm: LLMSettings | None = None
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -106,7 +115,13 @@ class MamoriConfig:
         )
 
     def detectors(self) -> tuple[Any, ...]:
-        """The detector set these settings describe."""
+        """The detector set these settings describe.
+
+        Raises:
+            ConfigurationError: an unknown locale or provider, or an endpoint
+                outside its trust boundary. Raised here rather than on the
+                first document, so a misconfigured model is found at startup.
+        """
         from .infrastructure.detectors import CoOccurrencePass, build_pipeline
 
         pass_ = (
@@ -114,7 +129,39 @@ class MamoriConfig:
             if self.co_occurrence
             else None
         )
-        return (build_pipeline(self.locales, co_occurrence=pass_, stance=self.stance),)
+        return (
+            build_pipeline(
+                self.locales,
+                co_occurrence=pass_,
+                stance=self.stance,
+                extra_passes=self.llm_passes(),
+            ),
+        )
+
+    def llm_passes(self) -> tuple[Any, ...]:
+        """The model pass these settings describe, or nothing.
+
+        Built here rather than inside the pipeline so that a caller who wants
+        to supply their own provider object -- one this configuration could not
+        name, because it holds a loaded model or a client with credentials --
+        can skip this entirely and pass the pass in directly.
+        """
+        if self.llm is None or not self.llm.model:
+            return ()
+
+        from .infrastructure.detectors.llm_pass import LLMDetectionPass
+        from .infrastructure.llm import create_provider
+
+        provider = create_provider(self.llm.provider, self.llm.endpoint())
+        return (
+            LLMDetectionPass(
+                provider,
+                library=self.prompt_library(),
+                locales=self.llm.locales if self.llm.locales else self.locales,
+                require_model=self.llm.require_model,
+                max_input_characters=self.llm.max_input_characters,
+            ),
+        )
 
     def prompt_library(self) -> PromptLibrary:
         """The prompts these settings describe, overlays applied.
@@ -126,6 +173,42 @@ class MamoriConfig:
         from .prompts.library import PromptLibrary as _Library
 
         return _Library.from_mapping(self.prompts) if self.prompts else default_library()
+
+    def session(
+        self,
+        *,
+        policy: PrivacyPolicy | None = None,
+        store: MappingStore | None = None,
+        scope: str | None = None,
+    ) -> PrivacySession:
+        """Build a :class:`~mamori.application.session.PrivacySession`.
+
+        Args:
+            policy: Overrides the policy the settings would produce. The CLI
+                uses it for ``--permissive``; nothing else should need it.
+            store: Where mappings live. ``None`` means memory, which is the
+                only place they go unless a caller says otherwise.
+            scope: Partition key, so two tenants cannot read each other back.
+
+        Settings assemble a session; a session does not read settings. That
+        direction is what keeps the application layer from depending on the
+        adapters a configuration names, and it is checked by
+        ``tests/test_architecture.py``.
+
+        Raises:
+            ConfigurationError: an unknown locale or provider, an endpoint
+                outside its trust boundary, or a broken prompt overlay. Raised
+                here rather than on the first document.
+        """
+        from .application.session import PrivacySession
+
+        return PrivacySession(
+            detectors=self.detectors(),
+            policy=self.policy() if policy is None else policy,
+            store=store,
+            scope=scope,
+            prompts=self.prompt_library(),
+        )
 
     def replace(self, **changes: object) -> MamoriConfig:
         """Return a copy with some fields changed."""
@@ -175,6 +258,14 @@ class MamoriConfig:
             kwargs["mask_token"] = str(values["mask_token"])
         if "prompts" in values:
             kwargs["prompts"] = _as_prompts(values["prompts"])
+        if "llm" in values:
+            raw_llm = values["llm"]
+            if raw_llm is None:
+                kwargs["llm"] = None
+            elif isinstance(raw_llm, Mapping):
+                kwargs["llm"] = LLMSettings.from_mapping(raw_llm)
+            else:
+                raise ConfigurationError("llm must be a mapping or null")
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -184,21 +275,39 @@ class MamoriConfig:
         ``MAMORI_LOCALES=ja,en``, ``MAMORI_MIN_CONFIDENCE=0.7``,
         ``MAMORI_CO_OCCURRENCE=off``, ``MAMORI_DEFAULT_ACTION=block``.
 
+        The whole ``MAMORI_`` prefix is reserved for settings, and an unknown
+        one is an error rather than something ignored -- a misspelled privacy
+        variable that silently does nothing is the worst outcome there is. That
+        makes the prefix a poor place to keep an API key, so the error says so.
+
         Raises:
             ConfigurationError: an unknown ``MAMORI_*`` variable, or a value of
                 the wrong shape.
         """
         source = os.environ if environ is None else environ
         values: dict[str, object] = {}
+        origins: dict[str, str] = {}
         for key, raw in source.items():
             if not key.startswith(_ENV_PREFIX):
                 continue
             name = key[len(_ENV_PREFIX) :].lower()
+            origins[name] = key
             if name == "locales":
                 values["locales"] = [part.strip() for part in raw.split(",") if part.strip()]
             else:
                 values[name] = raw
-        return cls.from_mapping(values)
+        try:
+            return cls.from_mapping(values)
+        except ConfigurationError as exc:
+            known = {f.name for f in cls.__dataclass_fields__.values()}
+            stray = sorted(origins[name] for name in values if name not in known)
+            if not stray:
+                raise
+            raise ConfigurationError(
+                f"{exc} The MAMORI_ prefix is reserved for settings, so "
+                f"{', '.join(stray)} cannot be used for anything else -- an API "
+                "key variable, for instance, needs a name outside the prefix."
+            ) from exc
 
     def merged_with(self, other: MamoriConfig) -> MamoriConfig:
         """Overlay ``other`` on this config, keeping ``other`` where it differs.
