@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from types import TracebackType
+from typing import TYPE_CHECKING
 
 from ..domain.policy import PrivacyPolicy
 from ..ports.detector import Detector
@@ -13,6 +14,9 @@ from .protection import ProtectionService
 from .restoration import RestorationService
 from .results import ProtectionResult, RestorationResult
 from .streaming import StreamingRestorer
+
+if TYPE_CHECKING:
+    from ..config import MamoriConfig
 
 __all__ = ["PrivacySession"]
 
@@ -44,24 +48,38 @@ class PrivacySession:
         store: MappingStore | None = None,
         scope: str | None = None,
         locales: Sequence[str] | str | None = None,
+        config: MamoriConfig | None = None,
     ) -> None:
         """
         Args:
             detectors: Replaces the default detector set entirely.
-            policy: Defaults to :meth:`PrivacyPolicy.default`.
+            policy: Defaults to the one ``config`` describes.
             store: Defaults to an in-memory store.
             scope: Defaults to a generated identifier.
             locales: Language pack codes to enable, e.g. ``["ja", "en"]``.
                 ``None`` enables all of them, which is the safer default: an
                 unexpected language in a document is exactly the case nobody
                 redacted by hand. Ignored when ``detectors`` is given.
+            config: Every switch in one object -- language packs, policy,
+                confidence floor, co-occurrence. It supplies the defaults for
+                the arguments above, and an explicit argument still wins, so a
+                caller can load a shared config and override one thing.
         """
+        from ..config import MamoriConfig as _MamoriConfig
         from ..infrastructure.detectors import default_detectors
         from ..infrastructure.storage import InMemoryMappingStore
 
+        settings = config if config is not None else _MamoriConfig()
+        self._config = settings
+
         self._store: MappingStore = store if store is not None else InMemoryMappingStore()
-        self._policy = policy if policy is not None else PrivacyPolicy.default()
-        self._detectors = tuple(detectors) if detectors is not None else default_detectors(locales)
+        self._policy = policy if policy is not None else settings.policy()
+        if detectors is not None:
+            self._detectors: tuple[Detector, ...] = tuple(detectors)
+        elif locales is not None:
+            self._detectors = default_detectors(locales)
+        else:
+            self._detectors = tuple(settings.detectors())
         self._scope = scope or f"session-{uuid.uuid4().hex[:12]}"
         self._protection = ProtectionService(self._detectors, self._policy, self._store)
         self._restoration = RestorationService(self._store)
@@ -74,6 +92,11 @@ class PrivacySession:
     @property
     def policy(self) -> PrivacyPolicy:
         return self._policy
+
+    @property
+    def config(self) -> MamoriConfig:
+        """The settings this session was built from."""
+        return self._config
 
     def protect(self, text: str) -> ProtectionResult:
         """Detect sensitive values in ``text`` and replace them.

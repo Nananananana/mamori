@@ -19,6 +19,7 @@ from __future__ import annotations
 from .application.results import EntityReport, ProtectionResult, RestorationResult
 from .application.session import PrivacySession
 from .application.streaming import StreamingRestorer, StreamSummary
+from .config import MamoriConfig, load_config_file
 from .domain.entity_types import Category, EntityType, register_type
 from .domain.placeholder import Placeholder
 from .domain.policy import Action, PrivacyPolicy
@@ -32,7 +33,7 @@ from .errors import (
     StorageError,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Action",
@@ -42,6 +43,7 @@ __all__ = [
     "DetectionError",
     "EntityReport",
     "EntityType",
+    "MamoriConfig",
     "MamoriError",
     "Placeholder",
     "PolicyViolationError",
@@ -54,5 +56,6 @@ __all__ = [
     "StreamSummary",
     "StreamingRestorer",
     "__version__",
+    "load_config_file",
     "register_type",
 ]

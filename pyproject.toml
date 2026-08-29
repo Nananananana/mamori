@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mamori"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first privacy layer for generative AI. Detect and pseudonymize secrets before they reach an external LLM, and restore them locally afterwards."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -77,6 +77,13 @@ python_version = "3.10"
 files = ["src/mamori"]
 strict = true
 warn_unreachable = true
+
+# tomllib arrived in 3.11. The import is guarded at runtime and the caller gets
+# a clear message telling them to use JSON, but mypy pinned to 3.10 cannot see
+# a module that does not exist there.
+[[tool.mypy.overrides]]
+module = "tomllib"
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["src/mamori"]
