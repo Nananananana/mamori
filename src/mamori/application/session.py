@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from types import TracebackType
 
 from ..domain.corrections import CorrectionLog
+from ..domain.placeholder import PlaceholderStyle
 from ..domain.policy import PrivacyPolicy
 from ..ports.detector import Detector
 from ..ports.mapping_store import MappingStore
@@ -49,6 +50,7 @@ class PrivacySession:
         prompts: PromptLibrary | None = None,
         corrections: CorrectionLog | None = None,
         surrogate_types: frozenset[str] = frozenset(),
+        placeholder_style: PlaceholderStyle = PlaceholderStyle.ANGLE,
         trace: bool = False,
     ) -> None:
         """
@@ -67,6 +69,13 @@ class PrivacySession:
                 credential cannot be ruled away.
             trace: Record every candidate the pipeline considered and what
                 became of it, on ``ProtectionResult.trace``. Off by default.
+            placeholder_style: Which brackets go into the protected text.
+                ``<PERSON_001>`` by default. ``SQUARE`` for HTML and XML, where
+                the default form is an unknown element rather than a word: a
+                browser drops it and a model asked to edit the document is
+                being shown a tag. Restoration accepts every form whatever this
+                is set to, because a placeholder's identity is its
+                ``(type, index)`` pair and the brackets are surface.
             surrogate_types: Types replaced by a plausible value rather than a
                 token. Empty by default. Read
                 :mod:`mamori.domain.surrogate` before turning it on: an
@@ -95,6 +104,7 @@ class PrivacySession:
             self._store,
             self._corrections,
             surrogate_types=frozenset(surrogate_types),
+            placeholder_style=placeholder_style,
             trace=trace,
         )
         self._restoration = RestorationService(self._store)

@@ -8,6 +8,73 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-30
+
+Deployment. Three things a team needs before this is allowed near production,
+and none of them is a detection rule.
+
+### Added
+
+- **`mamori lint`** -- the values that reach a model through a *repository*
+  rather than through this library. A prompt template with a real address in
+  it, a fixture built from a support ticket, a notebook whose output cell still
+  holds the query that produced it.
+
+  ```bash
+  mamori lint                     # this directory
+  mamori lint src prompts --json  # for a machine
+  ```
+
+  It reports a path and a line number, **never a value** -- these outputs land
+  in CI logs, which are archived, searchable and often more widely readable
+  than the repository. It **fails on credentials and reports the rest**: a
+  leaked key is an incident, a customer's name in a fixture is a decision
+  somebody should make on purpose, and a linter that exits non-zero for both
+  teaches people to pass `--no-verify`. `--fail-on any` is there for a
+  repository that has made the other decision.
+
+- **`placeholder_style`** -- `angle` (the default, `<PERSON_001>`), `square`
+  (`[PERSON_001]`) or `curly`. `<PERSON_001>` inside an HTML or XML document is
+  an unknown element: a browser drops it, a parser may drop the text around it,
+  and a model asked to edit the document is being shown a tag rather than a
+  token. Restoration has always been permissive about surface form, so a
+  document protected in one style restores through a session configured for
+  another -- identity is the `(type, index)` pair and the brackets are surface.
+
+- **`uncertain="refuse"`** -- the fail-closed stance. The default resolves
+  doubt in favour of sending: a detection below `min_confidence` is discarded
+  and the text goes out with the value in it. Refusing stops instead, for a
+  deployment where the cost of a leak is not measured in answer quality. The
+  refusal names types and confidences, never values.
+
+  It does nothing at the default `min_confidence` of `0.0`, because nothing is
+  below zero. The two settings are one dial: `min_confidence` says where
+  certainty runs out and `uncertain` says what happens there.
+
+- **A name split across two keys.** `{"first_name": "Jane", "last_name": "Doe"}`
+  -- each half is a word, and there is no prose to reach it with, because the
+  structure is carrying the meaning a salutation would carry in a sentence.
+  They stay two values: reassembling them would put a full name where the
+  application expects a given name.
+
+### Fixed
+
+- **A URL was a credential.** `github.com/owner/repo/blob/main/docs/...` is a
+  long run of exactly the characters a base64 key is made of, and the wide
+  secret rule's left guard did not exclude a preceding dot. Found by pointing
+  `mamori lint` at this repository's own documentation, which is what a linter
+  is for: 910 findings became 66, and 42 credentials became 1 -- a `hunter2` in
+  an ADR example, which is correct.
+
+  No corpus number moved. The fix is free.
+
+### The last item in proposal 0002's plan
+
+`mamori.yml` was declined in that proposal and stays declined
+([ADR 0012](docs/adr/0012-configuration-without-a-format.md)). Everything else
+on the deployment list is now here, three releases after it was first written
+down and twice postponed by things that turned out to matter more.
+
 ## [0.18.0] - 2026-08-30
 
 Two leaks, found by looking at the shape of the payload rather than at the
@@ -1458,7 +1525,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/Nananananana/mamori/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/Nananananana/mamori/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/Nananananana/mamori/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/Nananananana/mamori/compare/v0.15.0...v0.16.0

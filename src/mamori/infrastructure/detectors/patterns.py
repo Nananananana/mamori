@@ -416,6 +416,25 @@ _STRUCTURED_KEYS: tuple[PatternRule, ...] = (
         "姓名",
         "担当者",
     ),
+    # A name split across two keys. Each half on its own is a word -- `Jane`,
+    # `Doe`, `太郎` -- and no prose rule was ever going to reach it, because
+    # there is no prose: the structure is carrying the meaning that a
+    # salutation would carry in a sentence. Both halves are replaced
+    # separately and restore separately, which is correct: they are two
+    # values in two fields, and reassembling them into one placeholder would
+    # put a full name where the application expects a given name.
+    _json_key_rule(
+        t.PERSON,
+        "first_name",
+        "last_name",
+        "given_name",
+        "family_name",
+        "surname",
+        "forename",
+        "middle_name",
+        "名",
+        "姓",
+    ),
     _json_key_rule(
         t.COMPANY_NAME,
         "company",
@@ -459,7 +478,11 @@ _WIDE_SECRET = compile_rule(
     # POSIX path is a long run of these characters, and `/srv/shared/notes/
     # customer-notes` was being reported as a credential. Found in a corpus of
     # assembled prompts, where a path is in the header of every passage.
-    r"(?<![A-Za-z0-9+/=_\-])(?=[A-Za-z0-9+/_\-]{32,})"
+    # A dot on the left as well as the rest: `github.com/owner/repo/blob/main/...`
+    # is a URL, and its path is a long run of exactly these characters. Found by
+    # pointing `mamori lint` at this repository's own documentation, which is
+    # the sort of thing a linter is for.
+    r"(?<![A-Za-z0-9+/=_.\-])(?=[A-Za-z0-9+/_\-]{32,})"
     r"(?=[A-Za-z0-9+/_\-]*[a-z])(?=[A-Za-z0-9+/_\-]*[A-Z])(?=[A-Za-z0-9+/_\-]*[0-9])"
     r"[A-Za-z0-9+_\-][A-Za-z0-9+/_\-]{31,}={0,2}(?![A-Za-z0-9+/=_\-])",
     LOW,

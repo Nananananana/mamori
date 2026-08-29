@@ -309,6 +309,65 @@ mamori demo --scenario agent
 
 ---
 
+## 在提交之前
+
+通过**代码仓库**到达模型的值，从来没有经过这个库。一份写着真实地址的提示词模板、
+一份从工单里做出来的测试夹具、一个输出单元格里还留着查询内容的笔记本。
+
+```bash
+mamori lint
+```
+
+```text
+prompts/renewal.md:14: PERSON (0.90, en) J*******
+prompts/renewal.md:14: EMAIL (1.00, universal) j**********@e******.com
+fixtures/ticket.json:3: PHONE (0.90, en) 4***********
+
+3 finding(s) in 2 file(s); 0 credential(s).
+```
+
+**它从不打印值。** 这些输出会落进 CI 日志——日志会被归档、可被检索，而且往往比
+仓库本身被更多人读到。
+
+**遇到凭据才失败，其余只报告。** 泄漏一把密钥是事故；夹具里有客户姓名，是应该由
+人有意做出的决定。两种情况都让构建失败的检查器，只会教会大家用 `--no-verify`。
+为已经做了相反决定的仓库准备了 `--fail-on any`。
+
+把它对准本仓库自己的文档，第一次运行就找出一个缺陷：GitHub 的 URL，正好是一长串
+和 base64 密钥完全相同的字符。
+
+## 当你宁愿被拦下
+
+默认情况下，拿不准会倒向「发出去」：低于 `min_confidence` 的检测被丢弃，文本带着
+值离开。为法务、医疗，以及一切**泄漏代价无法用回答质量衡量**的场合：
+
+```python
+MamoriConfig(min_confidence=0.85, uncertain="refuse")
+```
+
+```text
+PolicyViolationError: 1 detection(s) below the confidence threshold and this
+policy refuses rather than discards them (closest 0.50); nothing sent
+```
+
+只有类型和置信度，绝不含值。在默认的 `min_confidence=0.0` 下它什么也不做——因为
+没有东西低于零。这两个设置是同一个旋钮：一个说确定性在哪里到头，另一个说到头之后
+怎么办。
+
+## 不会被当成标签的占位符
+
+HTML 文档里的 `<PERSON_001>` 是一个未知元素：浏览器会把它丢掉，而被要求编辑这份
+文档的模型，看到的是一个标签而不是一个记号。
+
+```python
+MamoriConfig(placeholder_style="square")   # [PERSON_001]
+```
+
+无论这个设置是什么，还原都接受所有形式，所以用一种风格保护的文档，可以在配置为
+另一种风格的会话里还原。占位符的身份是 `(类型, 序号)`，括号只是表面。
+
+---
+
 ## 语言支持
 
 日语、英语、中文，同一篇文档里混排也可以：
@@ -891,6 +950,7 @@ infrastructure ──> ports
 `v0.16` 让代理有了会话，并验证了一个搁置四个版本的论断——它是对的。
 `v0.17` 把语料对准了「没有人打出来的提示词」，找出四个缺陷；其中三个与组装提示词无关，已经存在了好几个版本。
 `v0.18` 发现**工具调用的参数从来就没有被保护过**。
+`v0.19` 是面向部署的版本，它带来的检查器第一次运行就找出了本仓库自己的一个缺陷。
 
 | | |
 |---|---|

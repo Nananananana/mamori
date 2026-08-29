@@ -14,7 +14,22 @@ from types import MappingProxyType
 
 from .entity_types import Category, EntityType
 
-__all__ = ["Action", "PrivacyPolicy"]
+__all__ = ["Action", "PrivacyPolicy", "Uncertain"]
+
+
+class Uncertain(Enum):
+    """What a detection below ``min_confidence`` does.
+
+    The name is the question. A detector said "there might be a person here,
+    and I am 0.4 sure". Discarding that is a bet that it was wrong; refusing is
+    a bet that being stopped costs less than being wrong. Which bet is right
+    depends on what is in the document, so it is a setting rather than a rule.
+    """
+
+    #: Drop it. The text goes out with the value still in it.
+    DISCARD = "discard"
+    #: Refuse the text. Nothing goes out.
+    REFUSE = "refuse"
 
 
 class Action(Enum):
@@ -70,6 +85,22 @@ class PrivacyPolicy:
             The default is ``0.0`` and must stay there. Lowering coverage is a
             decision for whoever is handling the data, not a default they
             inherit without being asked.
+        uncertain: What to do with a detection below ``min_confidence``.
+
+            ``DISCARD`` is the default and everything before 0.19 did it: an
+            uncertain detection is treated as never having been found, and the
+            text goes out with the value in it.
+
+            ``REFUSE`` stops the text instead. It is for a deployment that
+            would rather send nothing than send something it is not sure
+            about -- a legal team, a clinical setting, anywhere the cost of a
+            leak is not measured in answer quality. The refusal names the
+            types and the confidences, never the values.
+
+            It does nothing at the default ``min_confidence`` of ``0.0``,
+            because nothing is below zero. The two settings are one dial:
+            ``min_confidence`` says where certainty runs out and ``uncertain``
+            says what happens there.
     """
 
     rules: MappingABC[str, Action] = field(default_factory=dict)
@@ -77,6 +108,7 @@ class PrivacyPolicy:
     default_action: Action = Action.BLOCK
     mask_token: str = "[REDACTED]"  # noqa: S105 - a redaction marker, not a credential
     min_confidence: float = 0.0
+    uncertain: Uncertain = Uncertain.DISCARD
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.min_confidence <= 1.0:

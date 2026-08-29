@@ -9,8 +9,8 @@ from ..domain.corrections import CorrectionLog
 from ..domain.entity_types import PLACEHOLDER_LITERAL
 from ..domain.mapping import Mapping
 from ..domain.normalization import NormalizedText
-from ..domain.placeholder import STRICT_PLACEHOLDER_RE, Placeholder
-from ..domain.policy import Action, PrivacyPolicy
+from ..domain.placeholder import STRICT_PLACEHOLDER_RE, Placeholder, PlaceholderStyle
+from ..domain.policy import Action, PrivacyPolicy, Uncertain
 from ..domain.resolution import (
     assert_non_overlapping,
     resolve_overlaps,
@@ -44,6 +44,7 @@ class ProtectionService:
         store: MappingStore,
         corrections: CorrectionLog | None = None,
         surrogate_types: frozenset[str] = frozenset(),
+        placeholder_style: PlaceholderStyle = PlaceholderStyle.ANGLE,
         trace: bool = False,
     ) -> None:
         self._corrections = corrections if corrections is not None else CorrectionLog()
@@ -51,6 +52,9 @@ class ProtectionService:
         #: by default, and deliberately: an unrestored placeholder is obvious
         #: and an unrestored surrogate reads as a fact about the wrong person.
         self._surrogate_types = frozenset(surrogate_types)
+        #: Which brackets go into the protected text. Identity is the
+        #: (type, index) pair either way, so restoration is unaffected.
+        self._placeholder_style = placeholder_style
         #: Record what was considered and discarded. Off by default: it
         #: costs a list of every candidate, and nothing in the normal path
         #: reads it.
@@ -81,6 +85,7 @@ class ProtectionService:
         builder = TraceBuilder() if self._trace else None
 
         confident: list[SensitiveEntity] = []
+        uncertain: list[SensitiveEntity] = []
         for entity in detections:
             if not self._policy.accepts(entity.confidence.value):
                 _note(
@@ -89,6 +94,7 @@ class ProtectionService:
                     Outcome.BELOW_CONFIDENCE,
                     f"below min_confidence {self._policy.min_confidence}",
                 )
+                uncertain.append(entity)
                 continue
             if self._corrections.excludes(entity):
                 _note(
@@ -96,6 +102,18 @@ class ProtectionService:
                 )
                 continue
             confident.append(entity)
+
+        # A deployment can ask to be stopped rather than to have the doubt
+        # resolved in favour of sending. Checked before resolution and before
+        # anything is substituted, so nothing has been built when it fires.
+        if uncertain and self._policy.uncertain is Uncertain.REFUSE:
+            raise PolicyViolationError(
+                tuple(
+                    (e.entity_type.name, e.span.start, e.span.end)
+                    for e in sorted(uncertain, key=lambda e: e.confidence.value)
+                ),
+                _uncertain_message(uncertain),
+            )
 
         if builder is None:
             resolved = resolve_overlaps(confident)
@@ -179,7 +197,11 @@ class ProtectionService:
             else:  # ANONYMIZE
                 mapping = self._allocate(entity, scope, text)
                 placeholder = mapping.placeholder
-                replacement = mapping.substituted
+                # A surrogate is a value and goes in as it stands; a token is
+                # rendered in whichever brackets this session asked for. Its
+                # identity is the (type, index) pair either way, which is why
+                # restoration does not have to know what was chosen.
+                replacement = mapping.surface or self._styled(placeholder)
 
             pieces.append(text[cursor : entity.span.start])
             pieces.append(replacement)
@@ -229,6 +251,10 @@ class ProtectionService:
         )
         self._store.put(mapping)
         return mapping
+
+    def _styled(self, placeholder: Placeholder) -> str:
+        """The token as it goes into the protected text."""
+        return placeholder.rendered(self._placeholder_style)
 
     def _surface_for(self, type_name: str, index: int, scope: str, text: str) -> str:
         """A surrogate to substitute, or empty for the placeholder token.
@@ -294,4 +320,18 @@ def _note(
         confidence=entity.confidence.value,
         outcome=outcome,
         detail=detail,
+    )
+
+
+def _uncertain_message(uncertain: list[SensitiveEntity]) -> str:
+    """Why the text was refused: how many, and how close. Never a value.
+
+    An operator reading this needs to know what to look at and how near it came
+    to the threshold. Quoting the value back would put it in a log, which is
+    the one place this library is trying to keep it out of.
+    """
+    closest = max(e.confidence.value for e in uncertain)
+    return (
+        f"{len(uncertain)} detection(s) below the confidence threshold and this "
+        f"policy refuses rather than discards them (closest {closest:.2f}); nothing sent"
     )

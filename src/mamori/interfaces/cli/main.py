@@ -9,6 +9,7 @@
     mamori prompt   -- show exactly what would be sent to a model
     mamori llm      -- where the model is, and whether it answers
     mamori serve    -- an OpenAI-compatible endpoint that protects as it forwards
+    mamori lint     -- values in files that should not have been committed
     mamori privacy  -- what this configuration actually does with your data
     mamori trace    -- why something was replaced, and why something was not
     mamori correct  -- rule on a value the detectors got wrong
@@ -224,6 +225,44 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="how many conversations may be held at once (default 64)",
     )
+
+    lint_cmd = sub.add_parser(
+        "lint", help="find values in files that should not have been committed"
+    )
+    add_config_args(lint_cmd)
+    lint_cmd.add_argument(
+        "paths", nargs="*", default=["."], help="files or directories (default: .)"
+    )
+    lint_cmd.add_argument(
+        "--fail-on",
+        choices=["credential", "any", "never"],
+        default="credential",
+        help="what makes this exit non-zero. 'credential' (the default) fails on a "
+        "secret and reports the rest: a leaked key is an incident, a name in a "
+        "fixture is a decision somebody should make on purpose, and a linter that "
+        "fails on both teaches people to skip it",
+    )
+    lint_cmd.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="skip paths matching this, repeatable",
+    )
+    lint_cmd.add_argument(
+        "--types",
+        default="",
+        metavar="A,B",
+        help="only report these entity types",
+    )
+    lint_cmd.add_argument(
+        "--max-bytes",
+        type=int,
+        default=1_000_000,
+        help="skip files larger than this (default 1000000)",
+    )
+    lint_cmd.add_argument("--verbose", action="store_true", help="list what was skipped")
+    lint_cmd.add_argument("--json", action="store_true", help="emit JSON")
 
     privacy_cmd = sub.add_parser(
         "privacy", help="what this configuration actually does with your data"
@@ -698,6 +737,36 @@ def _cmd_audit(args: argparse.Namespace) -> int:
     print("Neither is automatically a bug, and both are worth knowing. Run this")
     print("against your own text with --file to see which rules matter to you.")
     return _EXIT_OK
+
+
+def _cmd_lint(args: argparse.Namespace) -> int:
+    """Scan files, and decide whether what was found should stop a build."""
+    from pathlib import Path
+
+    from .linting import lint_paths, report
+
+    paths = [Path(p) for p in args.paths]
+    missing = [p for p in paths if not p.exists()]
+    if missing:
+        for path in missing:
+            print(f"error: no such path: {path}", file=sys.stderr)
+        return _EXIT_ERROR
+
+    findings, skipped = lint_paths(
+        _settings_from(args),
+        paths,
+        exclude=args.exclude,
+        max_bytes=args.max_bytes,
+        types=[t for t in args.types.split(",") if t],
+    )
+    root = paths[0] if len(paths) == 1 and paths[0].is_dir() else None
+    report(findings, skipped, root=root, as_json=args.json, verbose=args.verbose)
+
+    if args.fail_on == "never" or not findings:
+        return _EXIT_OK
+    if args.fail_on == "any":
+        return _EXIT_BLOCKED
+    return _EXIT_BLOCKED if any(f.is_credential for f in findings) else _EXIT_OK
 
 
 def _cmd_privacy(args: argparse.Namespace) -> int:
@@ -1317,6 +1386,7 @@ _COMMANDS = {
     "prompt": _cmd_prompt,
     "llm": _cmd_llm,
     "serve": _cmd_serve,
+    "lint": _cmd_lint,
     "privacy": _cmd_privacy,
     "trace": _cmd_trace,
     "audit": _cmd_audit,

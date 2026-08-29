@@ -340,6 +340,73 @@ its sentence and no further. See
 
 ---
 
+## Before it is committed
+
+The values that reach a model through a *repository* never pass through this
+library at all. A prompt template with a real address in it, a fixture built
+from a support ticket, a notebook whose output cell still holds the query that
+produced it.
+
+```bash
+mamori lint
+```
+
+```text
+prompts/renewal.md:14: PERSON (0.90, en) J*******
+prompts/renewal.md:14: EMAIL (1.00, universal) j**********@e******.com
+fixtures/ticket.json:3: PHONE (0.90, en) 4***********
+
+3 finding(s) in 2 file(s); 0 credential(s).
+```
+
+**It never prints a value.** These outputs land in CI logs, which are archived,
+searchable and often more widely readable than the repository itself.
+
+**It fails on credentials and reports the rest.** A leaked key is an incident.
+A customer's name in a fixture is a decision somebody should make on purpose,
+and a linter that exits non-zero for both teaches people to pass `--no-verify`.
+`--fail-on any` is there for a repository that has made the other decision.
+
+Pointed at this repository's own documentation, it found a bug on the first
+run: a GitHub URL is a long run of exactly the characters a base64 key is made
+of, and the wide secret rule was reporting one as a credential.
+
+## When you would rather be stopped
+
+The default resolves doubt in favour of sending: a detection below
+`min_confidence` is discarded, and the text goes out with the value in it. For
+a legal team, a clinical setting, anywhere the cost of a leak is not measured
+in answer quality:
+
+```python
+MamoriConfig(min_confidence=0.85, uncertain="refuse")
+```
+
+```text
+PolicyViolationError: 1 detection(s) below the confidence threshold and this
+policy refuses rather than discards them (closest 0.50); nothing sent
+```
+
+Types and confidences, never values. It does nothing at the default
+`min_confidence` of `0.0`, because nothing is below zero — the two settings are
+one dial, and this is the half that says what happens where certainty runs out.
+
+## A placeholder that is not a tag
+
+`<PERSON_001>` inside an HTML document is an unknown element: a browser drops
+it, and a model asked to edit the document is being shown a tag rather than a
+token.
+
+```python
+MamoriConfig(placeholder_style="square")   # [PERSON_001]
+```
+
+Restoration accepts every form whatever this is set to, so a document protected
+in one style restores through a session configured for another. A placeholder's
+identity is its `(type, index)` pair; the brackets are surface.
+
+---
+
 ## Languages
 
 Japanese, English and Chinese, in one document if that is what you have:
@@ -970,7 +1037,9 @@ had been invisible since the first release. `v0.16` gave the proxy conversations
 and checked a four-release-old argument that turned out to be correct. `v0.17`
 pointed a corpus at prompts nobody typed and found four bugs, three of which had
 nothing to do with assembled prompts and had been there for releases. `v0.18`
-found that a tool call's arguments had never been protected at all.
+found that a tool call's arguments had never been protected at all. `v0.19` is
+the deployment release, and its linter found a bug in this repository on its
+first run.
 
 | | |
 |---|---|

@@ -45,10 +45,20 @@ class PolicyViolationError(MamoriError):
     Carries only entity *types* and offsets, never the offending values.
     """
 
-    def __init__(self, violations: tuple[tuple[str, int, int], ...]) -> None:
+    def __init__(self, violations: tuple[tuple[str, int, int], ...], reason: str = "") -> None:
+        """
+        Args:
+            violations: ``(type name, start, end)`` per offending span.
+            reason: Why the policy stopped this, when it was not simply the
+                action for the type -- an uncertain detection under a
+                fail-closed policy, for instance. Types and offsets only, like
+                everything else here.
+        """
         summary = ", ".join(f"{name}@{start}:{end}" for name, start, end in violations)
-        super().__init__(f"blocked by policy: {summary}")
+        detail = f"{reason}: {summary}" if reason else f"blocked by policy: {summary}"
+        super().__init__(detail)
         self.violations = violations
+        self.reason = reason
 
 
 class AnonymizationError(MamoriError):

@@ -14,6 +14,11 @@
    "id": "en-agent-002",
    "note": "The tool definition around the call. The name, the schema and the enum are structure: replacing one breaks the call rather than the sentence. The example in the description is a real address in a real deployment.",
    "annotated": "{\"name\": \"send_email\", \"description\": \"Send mail. Example: to=[[EMAIL:j.smith@example.com]]\", \"parameters\": {\"type\": \"object\", \"required\": [\"to\"], \"properties\": {\"to\": {\"type\": \"string\", \"description\": \"recipient\"}, \"priority\": {\"enum\": [\"low\", \"high\"]}}}}"
+  },
+  {
+   "id": "en-agent-003",
+   "note": "A name split across two keys. Each half on its own is a word, and there is no prose to reach it with -- the structure is carrying the meaning a salutation would carry in a sentence. Both halves stay two values, because reassembling them would put a full name where a given name is expected.",
+   "annotated": "{\"first_name\": \"[[PERSON:Jane]]\", \"last_name\": \"[[PERSON:Doe]]\", \"locale\": \"en-GB\", \"consent\": true}"
   }
  ]
 }

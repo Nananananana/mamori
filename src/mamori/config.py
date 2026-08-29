@@ -35,7 +35,8 @@ from typing import TYPE_CHECKING, Any
 
 from .domain.corrections import CorrectionLog
 from .domain.entity_types import Category
-from .domain.policy import Action, PrivacyPolicy
+from .domain.placeholder import PlaceholderStyle
+from .domain.policy import Action, PrivacyPolicy, Uncertain
 from .domain.stance import Stance
 from .errors import ConfigurationError
 from .llm_settings import LLMSettings
@@ -87,6 +88,17 @@ class MamoriConfig:
             log, or the entries themselves. This is the only setting that can
             *reduce* what is detected, and what it excludes is reported by
             ``mamori privacy``. A credential can never be excluded.
+        uncertain: ``"discard"`` (the default) or ``"refuse"``. What to do
+            with a detection below ``min_confidence``: drop it and send the
+            text, or stop. Refusing does nothing at the default
+            ``min_confidence`` of ``0.0``, because nothing is below zero --
+            the two settings are one dial, and this is the half that says
+            what happens where certainty runs out.
+        placeholder_style: ``"angle"`` (the default, ``<PERSON_001>``),
+            ``"square"`` (``[PERSON_001]``) or ``"curly"`` (``{PERSON_001}``).
+            Square brackets for HTML and XML, where the default form is an
+            unknown element rather than a word. Restoration accepts all three
+            whatever this is, so changing it does not strand anything.
         surrogates: Entity types replaced by a plausible value rather than by a
             token -- ``["PERSON", "EMAIL"]``, or ``true`` for every type a pool
             covers. Off by default. It buys answer quality and costs the thing
@@ -107,6 +119,8 @@ class MamoriConfig:
     llm: LLMSettings | None = None
     corrections: str | Sequence[Mapping[str, object]] = ()
     surrogates: bool | Sequence[str] = False
+    placeholder_style: str = "angle"
+    uncertain: str = "discard"
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -125,6 +139,7 @@ class MamoriConfig:
             default_action=self.default_action,
             mask_token=self.mask_token,
             min_confidence=self.min_confidence,
+            uncertain=self.uncertainty(),
         )
 
     def detectors(self, *, provider: LLMProvider | None = None) -> tuple[Any, ...]:
@@ -275,8 +290,39 @@ class MamoriConfig:
             prompts=self.prompt_library(),
             corrections=self.correction_log(),
             surrogate_types=self.surrogate_types(),
+            placeholder_style=self.style(),
             trace=trace,
         )
+
+    def uncertainty(self) -> Uncertain:
+        """What happens to a detection below the confidence threshold.
+
+        Raises:
+            ConfigurationError: an unrecognised name.
+        """
+        try:
+            return Uncertain(self.uncertain)
+        except ValueError:
+            known = ", ".join(sorted(choice.value for choice in Uncertain))
+            raise ConfigurationError(
+                f"unknown uncertain {self.uncertain!r}; known: {known}"
+            ) from None
+
+    def style(self) -> PlaceholderStyle:
+        """The placeholder style, resolved.
+
+        Raises:
+            ConfigurationError: an unrecognised name. A typo here would send a
+                document out in a form the caller did not choose, which is
+                exactly the class of silent mistake this module refuses.
+        """
+        try:
+            return PlaceholderStyle(self.placeholder_style)
+        except ValueError:
+            known = ", ".join(sorted(style.value for style in PlaceholderStyle))
+            raise ConfigurationError(
+                f"unknown placeholder_style {self.placeholder_style!r}; known: {known}"
+            ) from None
 
     def replace(self, **changes: object) -> MamoriConfig:
         """Return a copy with some fields changed."""

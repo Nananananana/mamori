@@ -23,6 +23,7 @@ list has moved every time.
 | 0.16 — conversations | 0.16 — conversations | with a token the server mints, not a salt |
 | 0.17 — the assembled prompt | 0.17 — the assembled prompt | the first version number this document got right |
 | 0.18 — deployment | 0.18 — the agent-shaped payload | an audit found a leak; deployment moved to 0.19 |
+| 0.19 — deployment | 0.19 — deployment | the linter found a bug in this repository on its first run |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -143,17 +144,35 @@ by audit outranks a feature on the plan.** Both of these had been present for
 releases and neither was in any roadmap, because a roadmap is written from what
 you already know to look at.
 
-### 0.19 — Deployment
+### 0.19 — Deployment *(delivered)*
 
-Carried from proposal 0002, twice postponed, unchanged and still wanted:
+Carried from proposal 0002, twice postponed, and all four of it shipped: the
+fail-closed stance (`uncertain="refuse"`), the CI linter (`mamori lint`), the
+placeholder style for HTML, and a name split across two JSON keys.
 
-- The fail-closed stance: a detection below the confidence threshold escalates
-  to `BLOCK` rather than being dropped, for a deployment that would rather stop
-  than miss.
-- The CI linter: scan files — prompt templates, fixtures, notebooks — for
-  values that should not be committed.
-- `<PERSON_001>` inside an HTML document reads as an unknown tag.
-- A name split across two JSON keys.
+The linter found a bug on its first run against this repository's own
+documentation — a GitHub URL is a long run of exactly the characters a base64
+key is made of — which is a fair summary of what a linter is for.
+
+### Next
+
+Nothing is scheduled, and that is deliberate rather than an omission. Five
+releases in a row, the thing worth building was found by generating data or
+auditing what already existed, and none of them was on a list beforehand. The
+standing plan is therefore: **measure something that has not been measured, and
+fix what that turns up.** Candidates, in rough order of how likely they are to
+be worth it:
+
+- A corpus of *replies* at the scale prose got in 0.14 — restoration has 1002
+  generated fixtures against detection's thousands, and the last two releases
+  both found restoration-side bugs by accident rather than by looking.
+- The anchorless name, which is the largest measured gap left (`en-docs` 3.50%,
+  `en-context` 9.69% on the generated set) and is not a regular-expression
+  problem.
+- The optional Japanese morphological adapter, still unrun, still the right
+  experiment.
+- Whether a model above 8B changes the model-tier table, still blocked on
+  hardware.
 
 ### Not scheduled, and honestly so
 
