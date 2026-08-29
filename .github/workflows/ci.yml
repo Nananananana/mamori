@@ -50,11 +50,12 @@ jobs:
       - name: Install
         run: python -m pip install --upgrade pip pip-audit && python -m pip install -e ".[dev]"
 
-      # --skip-editable: mamori itself is installed editable and is not on PyPI,
-      # so --strict would fail on the package being audited rather than on a
-      # vulnerable dependency.
+      # mamori itself is installed editable and is not on PyPI, so it cannot be
+      # audited and has to be skipped. --strict would then fail on that skip
+      # rather than on a vulnerability, so it is left off: pip-audit still
+      # exits non-zero whenever a dependency has a known advisory.
       - name: Audit
-        run: python -m pip_audit --strict --skip-editable
+        run: python -m pip_audit --skip-editable
 
   lint:
     name: lint and types
