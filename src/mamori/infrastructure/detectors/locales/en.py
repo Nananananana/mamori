@@ -48,7 +48,26 @@ def ssn_valid(value: str) -> bool:
 
 _TITLES = r"(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sir|Madam)"
 _NAME = r"[A-Z][a-z]+(?:['\-][A-Z]?[a-z]+)*"
-_FULL_NAME = _NAME + r"(?:\s+" + _NAME + r"){0,2}"
+#: Whitespace that is not a line break. A name is written on one line, and
+#: joining name-words with ``\s+`` makes a heading and the first word of the
+#: next paragraph into "Firstname Lastname" -- which never happens in a
+#: 44-character sample and happens in every document with headings in it.
+_GAP = r"[^\S\r\n]+"
+
+#: Words a sentence starts with, spelled out here so the company rule can
+#: refuse to begin at one. "Where Umbrella Ltd discloses..." is a company name
+#: with an ordinary word stuck to the front of it, and because the wider span
+#: wins overlap resolution the ordinary word gets redacted too. Invisible in a
+#: one-line sample where the company name starts the sentence; unavoidable in
+#: prose, where it usually does not.
+_OPENER = (
+    r"(?:The|A|An|This|That|These|Those|Our|Your|Their|Its|His|Her|We|I|You|"
+    r"He|She|It|They|There|Here|Where|When|While|Whereas|If|Each|Any|All|Both|"
+    r"Either|Neither|Please|Note|Where|Such|Said|Between|With|For|From|To|By|"
+    r"Under|Upon|Subject|Notices|Charges|Payment|Confidentiality|Termination)"
+)
+
+_FULL_NAME = _NAME + r"(?:" + _GAP + _NAME + r"){0,2}"
 
 _STREET_TYPES = (
     r"Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct"
@@ -107,7 +126,8 @@ RULES: tuple[PatternRule, ...] = (
     ),
     compile_rule(
         t.COMPANY_NAME,
-        r"(?<![A-Za-z])[A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,3}"
+        r"(?<![A-Za-z])(?!" + _OPENER + r"\s)"
+        r"[A-Z][A-Za-z0-9&.\-]*(?:" + _GAP + r"(?!" + _OPENER + r"\s)[A-Z][A-Za-z0-9&.\-]*){0,3}"
         r"\s*,?\s*(?:Inc|Corp|Corporation|Company|Ltd|Limited|LLC|LLP|PLC|GmbH|S\.A|AG|NV|BV)"
         r"\.?(?![A-Za-z])",
         MEDIUM,
@@ -175,6 +195,13 @@ _NOT_NAME_WORDS = frozenset({
     "Note", "Action", "Next", "Steps", "Agenda", "Minutes", "Draft", "Final",
     "New", "Old", "First", "Second", "Third", "Last", "Annual", "Monthly",
     "Weekly", "Daily", "North", "South", "East", "West", "Group", "Board",
+    # Legal suffixes. Nobody is called Ltd. Without these the wide name rule
+    # reads "Umbrella Ltd" as a person and, being the wider span, takes it from
+    # the anchored company rule -- so the value is protected under the wrong
+    # type, with the wrong placeholder, under a different policy category.
+    "Ltd", "Limited", "Inc", "Corp", "Corporation", "Co", "LLC",
+    "LLP", "PLC", "GmbH", "AG", "SA", "NV", "BV", "Pty", "Holdings",
+    "Partners", "Associates", "Ventures", "Industries", "Technologies",
     "Contract", "Agreement", "Policy", "Terms", "Conditions", "Data", "System",
 })
 # fmt: on
@@ -191,7 +218,7 @@ WIDE_RULES: tuple[PatternRule, ...] = (
     # running prose and not; the stoplist buys back most of the precision.
     compile_rule(
         t.PERSON,
-        r"(?<![A-Za-z0-9.])" + _NAME + r"(?:\s+" + _NAME + r"){1,2}(?![A-Za-z0-9])",
+        r"(?<![A-Za-z0-9.])" + _NAME + r"(?:" + _GAP + _NAME + r"){1,2}(?![A-Za-z0-9])",
         LOW,
         validator=_plausible_latin_name,
         tier=RuleTier.WIDE,

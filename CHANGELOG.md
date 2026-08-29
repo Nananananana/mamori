@@ -8,6 +8,92 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-29
+
+Every quality number this project published came from 123 samples with a median
+length of 28 to 44 characters. mamori is for documents. This release measures
+it at the length people actually send things, and the rules did not survive
+first contact.
+
+### Added
+
+- **`en-docs`, `ja-docs`, `zh-docs`: business documents at real length.** Reply
+  chains with quoted blocks, meeting minutes with attendee lists, support
+  tickets with log excerpts, a CV, a contract extract, a technical note with
+  almost nothing to protect, and a document with an instruction to a model
+  buried in it. The core sets are unchanged -- they are good regression guards
+  and cheap to run -- and the floors now cover all six. See
+  [ADR 0025](docs/adr/0025-measure-at-the-length-people-send.md).
+
+- **An anchored katakana name rule**, at the *core* tier: a middle dot, an
+  honorific, or a label. `ジョンさん` was not detected by any rule before this
+  release, while `ホスト` was reported as a person.
+
+- **A project name after `プロジェクト` without a colon**, which is how it is
+  written in a heading.
+
+### Fixed
+
+Four detection bugs, every one of them invisible at 44 characters and serious
+in prose:
+
+- **A name spanned a blank line.** The wide English name rule joined its words
+  with `\s+`, so a heading and the first word of the next paragraph became
+  `Headcount\n\nOne` -- a person. Every document with headings in it.
+
+- **A legal suffix read as a surname.** `Umbrella Ltd` matched the wide name
+  rule and `Where Umbrella Ltd` matched it more widely still, so the anchored
+  company rule lost the span to a shape guess: the value was protected under
+  the wrong type, with the wrong placeholder, under a different policy
+  category, and an ordinary word was redacted with it.
+
+- **An address at the end of a sentence was missed.** The internal-IP rule
+  refused any trailing dot, to avoid matching the first four parts of
+  `1.2.3.4.5`. A full stop is also a trailing dot, so `on 10.0.4.31.` found
+  nothing. An address is never followed by a full stop in a one-line sample and
+  usually is in a document.
+
+- **The Japanese wide name rule reported 37 loanwords as people** across eight
+  documents -- ホスト, プール, ゲートウェイ, ノード, エンジニア -- and not one
+  true positive the anchored rules did not already have. It was filtered by a
+  stoplist whose own comment admitted it "will never be complete".
+
+  It was fixed by deleting the rule, not by extending the list. Japanese
+  business writing coins loanwords faster than anybody maintains a list, so
+  such a list encodes one author's vocabulary and is wrong for the next
+  document. **A bare katakana run is not weak evidence of a name; it is no
+  evidence of one, and the wide tier is for weak evidence rather than for
+  none.**
+
+- **The proxy answered an unknown path without reading the request body**, so a
+  client that sent one could see a reset connection instead of the 404 it was
+  given.
+
+### Changed
+
+- **Nothing regressed and the fragment sets improved too:**
+
+  | recall-first | leak | over-redaction | precision |
+  |---|---|---|---|
+  | `en-core` | 0.67% (unchanged) | 1.44% -> **0.78%** | 0.938 -> **0.979** |
+  | `ja-core` | 0.00% (unchanged) | 3.11% -> **2.42%** | 0.908 -> **0.937** |
+  | `ja-docs` | -- | 6.08% -> **1.06%** | 0.600 -> **0.934** |
+
+- **Documents leak several times more than fragments, and it is published.** At
+  the default stance `en-docs` leaks 3.55% against `en-core` at 0.67%, and
+  `zh-docs` 6.11% against `zh-core` at 0.00%. The old figures were not wrong;
+  read alone they described the library at its easiest.
+
+- **At the balanced stance, `en-docs` leaks 20.29%** -- a fifth of the
+  sensitive characters, because a document is full of names with nothing
+  anchored beside them. It is pinned as a floor so it stays visible rather than
+  being discovered by somebody's deployment, and it is the strongest evidence
+  this project has for why recall-first is the default.
+
+- The quality floors are keyed by dataset rather than by locale, and there are
+  twelve. A rule change that helps sentences and hurts documents turns the
+  build red, which nothing could do before.
+
 ## [0.8.0] - 2026-08-29
 
 The operator gets the last word. Until now everything mamori did was decided by
@@ -603,7 +689,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Nananananana/mamori/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Nananananana/mamori/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Nananananana/mamori/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Nananananana/mamori/compare/v0.5.0...v0.6.0

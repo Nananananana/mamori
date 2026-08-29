@@ -277,7 +277,8 @@ class TestBundledDatasets:
         assert {d.locale for d in bundled_datasets()} == {"ja", "en", "zh"}
 
     def test_filtering_by_locale(self) -> None:
-        assert [d.locale for d in bundled_datasets("ja")] == ["ja"]
+        locales = [d.locale for d in bundled_datasets("ja")]
+        assert locales and set(locales) == {"ja"}
 
     def test_an_unknown_locale_yields_nothing(self) -> None:
         assert bundled_datasets("kl") == ()
@@ -295,18 +296,44 @@ class TestBundledDatasets:
                 assert "[[" not in sample.text
                 assert "]]" not in sample.text
 
-    def test_datasets_have_negative_samples(self) -> None:
-        """Without unlabelled text, over-redaction is unmeasurable."""
+    def test_every_dataset_has_enough_ordinary_text_to_measure_against(self) -> None:
+        """Without ordinary characters, over-redaction has no denominator.
+
+        Counted in characters rather than in samples, because the two tiers
+        supply it differently: the core sets have whole sentences that are
+        negative, and the document sets have paragraphs of ordinary prose
+        around the values. Both are the same thing to the score.
+        """
         for dataset in bundled_datasets():
-            unlabelled = [s for s in dataset if not s.annotations]
-            assert len(unlabelled) >= 3, f"{dataset.name} has too few negatives"
+            sensitive = sum(len(s.sensitive_characters) for s in dataset)
+            total = sum(len(s.text) for s in dataset)
+            ordinary = total - sensitive
+            assert ordinary >= total * 0.4, (
+                f"{dataset.name} is {sensitive}/{total} sensitive characters -- "
+                "too little ordinary text for over-redaction to mean anything"
+            )
 
     def test_the_primary_languages_are_the_larger_sets(self) -> None:
         """Japanese and English are the primary targets; Chinese is secondary."""
-        sizes = {d.locale: len(d) for d in bundled_datasets()}
+        sizes: dict[str, int] = {}
+        for dataset in bundled_datasets():
+            sizes[dataset.locale] = sizes.get(dataset.locale, 0) + len(dataset)
         assert sizes["ja"] >= 40
         assert sizes["en"] >= 40
         assert sizes["zh"] >= 20
+
+    def test_both_scales_are_represented(self) -> None:
+        """Sentence fragments and documents measure different things.
+
+        A 44-character sample cannot show what a heading does to a name rule,
+        what a signature block does to propagation, or what happens to a
+        document long enough to be windowed. Measuring only one scale is how
+        the rules came to have three bugs that nothing caught for eight
+        versions.
+        """
+        lengths = [len(s.text) for d in bundled_datasets() for s in d]
+        assert min(lengths) < 100, "no short samples"
+        assert max(lengths) > 800, "no document-scale samples"
 
 
 class TestToleratedSpans:

@@ -415,7 +415,10 @@ class TestFailingClosed:
         assert service.received == []
 
     def test_an_upstream_failure_becomes_a_gateway_error(self) -> None:
-        with RunningProxy("http://127.0.0.1:1/v1/") as proxy:
+        # An explicit short timeout: connecting to a closed port is refused
+        # immediately on some platforms and left to time out on others, and a
+        # test that waits five minutes for the default is a test nobody runs.
+        with RunningProxy("http://127.0.0.1:1/v1/", timeout=2.0) as proxy:
             status, body = proxy.post(chat("hello"))
         assert status == 502
         assert "upstream" in body["error"]["message"]

@@ -180,6 +180,16 @@ RULES: tuple[PatternRule, ...] = (
         LOW,
         group=1,
     ),
+    # プロジェクトあおぞら -- the word "project" is the anchor whether or not a
+    # colon follows it, and in a heading it usually does not. The name must not
+    # start with a particle, or プロジェクトの進捗 becomes a codename called
+    # "の進捗".
+    compile_rule(
+        t.PROJECT_NAME,
+        r"プロジェクト(?![名コード])(?![のはがをにでとやへも、。])([^\s,;。、:：]{2,20})",
+        LOW,
+        group=1,
+    ),
     # 田中さん, 佐藤 花子様. The honorific is matched by lookahead so it stays in
     # the output: <PERSON_001>さん reads far better to a model than a bare token.
     compile_rule(
@@ -204,56 +214,44 @@ RULES: tuple[PatternRule, ...] = (
         MEDIUM,
         validator=_plausible_name,
     ),
-    # ジョン・スミス -- a katakana full name joined by a middle dot.
+    # ジョン・スミス -- a katakana full name joined by a middle dot. The dot is
+    # a Japanese convention for foreign personal names specifically, which
+    # makes it evidence rather than shape.
     compile_rule(t.PERSON, r"[ァ-ヶー]{2,10}・[ァ-ヶー]{2,10}", MEDIUM),
+    # ジョンさん, マイケル様. An honorific is the same evidence an honorific
+    # always is, and until 0.9 no rule applied it to katakana at all -- so
+    # ジョンさん was missed while ホスト and プール were reported as people.
+    compile_rule(
+        t.PERSON,
+        r"(?<![ァ-ヶー])[ァ-ヶ][ァ-ヶー・]{1,14}(?=" + _HONORIFIC_ALT + r")",
+        MEDIUM,
+    ),
+    # 氏名: マイケル, 担当: ジョン. A label is evidence too.
+    compile_rule(
+        t.PERSON,
+        r"(?:氏名|名前|担当者?|宛先|差出人|報告者)\s*[:：]\s*"
+        r"([ァ-ヶ][ァ-ヶー・]{1,14})",
+        MEDIUM,
+        group=1,
+    ),
 )
 
 # --- Wide tier ------------------------------------------------------------
 
-# fmt: off
-#: Katakana that is a loanword, not a name. Foreign names are written in
-#: katakana, and so is most of the vocabulary of any business document, so the
-#: wide katakana rule without this list turns バージョン and アップデート into
-#: people. Same technique as _NOT_NAMES, same admission: it will never be
-#: complete, which is why the rule is LOW confidence and wide-tier.
-_KATAKANA_NOT_NAMES = frozenset({
-    "プロジェクト", "システム", "サービス", "メール", "アドレス", "データ",
-    "ユーザー", "ユーザ", "バージョン", "アップデート", "ファイル", "フォルダ",
-    "サーバー", "サーバ", "ネットワーク", "セキュリティ", "パスワード",
-    "スケジュール", "ミーティング", "レポート", "ドキュメント", "クライアント",
-    "サポート", "テスト", "リリース", "チーム", "マネージャー", "コスト",
-    "リスク", "ステータス", "タスク", "ページ", "サイト", "アカウント",
-    "ログイン", "ログアウト", "コード", "エラー", "メッセージ", "グループ",
-    "センター", "オフィス", "ルーム", "コピー", "チェック", "スタート",
-    "レビュー", "デザイン", "モデル", "ツール", "インストール",
-    "ダウンロード", "アップロード", "バックアップ", "ソフトウェア",
-    "ハードウェア", "コンピュータ", "プログラム", "ブラウザ", "インターネット",
-    "スマートフォン", "パソコン", "プリンタ", "カレンダー", "フォーマット",
-    "オプション", "コメント", "リンク", "ボタン", "メニュー", "タイトル",
-    "コンテンツ", "セッション", "リクエスト", "レスポンス", "データベース",
-    "キャンセル", "スペース", "サンプル", "パターン", "タイミング",
-    "ポリシー", "ルール", "ケース", "パート", "エリア", "レベル",
-    "マイナンバー", "ステージング", "プロダクション", "ブランチ", "コミット",
-    "デプロイ", "ワークフロー", "ダッシュボード", "アラート", "ログ",
-    "カテゴリ", "アイテム", "オーダー", "インボイス", "ベンダー", "パートナー",
-})
-# fmt: on
-
-
-def _not_katakana_word(value: str) -> bool:
-    return value.strip() not in _KATAKANA_NOT_NAMES
-
-
 WIDE_RULES: tuple[PatternRule, ...] = (
-    # A run of katakana. Foreign names are written this way, and so are half
-    # the loanwords in any business document -- hence the stoplist.
-    compile_rule(
-        t.PERSON,
-        r"(?<![ァ-ヶー])[ァ-ヶ][ァ-ヶー]{2,9}(?![ァ-ヶー])",
-        LOW,
-        validator=_not_katakana_word,
-        tier=RuleTier.WIDE,
-    ),
+    # A bare run of katakana used to be here, filtered by a stoplist of
+    # loanwords. It was removed in 0.9 after the document set measured it: 37
+    # false positives across eight documents -- ホスト, プール, ゲートウェイ,
+    # ノード, エンジニア -- and not one true positive that the anchored rules
+    # above did not already have.
+    #
+    # The stoplist could not have been fixed by adding words. Japanese business
+    # writing borrows freely and coins new loanwords constantly, so any such
+    # list encodes one author's vocabulary and is wrong for the next document.
+    # A bare katakana run is not weak evidence of a name; it is no evidence of
+    # one, and the wide tier is for weak evidence rather than for none.
+    #
+    # What replaced it is anchored: a middle dot, an honorific, or a label.
     # A digit run starting 0, unseparated. Order numbers look the same; the
     # core rule refuses them for that reason.
     compile_rule(

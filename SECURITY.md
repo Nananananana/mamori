@@ -91,22 +91,41 @@ fails before a release does.
 
 ### What the numbers actually are
 
-Detection is measured against bundled labelled datasets. Run `mamori eval`
-yourself; as of `0.5.0`, at the default recall-first stance:
+Detection is measured against bundled labelled datasets, at two scales. Run
+`mamori eval` yourself; as of `0.9.0`, at the default recall-first stance:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
-| `ja-core` | 49 | 0.00% | 3.11% | 0.908 / 0.983 |
-| `en-core` | 49 | 0.67% | 1.44% | 0.938 / 0.938 |
-| `zh-core` | 25 | 0.00% | 4.00% | 0.900 / 1.000 |
+| `en-core` | 49 fragments | 0.67% | 0.78% | 0.979 / 0.979 |
+| `ja-core` | 49 fragments | 0.00% | 2.42% | 0.937 / 0.983 |
+| `zh-core` | 25 fragments | 0.00% | 4.00% | 0.900 / 1.000 |
+| `en-docs` | 8 documents | **3.55%** | 0.90% | 0.945 / 0.881 |
+| `ja-docs` | 8 documents | **2.49%** | 1.06% | 0.934 / 0.934 |
+| `zh-docs` | 4 documents | **6.11%** | 0.78% | 0.875 / 0.903 |
+
+**Read the document rows first.** The `-core` sets are sentence fragments with a
+median length of 28 to 44 characters; the `-docs` sets are business documents at
+the length people actually send. Documents leak several times more, because a
+document is full of names with no anchor beside them. Every figure this project
+published before `0.9.0` came from the fragment sets alone, which described
+mamori at its easiest.
 
 At `--stance balanced`, which runs only the anchored rules:
 
 | Set | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|
+| `en-core` | 2.01% | 0.00% | 1.000 / 0.958 |
 | `ja-core` | 0.71% | 0.00% | 1.000 / 0.983 |
-| `en-core` | 2.01% | 0.66% | 1.000 / 0.958 |
 | `zh-core` | 0.00% | 2.55% | 0.964 / 1.000 |
+| `en-docs` | **20.29%** | 0.03% | 1.000 / 0.695 |
+| `ja-docs` | 2.49% | 0.18% | 0.966 / 0.934 |
+| `zh-docs` | 6.11% | 0.59% | 0.903 / 0.903 |
+
+That 20.29% is not a typo. A fifth of the sensitive characters in an English
+document have nothing anchored near them -- a name in an attendee list, a name
+under a sign-off, a name after "Reported by:". It is the clearest reason the
+recall-first stance is the default, and the clearest argument against turning it
+off without measuring your own text first.
 
 *Leak rate* is the share of labelled sensitive characters that no detection
 covered — the part that would have left the machine. *Over-redaction* is the

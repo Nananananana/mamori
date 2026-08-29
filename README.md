@@ -336,9 +336,24 @@ default**:
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall-first** | balanced | **recall-first** |
-| `ja-core` | 0.71% | **0.00%** | 0.00% | **3.11%** |
-| `en-core` | 2.01% | **0.67%** | 0.66% | **1.44%** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **2.42%** |
+| `en-core` | 2.01% | **0.67%** | 0.00% | **0.78%** |
 | `zh-core` | 0.00% | **0.00%** | 2.55% | **4.00%** |
+| `ja-docs` | 2.49% | **2.49%** | 0.18% | **1.06%** |
+| `en-docs` | 20.29% | **3.55%** | 0.03% | **0.90%** |
+| `zh-docs` | 6.11% | **6.11%** | 0.59% | **0.78%** |
+
+The `-docs` rows are the ones to read. They are business documents at the
+length people actually send; the `-core` rows are sentence fragments with a
+median length of 44 characters, and every number this project published before
+`v0.9` came from those alone.
+
+**`en-docs` at the balanced stance leaks 20.29%** — a fifth of the sensitive
+characters — because a document is full of names with nothing anchored beside
+them: in an attendee list, under a sign-off, after "Reported by:". That is the
+clearest reason recall-first is the default, and the clearest argument against
+turning it off before measuring your own text. See
+[ADR 0025](docs/adr/0025-measure-at-the-length-people-send.md).
 
 That is the trade, stated rather than buried. A miss is silent and permanent; a
 false positive is a word visibly replaced that should not have been. Somebody
@@ -530,7 +545,7 @@ mamori eval
 ```text
 ja-core  (ja, 49 samples)
   leak rate             0.00%   (0/561 sensitive chars left uncovered)
-  over-redaction        3.11%   (27/869 ordinary chars replaced)
+  over-redaction        2.42%   (21/869 ordinary chars replaced)
   entity P / R / F1   0.868 / 0.983 / 0.922   (match: overlap)
   clean samples       49/49
 ```
@@ -645,7 +660,8 @@ configuration, and made the layering a test rather than a diagram. `v0.6`
 delivered the proxy, and made the privacy claims answerable and machine-checked.
 `v0.7` measured the model tier for the first time and found it had been
 discarding almost everything the model got right. `v0.8` gave the operator the
-last word.
+last word. `v0.9` grew the datasets to document scale, which found four
+detection bugs that 44-character samples could not have shown.
 
 | | |
 |---|---|

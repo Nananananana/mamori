@@ -28,9 +28,9 @@ from mamori.evaluation import EvaluationReport, MatchMode, bundled_datasets, eva
 
 @dataclass(frozen=True)
 class Floor:
-    """The worst a language is allowed to score under one stance."""
+    """The worst a dataset is allowed to score under one stance."""
 
-    locale: str
+    dataset: str
     stance: Stance
     max_leak_rate: float
     max_over_redaction: float
@@ -39,38 +39,52 @@ class Floor:
 
     @property
     def label(self) -> str:
-        return f"{self.locale}-{self.stance.value}"
+        return f"{self.dataset}-{self.stance.value}"
 
 
 _BALANCED = Stance.BALANCED
 _RECALL = Stance.RECALL_FIRST
 
 FLOORS = (
-    # Core rules only: anchored, precise, and they miss what has no anchor.
-    Floor("ja", _BALANCED, 0.015, 0.02, 0.97, 0.97),
-    Floor("en", _BALANCED, 0.035, 0.02, 0.94, 0.97),
-    Floor("zh", _BALANCED, 0.050, 0.05, 0.95, 0.90),
-    # The shipping default. Leak floors are tight, precision floors are looser,
-    # and that asymmetry is the setting doing its job rather than a regression.
-    # Tightened in 0.5.0 once tolerated spans stopped charging the wide tier for
-    # readings that are correct under the stance that produced them.
-    Floor("ja", _RECALL, 0.005, 0.05, 0.97, 0.85),
-    Floor("en", _RECALL, 0.015, 0.03, 0.92, 0.90),
-    Floor("zh", _RECALL, 0.020, 0.07, 0.95, 0.85),
+    # -- the shipping default ------------------------------------------------
+    # Sentence fragments. Anchors are close by and there is little ordinary
+    # text, so these are the flattering numbers.
+    Floor("en-core", _RECALL, 0.015, 0.020, 0.950, 0.900),
+    Floor("ja-core", _RECALL, 0.005, 0.040, 0.970, 0.880),
+    Floor("zh-core", _RECALL, 0.020, 0.060, 0.950, 0.850),
+    # Documents. The same rules on text at the length people actually send:
+    # headings, signature blocks, attendee lists, quoted replies. Leak rates
+    # are several times higher and these are the honest ones.
+    Floor("en-docs", _RECALL, 0.050, 0.030, 0.850, 0.900),
+    Floor("ja-docs", _RECALL, 0.040, 0.030, 0.900, 0.880),
+    Floor("zh-docs", _RECALL, 0.090, 0.030, 0.870, 0.820),
+    # -- anchored rules only -------------------------------------------------
+    Floor("en-core", _BALANCED, 0.035, 0.010, 0.940, 0.970),
+    Floor("ja-core", _BALANCED, 0.015, 0.010, 0.970, 0.970),
+    Floor("zh-core", _BALANCED, 0.050, 0.040, 0.950, 0.900),
+    # en-docs at 20% is not a typo and not a regression. A fifth of the
+    # sensitive characters in an English document have no anchor near them --
+    # a name in an attendee list, a name under a sign-off, a name after
+    # "Reported by:". It is the strongest evidence in the project for why
+    # recall-first is the default, and it is pinned here so that it stays
+    # visible rather than being quietly discovered by somebody's deployment.
+    Floor("en-docs", _BALANCED, 0.250, 0.010, 0.650, 0.970),
+    Floor("ja-docs", _BALANCED, 0.040, 0.010, 0.900, 0.950),
+    Floor("zh-docs", _BALANCED, 0.090, 0.020, 0.870, 0.880),
 )
 
 
-def report_for(locale: str, stance: Stance = Stance.RECALL_FIRST) -> EvaluationReport:
-    datasets = bundled_datasets(locale)
-    assert datasets, f"no bundled dataset for {locale}"
-    return evaluate(datasets[0], detectors=list(MamoriConfig(stance=stance).detectors()))
+def report_for(dataset: str, stance: Stance = Stance.RECALL_FIRST) -> EvaluationReport:
+    matches = [d for d in bundled_datasets() if d.name == dataset]
+    assert matches, f"no bundled dataset named {dataset}"
+    return evaluate(matches[0], detectors=list(MamoriConfig(stance=stance).detectors()))
 
 
 @pytest.mark.parametrize("floor", FLOORS, ids=lambda f: f.label)
 class TestQualityFloors:
     def test_leak_rate(self, floor: Floor) -> None:
         """The share of labelled sensitive characters that nothing covered."""
-        report = report_for(floor.locale, floor.stance)
+        report = report_for(floor.dataset, floor.stance)
         assert report.leak_rate <= floor.max_leak_rate, (
             f"{floor.label}: {report.leak_rate:.2%} of sensitive characters were not "
             f"covered (floor {floor.max_leak_rate:.2%}); leaking samples: "
@@ -79,19 +93,40 @@ class TestQualityFloors:
 
     def test_over_redaction(self, floor: Floor) -> None:
         """Ordinary text destroyed. Too much of this and nobody keeps using it."""
-        report = report_for(floor.locale, floor.stance)
+        report = report_for(floor.dataset, floor.stance)
         assert report.over_redaction_rate <= floor.max_over_redaction, (
             f"{floor.label}: {report.over_redaction_rate:.2%} of ordinary characters "
             f"were replaced (floor {floor.max_over_redaction:.2%})"
         )
 
     def test_entity_recall(self, floor: Floor) -> None:
-        report = report_for(floor.locale, floor.stance)
+        report = report_for(floor.dataset, floor.stance)
         assert report.overall.recall >= floor.min_recall
 
     def test_entity_precision(self, floor: Floor) -> None:
-        report = report_for(floor.locale, floor.stance)
+        report = report_for(floor.dataset, floor.stance)
         assert report.overall.precision >= floor.min_precision
+
+
+class TestTheTwoScalesDisagree:
+    """Fragments and documents do not measure the same thing.
+
+    Publishing only the fragment numbers overstated this library for eight
+    versions, and the difference is not noise -- it is what a heading, a
+    signature block and an attendee list do to a rule set that was tuned on
+    one-line samples.
+    """
+
+    @pytest.mark.parametrize(("core", "docs"), [("en-core", "en-docs"), ("zh-core", "zh-docs")])
+    def test_documents_leak_more_than_fragments(self, core: str, docs: str) -> None:
+        assert report_for(docs).leak_rate > report_for(core).leak_rate
+
+    def test_the_anchored_rules_fall_apart_on_english_documents(self) -> None:
+        """The evidence for the recall-first default, stated as a test."""
+        balanced = report_for("en-docs", Stance.BALANCED)
+        recall = report_for("en-docs", Stance.RECALL_FIRST)
+        assert balanced.leak_rate > 0.15
+        assert recall.leak_rate < balanced.leak_rate / 4
 
 
 class TestTheStanceActuallyTrades:
@@ -102,26 +137,28 @@ class TestTheStanceActuallyTrades:
     widening coverage would be pure loss. Either is a bug in the tiering.
     """
 
-    @pytest.mark.parametrize("locale", ["ja", "en", "zh"])
-    def test_recall_first_never_leaks_more(self, locale: str) -> None:
+    @pytest.mark.parametrize(
+        "dataset", ["ja-core", "en-core", "zh-core", "ja-docs", "en-docs", "zh-docs"]
+    )
+    def test_recall_first_never_leaks_more(self, dataset: str) -> None:
         """The property the default rests on: wide rules only ever add."""
-        wide = report_for(locale, Stance.RECALL_FIRST)
-        core = report_for(locale, Stance.BALANCED)
-        assert wide.leak_rate <= core.leak_rate
+        assert report_for(dataset, Stance.RECALL_FIRST).leak_rate <= (
+            report_for(dataset, Stance.BALANCED).leak_rate
+        )
 
-    @pytest.mark.parametrize("locale", ["ja", "en"])
-    def test_recall_first_costs_something(self, locale: str) -> None:
-        wide = report_for(locale, Stance.RECALL_FIRST)
-        core = report_for(locale, Stance.BALANCED)
+    @pytest.mark.parametrize("dataset", ["ja-core", "en-core", "en-docs"])
+    def test_recall_first_costs_something(self, dataset: str) -> None:
+        wide = report_for(dataset, Stance.RECALL_FIRST)
+        core = report_for(dataset, Stance.BALANCED)
         assert wide.over_redaction_rate > core.over_redaction_rate
 
     def test_the_default_is_the_recall_first_one(self) -> None:
         assert MamoriConfig().stance is Stance.RECALL_FIRST
 
-    @pytest.mark.parametrize("locale", ["ja", "zh"])
-    def test_nothing_leaks_at_all_under_the_default(self, locale: str) -> None:
-        """Where the datasets can currently be satisfied completely, they are."""
-        assert report_for(locale).leak_rate == 0.0
+    @pytest.mark.parametrize("dataset", ["ja-core", "zh-core"])
+    def test_nothing_leaks_at_all_on_the_fragment_sets(self, dataset: str) -> None:
+        """Where the corpus can currently be satisfied completely, it is."""
+        assert report_for(dataset).leak_rate == 0.0
 
 
 class TestPerTypeCoverage:
@@ -131,21 +168,21 @@ class TestPerTypeCoverage:
     overall average will happily hide it behind the types that do work.
     """
 
-    @pytest.mark.parametrize("locale", ["ja", "en"])
-    def test_no_primary_type_is_completely_unfound(self, locale: str) -> None:
-        report = report_for(locale)
+    @pytest.mark.parametrize("dataset", ["ja-core", "en-core", "ja-docs", "en-docs"])
+    def test_no_primary_type_is_completely_unfound(self, dataset: str) -> None:
+        report = report_for(dataset)
         dead = [
             name for name, score in report.by_type.items() if score.support and not score.recall
         ]
-        assert not dead, f"{locale}: no detection at all for {dead}"
+        assert not dead, f"{dataset}: no detection at all for {dead}"
 
-    @pytest.mark.parametrize("locale", ["ja", "en"])
-    def test_the_common_types_are_reliable(self, locale: str) -> None:
+    @pytest.mark.parametrize("dataset", ["ja-core", "en-core", "ja-docs", "en-docs"])
+    def test_the_common_types_are_reliable(self, dataset: str) -> None:
         """EMAIL and PHONE carry most real traffic and have no excuse."""
-        report = report_for(locale)
+        report = report_for(dataset)
         for type_name in ("EMAIL", "PHONE"):
             score = report.by_type.get(type_name)
-            assert score is not None and score.recall == 1.0, f"{locale}/{type_name}"
+            assert score is not None and score.recall == 1.0, f"{dataset}/{type_name}"
 
 
 class TestExactMatchIsTracked:

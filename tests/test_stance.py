@@ -98,12 +98,55 @@ class TestWideEnglishRules:
         assert wide_values("Springfield, IL 62704", "POSTAL_CODE", "en") == {"62704"}
 
 
-class TestWideJapaneseRules:
-    def test_a_katakana_name_is_now_found(self) -> None:
-        assert "PERSON" in wide_types("スミスに確認してください", "ja")
+class TestKatakanaNeedsAnAnchor:
+    """Removed from the wide tier in 0.9, after measuring what it cost.
 
-    def test_a_katakana_loanword_is_not_a_person(self) -> None:
+    A bare run of katakana used to be a wide-tier PERSON, filtered by a
+    stoplist of loanwords. Eight Japanese documents produced 37 false
+    positives from it -- ホスト, プール, ゲートウェイ, ノード -- and no true
+    positive the anchored rules did not already have. The list could not have
+    been fixed by adding words: Japanese business writing coins loanwords
+    faster than anybody maintains a list, so such a list encodes one author's
+    vocabulary and is wrong for the next document.
+
+    A bare katakana run is not weak evidence of a name. It is no evidence of
+    one, and the wide tier is for weak evidence rather than for none.
+    """
+
+    def test_a_bare_katakana_run_is_not_a_person_at_any_stance(self) -> None:
+        assert "PERSON" not in wide_types("スミスに確認してください", "ja")
+
+    def test_a_loanword_is_certainly_not(self) -> None:
         assert "PERSON" not in wide_types("バージョンをアップデートしました", "ja")
+
+    def test_technical_vocabulary_survives_a_whole_document(self) -> None:
+        text = "ポッドはプールに接続し、ゲートウェイのタイムアウトを待つ。ノードは12台。"
+        assert "PERSON" not in wide_types(text, "ja")
+
+    def test_an_honorific_still_anchors_one(self) -> None:
+        """What replaced it: evidence, not a word list."""
+        from mamori import MamoriConfig
+        from mamori.domain.stance import Stance
+
+        with MamoriConfig(stance=Stance.BALANCED, locales=("ja",)).session() as session:
+            protected = session.protect("ジョンさんに確認してください").protected_text
+        assert "ジョン" not in protected
+
+    def test_a_label_anchors_one(self) -> None:
+        from mamori import MamoriConfig
+        from mamori.domain.stance import Stance
+
+        with MamoriConfig(stance=Stance.BALANCED, locales=("ja",)).session() as session:
+            protected = session.protect("担当: マイケル").protected_text
+        assert "マイケル" not in protected
+
+    def test_a_middle_dot_anchors_one(self) -> None:
+        from mamori import MamoriConfig
+        from mamori.domain.stance import Stance
+
+        with MamoriConfig(stance=Stance.BALANCED, locales=("ja",)).session() as session:
+            protected = session.protect("ジョン・スミスさんが来社されます").protected_text
+        assert "スミス" not in protected
 
     def test_an_unseparated_phone_number_is_now_found(self) -> None:
         assert "PHONE" in wide_types("電話は09012345678です", "ja")

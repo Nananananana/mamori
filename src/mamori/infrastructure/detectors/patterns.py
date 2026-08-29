@@ -191,7 +191,12 @@ _INTERNAL_URL = compile_rule(
 
 _INTERNAL_IP = compile_rule(
     t.INTERNAL_IP,
-    r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])",
+    # The trailing guard rejects a dot only when a digit follows it, so that
+    # "1.2.3.4.5" cannot match its first four parts while "on 10.0.4.31."
+    # still does. Refusing every trailing dot -- which is what this rule did
+    # until 0.9 -- loses every address that ends a sentence, which is most of
+    # them in a document and none of them in a one-line sample.
+    r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d)(?!\.\d)",
     HIGH,
     validator=_private_ip,
 )

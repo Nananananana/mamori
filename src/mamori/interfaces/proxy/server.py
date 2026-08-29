@@ -93,6 +93,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # http.server's naming, not ours
         if self.path.rstrip("/") != CHAT_PATH.rstrip("/"):
+            # The one path that answers without reading the body, so it is the
+            # one that has to read it anyway before replying.
+            self._drain()
             self._fail(
                 HTTPStatus.NOT_FOUND,
                 f"mamori proxies {CHAT_PATH} only. A path it does not understand "
@@ -194,6 +197,30 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _drain(self) -> None:
+        """Read and discard the request body.
+
+        A server that answers without reading what it was sent leaves bytes in
+        the socket, and the client sees a reset connection instead of the
+        refusal it was given. The body is discarded rather than parsed: this is
+        for requests mamori will not forward, and reading it is about closing
+        the exchange politely rather than about looking at it.
+
+        Called only where the body has *not* already been read. Calling it
+        after :meth:`_read_payload` would block waiting for bytes that have
+        already arrived and been consumed.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return
+        remaining = min(max(length, 0), MAX_BODY_BYTES)
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 65536))
+            if not chunk:
+                break
+            remaining -= len(chunk)
 
     def _fail(self, status: HTTPStatus, message: str) -> None:
         """An error in the shape OpenAI clients already know how to read."""
