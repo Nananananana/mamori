@@ -87,6 +87,13 @@ def luhn_valid(value: str) -> bool:
     return total % 10 == 0
 
 
+# A URL ends where URL-legal characters end. Matching "anything but
+# whitespace" is fine in English and wrong everywhere else: it swallows the
+# 「にあります。」 that follows the link in a Japanese sentence, and the
+# over-captured text is then replaced along with the URL.
+_URL_TAIL = r"[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*"
+
+
 def _private_ip(value: str) -> bool:
     try:
         address = ipaddress.ip_address(value)
@@ -147,7 +154,7 @@ _CREDENTIAL_RULES = (
     compile_rule(
         t.DATABASE_URL,
         r"(?<![A-Za-z0-9])(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql)"
-        r"://[^\s\"'<>]+",
+        r"://" + _URL_TAIL,
         CERTAIN,
     ),
     # Assignment form. The value is the group; the keyword is context. The
@@ -169,7 +176,7 @@ _INTERNAL_URL = compile_rule(
     t.INTERNAL_URL,
     r"https?://(?:localhost|127\.0\.0\.1|\[::1\]|[A-Za-z0-9\-]+"
     r"(?:\.[A-Za-z0-9\-]+)*\.(?:local|internal|intra|corp|lan|test))"
-    r"(?::\d{1,5})?(?:/[^\s\"'<>]*)?",
+    r"(?::\d{1,5})?(?:/" + _URL_TAIL + r")?",
     HIGH,
 )
 

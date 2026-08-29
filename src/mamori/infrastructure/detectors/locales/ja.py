@@ -118,7 +118,14 @@ def _plausible_name(value: str) -> bool:
 # の田中. The cost is that a company whose name genuinely contains の
 # (株式会社さくらの森) is truncated. Under-capturing a company name is
 # recoverable; over-capturing hides an unrelated person from every other rule.
-_COMPANY_BODY = r"(?:(?![のはがをにへとでもや])[一-鿿぀-ゟ゠-ヿーA-Za-z0-9]){1,16}"
+# Tempered on particles *and* on the multi-character ones. Single characters
+# alone are not enough: excluding か would break さくら, but excluding the
+# sequence から stops 有限会社みどりから見積 at みどり while leaving さくら
+# intact. Where the two conflict, over-capturing wins -- a company name that
+# runs a few characters long is still fully replaced, while one cut short leaks
+# its tail.
+_COMPANY_STOP = r"の|は|が|を|に|へ|と|で|も|や|から|より|まで|および|ならびに"
+_COMPANY_BODY = r"(?:(?!" + _COMPANY_STOP + r")[一-鿿぀-ゟ゠-ヿーA-Za-z0-9]){1,16}"
 
 RULES: tuple[PatternRule, ...] = (
     # Requires separators or a mobile prefix. A bare run of ten digits is far
@@ -136,14 +143,17 @@ RULES: tuple[PatternRule, ...] = (
         t.ADDRESS,
         r"(?:東京都|北海道|(?:京都|大阪)府|[一-鿿]{2,3}県)"
         r"[一-鿿぀-ゟ゠-ヿ]{1,12}?[市区町村]"
-        r"[一-鿿぀-ゟ゠-ヿ0-9]{0,16}"
-        r"(?:\d+(?:[\-−ー]\d+)*(?:号|番地|番)?)?",
+        # The locality name excludes digits so the block-number group below can
+        # take them. Letting it swallow digits truncates 千代田1-1 to 千代田1,
+        # which reads as a complete address and silently leaks the rest.
+        r"[一-鿿぀-ゟ゠-ヿ]{0,16}"
+        r"(?:\d+(?:[\-−ー]\d+)*(?:丁目|番地|号|番)?)*",
         MEDIUM,
     ),
     compile_rule(
         t.DATE_OF_BIRTH,
         r"(?:生年月日|誕生日)\s*[:：]?\s*"
-        r"(\d{4}\s*[/\-年]\s*\d{1,2}\s*[/\-月]\s*\d{1,2}\s*日?)",
+        r"(\d{4}\s*[/\-年]\s*\d{1,2}\s*[/\-月]\s*\d{1,2}(?:\s*日)?)",
         HIGH,
         group=1,
     ),
@@ -184,7 +194,12 @@ RULES: tuple[PatternRule, ...] = (
         t.PERSON,
         r"(?<![一-鿿])(?:" + _SURNAME_ALT + r")"
         r"(?!" + _NOT_NAME_ALT + r")"
-        r"(?:[ 　]?[一-鿿]{1,3})?(?![一-鿿])",
+        # The given name may not run into an honorific, and the match may end
+        # where one begins. Without both halves, 佐藤花子様 comes back as a
+        # four-character name ending in 様, and the model is asked to write to
+        # somebody called "Hanako-sama-san".
+        r"(?:[ 　]?(?:(?!" + _HONORIFIC_ALT + r")[一-鿿]){1,3})?"
+        r"(?=" + _HONORIFIC_ALT + r"|[^一-鿿]|$)",
         MEDIUM,
         validator=_plausible_name,
     ),
