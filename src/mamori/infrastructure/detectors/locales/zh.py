@@ -162,6 +162,43 @@ RULES: tuple[PatternRule, ...] = (
         LOW,
         group=1,
     ),
+    # 项目夜莺 -- the word "project" is the anchor with or without a colon, and
+    # in a heading there usually is not one. Mirrors the Japanese rule added in
+    # 0.9; `zh-doc-002` leaked a codename for two releases because only one of
+    # the two languages got it.
+    compile_rule(
+        t.PROJECT_NAME,
+        r"项目(?!名称|代号|编号)(?![的是在和与或])([^\s,;。、:：]{2,20})",
+        LOW,
+        group=1,
+    ),
+    # 客户编号, 会员号. The employee-id rule had the internal labels only.
+    compile_rule(
+        t.EMPLOYEE_ID,
+        r"(?:客户编号|客户号|会员编号|会员号|受理号|流水号)\s*[:：]?\s*"
+        r"([A-Za-z0-9\-]{3,24})",
+        HIGH,
+        group=1,
+    ),
+    # A "not preceded by a Han character" guard was tried here in 0.13, to stop
+    # 里程碑 being read as a person called 程碑. It improved zh-core precision
+    # from 0.903 to 0.933 and cost nothing measurable -- and it was reverted
+    # anyway, because a probe outside the corpus showed 这是张伟。 and
+    # 昨天和王强，我们谈过。 losing their names entirely. Chinese has no spaces,
+    # so a name is usually preceded by a Han character, and the datasets happen
+    # to place theirs after punctuation. Trading a visible false positive for
+    # invisible misses is the wrong direction for this library.
+    #
+    # This is the case regular expressions cannot settle, and the reason the
+    # optional morphological adapter is on the roadmap. zh-doc-005 and
+    # zh-doc-006 exist so that the next attempt is measurable.
+    # A 负责人：/收件人： label rule was written for 0.13 and measured out
+    # again the same day. It changed neither the leak rate nor recall on
+    # zh-docs -- the surname rule already reaches every name a label
+    # introduces, because Chinese personal names begin with a character from a
+    # closed set -- and it cost precision by reading 收件人：客服 as a person
+    # called 客服, which is a department. A label is weaker evidence than a
+    # surname dictionary here, which is the opposite of the Japanese case.
     # 张先生, 李明经理. Anchored on a known surname rather than on a preceding
     # boundary, because Chinese has none: 请联系李明经理 offers nothing to
     # anchor the left edge of the name to except the surname itself. The
@@ -191,6 +228,11 @@ RULES: tuple[PatternRule, ...] = (
 WIDE_RULES: tuple[PatternRule, ...] = (
     # The surname rule without the ordinary-word stoplist. 高兴 comes back as a
     # person, and so does the name the stoplist would have swallowed.
+    # The lookbehind is the fragment guard. 程 is a surname and 里程碑 is a
+    # milestone, so without it the rule reports 程碑 -- the tail of a word,
+    # which is never a name in any language. The wide tier accepts noise by
+    # design (高兴 comes back as a person and that is the trade), but a match
+    # starting in the middle of a word is a bug rather than a trade.
     compile_rule(
         t.PERSON,
         r"(?:" + _SURNAME_ALT + r")[一-鿿]{1,2}(?![一-鿿])",

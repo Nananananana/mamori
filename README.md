@@ -308,12 +308,12 @@ default**:
 | | leak rate | | over-redaction | |
 |---|---|---|---|---|
 | | balanced | **recall-first** | balanced | **recall-first** |
-| `ja-core` | 0.69% | **0.00%** | 0.22% | **2.50%** |
+| `ja-core` | 0.68% | **0.00%** | 0.62% | **2.78%** |
 | `en-core` | 1.93% | **0.64%** | 0.00% | **0.72%** |
 | `zh-core` | 0.00% | **0.00%** | 2.29% | **3.59%** |
-| `ja-docs` | 1.83% | **1.83%** | 0.18% | **1.06%** |
+| `ja-docs` | 1.50% | **1.50%** | 0.18% | **1.06%** |
 | `en-docs` | 20.29% | **3.55%** | 0.03% | **0.90%** |
-| `zh-docs` | 6.11% | **6.11%** | 0.59% | **0.78%** |
+| `zh-docs` | 4.41% | **4.41%** | 1.20% | **1.84%** |
 
 The `-docs` rows are the ones to read. They are business documents at the
 length people actually send; the `-core` rows are sentence fragments with a
@@ -822,7 +822,8 @@ discarding almost everything the model got right. `v0.8` gave the operator the
 last word. `v0.9` grew the datasets to document scale, which found four
 detection bugs that 44-character samples could not have shown. `v0.10` added a
 demo that runs, and found a bug in the measurement harness itself. `v0.11`
-added surrogate values, off by default. `v0.12` made it say why.
+added surrogate values, off by default. `v0.12` made it say why. `v0.13` went after Japanese and Chinese, and learned
+more from the two fixes that failed than the two that worked.
 
 | | |
 |---|---|

@@ -97,11 +97,11 @@ Detection is measured against bundled labelled datasets, at two scales. Run
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
 | `en-core` | 52 fragments | 0.64% | 0.72% | 0.980 / 0.980 |
-| `ja-core` | 51 fragments | 0.00% | 2.50% | 0.938 / 0.984 |
+| `ja-core` | 53 fragments | 0.00% | 2.78% | 0.925 / 0.984 |
 | `zh-core` | 27 fragments | 0.00% | 3.59% | 0.903 / 1.000 |
 | `en-docs` | 8 documents | **3.55%** | 0.90% | 0.945 / 0.881 |
-| `ja-docs` | 8 documents | **1.83%** | 1.06% | 0.935 / 0.951 |
-| `zh-docs` | 4 documents | **6.11%** | 0.78% | 0.875 / 0.903 |
+| `ja-docs` | 8 documents | **1.50%** | 1.06% | 0.937 / 0.967 |
+| `zh-docs` | 6 documents | **4.41%** | 1.84% | 0.894 / 0.913 |
 
 **Read the document rows first.** The `-core` sets are sentence fragments with a
 median length of 28 to 44 characters; the `-docs` sets are business documents at
@@ -115,11 +115,11 @@ At `--stance balanced`, which runs only the anchored rules:
 | Set | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|
 | `en-core` | 1.93% | 0.00% | 1.000 / 0.960 |
-| `ja-core` | 0.69% | 0.22% | 1.000 / 0.984 |
+| `ja-core` | 0.68% | 0.62% | 0.984 / 0.984 |
 | `zh-core` | 0.00% | 2.29% | 0.966 / 1.000 |
 | `en-docs` | **20.29%** | 0.03% | 1.000 / 0.695 |
-| `ja-docs` | 1.83% | 0.18% | 0.967 / 0.951 |
-| `zh-docs` | 6.11% | 0.59% | 0.903 / 0.903 |
+| `ja-docs` | 1.50% | 0.18% | 0.967 / 0.967 |
+| `zh-docs` | 4.41% | 1.20% | 0.933 / 0.913 |
 
 That 20.29% is not a typo. A fifth of the sensitive characters in an English
 document have nothing anchored near them -- a name in an attendee list, a name

@@ -57,10 +57,10 @@ FLOORS = (
     # are several times higher and these are the honest ones.
     Floor("en-docs", _RECALL, 0.050, 0.030, 0.850, 0.900),
     Floor("ja-docs", _RECALL, 0.040, 0.030, 0.900, 0.880),
-    Floor("zh-docs", _RECALL, 0.090, 0.030, 0.870, 0.820),
+    Floor("zh-docs", _RECALL, 0.070, 0.040, 0.870, 0.840),
     # -- anchored rules only -------------------------------------------------
     Floor("en-core", _BALANCED, 0.035, 0.010, 0.940, 0.970),
-    Floor("ja-core", _BALANCED, 0.015, 0.010, 0.970, 0.970),
+    Floor("ja-core", _BALANCED, 0.015, 0.020, 0.970, 0.950),
     Floor("zh-core", _BALANCED, 0.050, 0.040, 0.950, 0.900),
     # en-docs at 20% is not a typo and not a regression. A fifth of the
     # sensitive characters in an English document have no anchor near them --
@@ -70,7 +70,7 @@ FLOORS = (
     # visible rather than being quietly discovered by somebody's deployment.
     Floor("en-docs", _BALANCED, 0.250, 0.010, 0.650, 0.970),
     Floor("ja-docs", _BALANCED, 0.040, 0.010, 0.900, 0.950),
-    Floor("zh-docs", _BALANCED, 0.090, 0.020, 0.870, 0.880),
+    Floor("zh-docs", _BALANCED, 0.070, 0.030, 0.870, 0.900),
 )
 
 

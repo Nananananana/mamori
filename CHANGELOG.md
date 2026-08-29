@@ -8,6 +8,78 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-30
+
+Japanese and Chinese, which the document sets have said are the weakest since
+0.9. Four rule changes were tried; two are kept, two were measured out again
+the same day, and the two that failed are the more interesting half.
+
+### Added
+
+- **A Japanese label anchor for Han names.** `差出人: 横山` was missed because
+  the label rule added in 0.9 reached katakana and stopped there, so `ja-doc-006`
+  leaked the same name twice for four releases.
+
+- **`項目X` / `项目X` without a colon**, in Chinese. The Japanese equivalent
+  landed in 0.9 and the Chinese one did not, so `zh-doc-002` leaked a codename
+  for two releases because only one of the two languages got the fix.
+
+- **Customer-facing identifier labels** in both languages -- `お客様番号`,
+  `客户编号`, `受理号` and the rest. The employee-id rules had the internal
+  labels only.
+
+- **Two more Chinese documents**, one of which exists specifically to catch the
+  mistake described below.
+
+### Measured out again
+
+Both of these looked right, improved the numbers, and were reverted.
+
+- **A "not preceded by a Han character" guard**, to stop `里程碑` being read as
+  a person called `程碑`. It lifted `zh-core` precision from 0.903 to 0.933 and
+  cost nothing measurable on any of the six sets.
+
+  It was reverted because a probe *outside* the corpus lost names entirely:
+  `这是张伟。` and `昨天和王强，我们谈过。` both came back untouched. Chinese has
+  no spaces, so a name is usually preceded by a Han character, and the datasets
+  happened to place all of theirs after punctuation. Trading a visible false
+  positive for invisible misses is the wrong direction for this library, and
+  the corpus was not able to say so. `zh-doc-005` exists so that the next
+  attempt is measurable.
+
+  This is the case regular expressions cannot settle, and it is now the
+  concrete argument for the optional morphological adapter rather than a
+  general one.
+
+- **A Chinese `负责人：` label rule.** It changed neither the leak rate nor
+  recall -- the surname rule already reaches every name a label introduces,
+  because Chinese personal names begin with a character from a closed set --
+  and it cost precision by reading `收件人：客服` as a person called "customer
+  service". A label is weaker evidence than a surname dictionary here, which is
+  the opposite of the Japanese case.
+
+### Fixed
+
+- `mamori audit` reported the two new identifier rules as never having fired,
+  within minutes of them being written -- the same failure as 0.12, caught this
+  time by the tool built for it rather than three releases later. Samples added
+  in both languages.
+
+### Changed
+
+Every set is better or unchanged at the default stance, and the two document
+sets that were weakest moved most:
+
+| | leak before → after | recall |
+|---|---|---|
+| `ja-docs` | 1.83% → **1.50%** | 0.951 → **0.967** |
+| `zh-docs` | 6.11% → **4.41%** | 0.903 → **0.913** |
+
+`zh-docs` over-redaction rose from 0.78% to 1.84% and `ja-core` from 2.50% to
+2.78%, because the new samples are harder than the ones they joined rather than
+because anything got worse. That is what a corpus growing towards realism looks
+like.
+
 ## [0.12.0] - 2026-08-30
 
 Saying why. Every detection has recorded which rule found it since 0.1.0 and
@@ -939,7 +1011,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Nananananana/mamori/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nananananana/mamori/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Nananananana/mamori/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Nananananana/mamori/compare/v0.9.0...v0.10.0

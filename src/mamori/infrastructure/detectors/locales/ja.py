@@ -234,6 +234,26 @@ RULES: tuple[PatternRule, ...] = (
         MEDIUM,
         group=1,
     ),
+    # 差出人: 横山, 報告者: 清水. The same label, a Han name. Added in 0.13
+    # after `ja-doc-006` leaked one twice: the label rule reached katakana and
+    # stopped there, which is the sort of gap that only shows up in a document
+    # with a header block in it.
+    compile_rule(
+        t.PERSON,
+        r"(?:氏名|名前|担当者?|宛先|差出人|報告者|申請者|作成者)\s*[:：]\s*"
+        r"([一-鿿]{1,4}(?:[ 　][一-鿿]{1,4})?)",
+        MEDIUM,
+        group=1,
+    ),
+    # お客様番号, 会員番号. The employee-id rule had the internal labels and
+    # not the customer-facing ones, so `ja-doc-006` leaked that too.
+    compile_rule(
+        t.EMPLOYEE_ID,
+        r"(?:お客様番号|顧客番号|会員番号|受付番号|整理番号)\s*[:：]?\s*"
+        r"([A-Za-z0-9\-]{3,24})",
+        HIGH,
+        group=1,
+    ),
 )
 
 # --- Wide tier ------------------------------------------------------------

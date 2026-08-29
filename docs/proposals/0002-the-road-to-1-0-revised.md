@@ -1,14 +1,15 @@
 # 0002. The road to 1.0, revised
 
-**Status:** current plan. Supersedes
+**Status:** current plan, revised after 0.13. Supersedes
 [proposal 0001](0001-the-road-to-1-0.md), which stands as the record of what
 was planned after 0.7 and what came of it.
 
-Revised after eleven releases and a set of proposals from the project owner.
+Written after eleven releases and a set of proposals from the project owner,
+and revised as each lands.
 This document says which of those are adopted, which are adapted, which are
 declined and why, and where the accumulated known problems land.
 
-## What the eleven releases actually taught
+## What the releases so far actually taught
 
 Three things, and they shape everything below.
 
@@ -36,12 +37,12 @@ Written down here because a problem in a changelog is a problem nobody finds.
 | | where it hurts | lands in |
 |---|---|---|
 | A trading name with no legal suffix (`Acme`, `田中商事`) | `en-027`, `ja-020` leak | partly solved by corrections in 0.8; the rest needs context |
-| Chinese personal names are weak by design | `zh-docs` leaks 6.11%, the worst of the six sets | 0.13 |
-| A name with nothing anchored near it | `en-docs` leaks 20.29% at the balanced stance | 0.12, 0.13 |
-| `mamori` cannot say *why* something was, or was not, redacted | every user's first question | **0.12** |
+| Chinese personal names are weak by design | `zh-docs` leaks 4.41% after 0.13, still the worst of the six | 0.14, with the morphological adapter |
+| A name with nothing anchored near it | `en-docs` leaks 20.29% at the balanced stance | open; the recall-first default is the current answer |
+| ~~`mamori` cannot say why something was, or was not, redacted~~ | every user's first question | **done in 0.12** |
 | Placeholders restart per request, so a stateful client loses them | the proxy, documented in ADR 0018 | **0.14** |
-| Overlap resolution prefers severity over confidence | a low-confidence guess can outrank an anchored rule of another type | 0.12, as part of the trace work |
-| The datasets are twenty documents | every published figure | continuous |
+| Overlap resolution prefers severity over confidence | a low-confidence guess can outrank an anchored rule of another type | visible in `mamori trace` since 0.12; still open |
+| The datasets are twenty-two documents | every published figure | continuous |
 | Whether a model above 8B changes the model tier | unanswered; the hardware here times out | when hardware allows |
 | `<PERSON_001>` inside HTML looks like a tag | anyone protecting an HTML payload | 0.15 |
 | A name split across JSON keys is not detected | structured payloads | 0.15 |
@@ -99,7 +100,7 @@ is a small command over machinery that exists.
 the shape of what they replace and draw from reserved ranges where any exist.
 What is left is finer grain: preserving the *format* of a value so a
 `03-1234-5678` becomes another Tokyo-shaped number rather than a mobile one.
-Folded into **0.13** with the Japanese work, where it belongs.
+Folded into the Japanese work, and carried to **0.14** with the rest of it.
 
 **Markdown and JSON structure preservation** — **investigated and largely
 unnecessary**, which is worth stating rather than planning around. Markdown
@@ -129,7 +130,7 @@ That is the whole of what a `mamori.yml` would have added.
 
 ## The plan
 
-### 0.12 — Say why *(next)*
+### 0.12 — Say why *(delivered)*
 
 Every detection already records which rule found it and how confident it was.
 Nothing surfaces that consistently, so "why was this redacted?" has no answer
@@ -148,15 +149,23 @@ the one that matters, and it is the harder one.
   type because it is wider. The trace makes that visible; the datasets say
   whether fixing it helps.
 
-### 0.13 — The weakest languages
+### 0.13 — The weakest languages *(partly delivered)*
 
-Japanese and Chinese at document scale, attacked directly and measured.
+The anchored half landed: a Japanese label anchor for Han names, `项目X` in
+Chinese, customer-facing identifier labels in both, and two more Chinese
+documents. `ja-docs` leak 1.83% → 1.50%, `zh-docs` 6.11% → 4.41%.
 
-- Context rules that anchored patterns cannot express, with the optional
-  morphological adapter behind the port, `mamori[ja]`, published against
-  `ja-docs` — and dropped if it does not win.
-- Format-preserving surrogates, folded in from the proposal.
-- More document-scale Chinese data, which is currently four documents.
+The **context** half did not, and failed informatively. A "not preceded by a
+Han character" guard improved every measured number and lost real names outside
+the corpus, because Chinese has no spaces and the datasets happened to place
+their names after punctuation. It is reverted, `zh-doc-005` now covers the case,
+and the argument for the morphological adapter is concrete rather than general.
+
+Carried to 0.14:
+
+- the optional morphological adapter behind the port, `mamori[ja]`, published
+  against `ja-docs` and dropped if it does not win;
+- format-preserving surrogates.
 
 ### 0.14 — Conversations
 
