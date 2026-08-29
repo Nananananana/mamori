@@ -87,6 +87,74 @@ pack found what.
 `mamori demo` runs a whole round trip, including a reply whose placeholders
 have been mangled, so you can see what recovery looks like.
 
+### Without changing your application
+
+Nobody rewrites a working application to adopt a library. If yours already
+talks to an OpenAI-compatible API, put mamori in front of it and change one
+string:
+
+```bash
+mamori serve --upstream https://api.openai.com/v1/
+```
+
+```text
+mamori proxy on http://127.0.0.1:8100/v1/
+  upstream        https://api.openai.com/v1/
+  detection       all locales, recall_first
+  briefing        prepended
+```
+
+Point the application at `http://127.0.0.1:8100/v1/` and nothing else changes.
+Every message is protected on the way out, the reply is restored on the way
+back, and the proxy logs what it replaced without ever logging a value:
+
+```text
+  1 message(s), replaced EMAILx1, PERSONx1, PHONEx1
+```
+
+Streaming works: a placeholder arriving as `<PER`, `SON_0`, `01>` is held and
+restored as it passes. A blocked credential stops the request instead of
+forwarding it. It binds to this machine only unless you say otherwise, because
+anything that can reach the port can send documents through it. See
+[ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md).
+
+---
+
+## What is this actually doing with my data?
+
+Ask it:
+
+```bash
+mamori privacy
+```
+
+The answer is computed from **your** configuration, not from this README: which
+types are blocked and which are pseudonymized, where a detection model is and
+whether the trust boundary admits it, what is kept and where. Anything that
+widens exposure is a warning and a non-zero exit status, so a deployment check
+can fail on it.
+
+Under that, the claims that hold however you configure it — each printed with
+the name of the test that fails if it stops being true:
+
+```text
+  - Pattern detection contacts nothing. No socket is opened to protect a
+    document with the default detectors.
+    checked by test_promises.py::TestNothingLeavesTheMachine
+```
+
+Those tests are real. `tests/test_promises.py` replaces `socket.connect` with a
+function that raises and then runs the whole default path — every language
+pack, the evaluation harness, the command line — so a future dependency that
+dials out fails in a build rather than in your deployment. The README claims
+are a specification, not a description. See
+[ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md) and
+[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md).
+
+And the last section says what mamori *cannot* check for you — whether the
+service you chose retains your prompts, for one — because a report that implied
+otherwise would be worse than one that stayed quiet.
+
 ---
 
 ## Languages
@@ -494,17 +562,18 @@ Python or the shell.
 detection a pipeline and collected every switch onto one configuration object.
 `v0.4` leaned the default towards catching everything, and built the prompt
 layer. `v0.5` made the model's location and its client library both
-configuration, and made the layering a test rather than a diagram.
+configuration, and made the layering a test rather than a diagram. `v0.6`
+delivered the proxy, and made the privacy claims answerable and machine-checked.
 
 | | |
 |---|---|
-| **v0.6** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. |
 | **v0.7** | Evaluation of the model pass against the same datasets, and prompt tuning driven by those numbers rather than by taste. Everything needed to measure it is already here. |
 | **v0.8** | A Presidio adapter and an opt-in encrypted persistent store. |
 | **v0.9** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
-The proxy is next. Nobody rewrites a working application to adopt a library, and
-a privacy layer that only protects new code protects very little.
+Measuring the model tier is next. It is the one part of this library whose
+quality is asserted rather than measured, and the harness that would settle it
+has been sitting here since `v0.2`.
 
 Language priority is Japanese and English first, Chinese second. The Chinese
 rules exist and are measured; the design for making them good is written up in

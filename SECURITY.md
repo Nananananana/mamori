@@ -71,6 +71,24 @@ Not covered at all: Korean, and every language with no pack. Universal rules
 (email, credentials, card numbers, private addresses) still apply to text in
 those languages; nothing else does.
 
+### Checking it yourself
+
+Two commands answer most of what this document asserts, against your own
+configuration rather than the defaults described here:
+
+```bash
+mamori privacy
+```
+
+It reports what is detected, where text goes, what is kept, and -- separately
+-- what is true however you configure it and what mamori cannot check for you.
+Settings that widen exposure are warnings with a non-zero exit status.
+
+Those construction claims are backed by `tests/test_promises.py`, which
+replaces `socket.connect` with a function that raises and then runs the whole
+default path. If a dependency ever starts contacting something, that suite
+fails before a release does.
+
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets. Run `mamori eval`

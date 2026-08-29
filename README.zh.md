@@ -79,6 +79,69 @@ mamori inspect -f draft.txt
 `mamori demo` 会跑完整的一次往返，其中包含占位符被改动过的回复，
 可以直接看到恢复的效果。
 
+### 不改动你的应用
+
+没有人会为了采用一个库去重写一个正在运行的应用。
+只要你的应用已经在调用 OpenAI 兼容 API，把 mamori 放在前面，改一个字符串即可。
+
+```bash
+mamori serve --upstream https://api.openai.com/v1/
+```
+
+```text
+mamori proxy on http://127.0.0.1:8100/v1/
+  upstream        https://api.openai.com/v1/
+  detection       all locales, recall_first
+  briefing        prepended
+```
+
+把应用指向 `http://127.0.0.1:8100/v1/`，其余什么都不用改。
+每条消息在发出前被保护，回复在返回时被还原。
+代理会记录它替换了什么，但**从不记录值本身**：
+
+```text
+  1 message(s), replaced EMAILx1, PERSONx1, PHONEx1
+```
+
+流式也支持：被切成 `<PER`、`SON_0`、`01>` 的占位符会被暂存并还原。
+如果消息里有凭据，请求会被拦下而不是转发出去。
+默认只监听本机——任何能连到这个端口的人都能把文档送进去。
+参见 [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md)。
+
+---
+
+## 我的数据到底被怎么处理了
+
+问它就好：
+
+```bash
+mamori privacy
+```
+
+答案是从**你的配置**算出来的，不是从这份 README 抄的：
+哪些类型被阻断、哪些被替换，检测模型在哪里、信任边界是否允许它，
+什么被保留、保留在哪里。任何扩大暴露面的设置都会作为警告输出，
+并让退出码非零，方便在部署检查里直接失败。
+
+下面是无论怎么配置都成立的主张，**每一条都带着「一旦不成立就会失败的测试」的名字**：
+
+```text
+  - Pattern detection contacts nothing. No socket is opened to protect a
+    document with the default detectors.
+    checked by test_promises.py::TestNothingLeavesTheMachine
+```
+
+这些测试是真的。`tests/test_promises.py` 把 `socket.connect` 换成会抛异常的函数，
+然后跑完整条默认路径：所有语言包、评测框架、命令行。
+将来如果某个依赖开始往外发请求，它会**在构建时失败**，而不是在你的部署里。
+README 里的主张是规格，不是描述。
+参见 [ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md)、
+[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md)。
+
+最后一节写的是 mamori **无法替你确认**的事情，
+比如你选的那家服务会不会留存你的提示词。
+装作知道的报告，比闭嘴的报告更糟。
+
 ---
 
 ## 语言支持
@@ -453,16 +516,16 @@ infrastructure ──> ports
 `v0.4` 把默认值倒向「不漏」，并搭好了提示词层。
 `v0.5` 把模型的所在位置和客户端库都变成配置项，
 并把分层从一张图变成一个测试。
+`v0.6` 交付了代理，并把隐私主张变成可以查询、且由机器检查的东西。
 
 | | |
 |---|---|
-| **v0.6** | OpenAI 兼容的本地代理，现有应用只改 `base_url` 即可接入。 |
 | **v0.7** | 用同一套评测集测量模型 pass，并据此调整提示词（而不是凭感觉）。测量所需的一切都已就位。 |
 | **v0.8** | Presidio 适配器、可选启用的加密持久化存储。 |
 | **v0.9** | 替身值（`张伟` → `王强`）作为策略选项。 |
 
-下一步是代理。没有人会为了采用一个库去重写一个正在运行的应用，
-而只能保护新代码的隐私层，能保护的范围非常有限。
+下一步是测量模型层。这是本库唯一一处质量靠「主张」而非「测量」支撑的地方，
+而能把它定下来的评测框架，从 `v0.2` 起就已经在那里了。
 
 语言优先级：**日语与英语为主，中文次之**。中文规则已经实现并纳入测量，
 但人名识别有正则表达式在原理上解决不了的部分。相关分析与分阶段方案写在

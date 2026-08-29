@@ -32,9 +32,11 @@ from collections.abc import Sequence
 
 from ...domain.confidence import Confidence
 from ...domain.sensitive_entity import SensitiveEntity
-from ...errors import DetectionError
+from ...domain.span import Span
+from ...domain.windowing import Window, windows
+from ...errors import DetectionError, ProviderError
 from ...ports.detection_pass import DetectionContext
-from ...ports.llm import LLMProvider, LLMRequest
+from ...ports.llm import BatchLLMProvider, LLMProvider, LLMRequest, LLMResponse
 from ...prompts.library import DETECTION_PROMPT_ID, PromptLibrary, default_library
 from ...prompts.parsing import (
     DETECTION_SCHEMA,
@@ -109,44 +111,92 @@ class LLMDetectionPass:
         if not text.strip():
             return []
 
-        if len(text) > self._max_input:
-            # Refusing beats truncating. A scan that quietly covered the first
-            # 8000 characters reports success on a document it never read.
-            if self._require_model:
-                raise DetectionError(
-                    self._name,
-                    ValueError(f"text is {len(text)} characters, limit is {self._max_input}"),
-                )
-            return []
-
-        request = LLMRequest(
-            system=self.rendered_prompt(),
-            user=f"{_TEXT_MARKER}\n{text}",
-            response_schema=DETECTION_SCHEMA if self._provider.supports_structured_output else None,
-        )
+        pieces = windows(text, self._max_input)
+        requests = [self._request(window.text) for window in pieces]
 
         try:
-            response = self._provider.generate(request)
+            responses = self._ask(requests)
         except Exception as exc:
             if self._require_model:
                 raise DetectionError(self._name, exc) from exc
             self._last = ParseOutcome(unparsable=True, rejected=(f"provider: {exc!r}",))
             return []
 
-        outcome = parse_detection_response(
-            response.text,
-            text,
-            source=self._name,
-            confidence=self._confidence,
-        )
-        self._last = outcome
+        found: list[SensitiveEntity] = []
+        rejected: list[str] = []
+        unparsable = False
+        for window, response in zip(pieces, responses, strict=True):
+            outcome = parse_detection_response(
+                response.text,
+                window.text,
+                source=self._name,
+                confidence=self._confidence,
+            )
+            rejected.extend(outcome.rejected)
+            unparsable = unparsable or outcome.unparsable
+            found.extend(_relocated(outcome.entities, window))
 
-        if outcome.unparsable and self._require_model:
-            raise DetectionError(self._name, ValueError("; ".join(outcome.rejected)))
+        self._last = ParseOutcome(
+            entities=tuple(found), rejected=tuple(rejected), unparsable=unparsable
+        )
+
+        if unparsable and self._require_model:
+            raise DetectionError(self._name, ValueError("; ".join(rejected)))
 
         already = context.covered()
         return [
             entity
-            for entity in outcome.entities
+            for entity in _deduplicated(found)
             if not any(index in already for index in range(entity.span.start, entity.span.end))
         ]
+
+    def _request(self, text: str) -> LLMRequest:
+        return LLMRequest(
+            system=self.rendered_prompt(),
+            user=_TEXT_MARKER + "\n" + text,
+            response_schema=DETECTION_SCHEMA if self._provider.supports_structured_output else None,
+        )
+
+    def _ask(self, requests: Sequence[LLMRequest]) -> Sequence[LLMResponse]:
+        """One round trip if the provider can take one, otherwise several.
+
+        A model on a shared machine is dominated by latency, so a provider that
+        advertises batching gets the whole document at once. One in this
+        process gains nothing from that and does not implement it.
+        """
+        if len(requests) > 1 and isinstance(self._provider, BatchLLMProvider):
+            responses = self._provider.generate_batch(requests)
+            if len(responses) != len(requests):
+                raise ProviderError(
+                    self._provider.name,
+                    f"batch returned {len(responses)} answers for {len(requests)} requests",
+                )
+            return responses
+        return [self._provider.generate(request) for request in requests]
+
+
+def _relocated(entities: Sequence[SensitiveEntity], window: Window) -> list[SensitiveEntity]:
+    """Move detections from window coordinates into document coordinates."""
+    if not window.offset:
+        return list(entities)
+    return [
+        entity.relocated(Span(*window.locate(entity.span.start, entity.span.end)), entity.value)
+        for entity in entities
+    ]
+
+
+def _deduplicated(entities: Sequence[SensitiveEntity]) -> list[SensitiveEntity]:
+    """Drop repeats seen in the overlap between two windows.
+
+    Overlap resolution would collapse these anyway, but a duplicate reaching it
+    is a duplicate in every count and report on the way, and the overlap exists
+    for the library's own reasons rather than the user's.
+    """
+    seen: set[tuple[str, int, int]] = set()
+    unique: list[SensitiveEntity] = []
+    for entity in entities:
+        key = (entity.entity_type.name, entity.span.start, entity.span.end)
+        if key not in seen:
+            seen.add(key)
+            unique.append(entity)
+    return unique

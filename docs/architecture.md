@@ -68,7 +68,9 @@ interfaces ──> application ──> domain
 | `evaluation/` | Labelled datasets, scoring, quality metrics | `domain`, `ports`, `application`, `infrastructure` |
 | `llm_settings.py` | Model settings, and the endpoint they build | `domain`, `ports` |
 | `config.py` | Every switch, and the factories that assemble them | everything above |
+| `report.py` | What a configuration does with your data | `domain`, `config` |
 | `interfaces/cli/` | Argument parsing, output formatting | everything above |
+| `interfaces/proxy/` | The OpenAI-compatible endpoint: payload walk, exchange, upstream | everything above |
 
 `domain` imports nothing else, including nothing outside the standard library.
 See [ADR 0001](adr/0001-domain-depends-on-nothing.md).

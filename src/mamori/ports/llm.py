@@ -16,10 +16,11 @@ without an interface that pretends they are universal.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-__all__ = ["LLMProvider", "LLMRequest", "LLMResponse"]
+__all__ = ["BatchLLMProvider", "LLMProvider", "LLMRequest", "LLMResponse"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,4 +76,30 @@ class LLMProvider(Protocol):
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         """Answer ``request``."""
+        ...
+
+
+@runtime_checkable
+class BatchLLMProvider(Protocol):
+    """A provider that would rather be asked several things at once.
+
+    Optional, and advertised by implementing it rather than by a flag -- the
+    same shape as ``supports_structured_output``. Callers use it when it is
+    there and loop over :meth:`LLMProvider.generate` when it is not, so no
+    existing provider has to change and no caller has to care.
+
+    It exists because a long document is scanned in windows, and a shared model
+    on another machine is dominated by round trips: ten windows is ten times
+    the latency for one document, and a server that can take them together
+    should be allowed to. A provider wrapping a model in this process gains
+    nothing from it and should not implement it.
+
+    The contract is positional. ``len(responses) == len(requests)``, in order,
+    so a caller can pair the answer with the window it was about. A provider
+    that cannot answer one request must still occupy its place -- with an empty
+    response -- or raise for the batch.
+    """
+
+    def generate_batch(self, requests: Sequence[LLMRequest]) -> Sequence[LLMResponse]:
+        """Answer every request, in order."""
         ...

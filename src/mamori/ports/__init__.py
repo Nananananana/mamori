@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from .detection_pass import DetectionContext, DetectionPass
 from .detector import Detector
-from .llm import LLMProvider, LLMRequest, LLMResponse
+from .llm import BatchLLMProvider, LLMProvider, LLMRequest, LLMResponse
 from .llm_endpoint import LLMEndpoint
 from .mapping_store import MappingStore
 
 __all__ = [
+    "BatchLLMProvider",
     "DetectionContext",
     "DetectionPass",
     "Detector",

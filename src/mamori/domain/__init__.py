@@ -20,6 +20,7 @@ from .sensitive_entity import SensitiveEntity
 from .span import Span
 from .stance import RuleTier, Stance
 from .trust import EndpointPolicy, HostKind, TrustBoundary
+from .windowing import Window, windows
 
 __all__ = [
     "BUILTIN_TYPES",
@@ -43,9 +44,11 @@ __all__ = [
     "Span",
     "Stance",
     "TrustBoundary",
+    "Window",
     "get_type",
     "normalize_value",
     "register_type",
     "resolve_overlaps",
     "scan_placeholders",
+    "windows",
 ]

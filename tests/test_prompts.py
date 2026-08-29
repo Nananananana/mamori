@@ -485,20 +485,72 @@ class TestLLMDetectionPass:
         LLMDetectionPass(provider).run(DetectionContext(text="   "))
         assert provider.requests == []
 
-    def test_oversized_text_is_refused_rather_than_truncated(self) -> None:
-        """A scan that quietly covered the first 8000 characters reports success
-        on a document it never read."""
-        provider = ScriptedProvider("{}")
-        pass_ = LLMDetectionPass(provider, max_input_characters=20)
-        assert pass_.run(DetectionContext(text="x" * 100)) == []
-        assert provider.requests == []
+    def test_a_long_document_is_scanned_in_windows(self) -> None:
+        """Not truncated, and no longer skipped.
 
-    def test_oversized_text_stops_the_request_when_the_model_is_required(self) -> None:
-        pass_ = LLMDetectionPass(
-            ScriptedProvider("{}"), max_input_characters=20, require_model=True
+        Truncating reports success on a document it never read. Skipping is
+        honest but means the model tier quietly stops applying at the length
+        where documents get interesting -- which is a recall hole with a
+        length threshold on it.
+        """
+        provider = ScriptedProvider("{}")
+        pass_ = LLMDetectionPass(provider, max_input_characters=100)
+        pass_.run(DetectionContext(text="x" * 1000))
+        assert len(provider.requests) > 1
+        covered = "".join(r.user.split(chr(10), 1)[1] for r in provider.requests)
+        assert len(covered) >= 1000, "the windows must between them cover the document"
+
+    def test_a_short_document_is_still_one_request(self) -> None:
+        """Windowing must cost nothing in the common case."""
+        provider = ScriptedProvider("{}")
+        LLMDetectionPass(provider, max_input_characters=8000).run(DetectionContext(text=self.TEXT))
+        assert len(provider.requests) == 1
+
+    def test_a_detection_in_a_later_window_lands_in_document_coordinates(self) -> None:
+        """The arithmetic that would corrupt the document if it were wrong.
+
+        A model answering about window three reports offsets inside window
+        three. Replacement happens in the document, so anything that forgets to
+        add the offset cuts characters out of the wrong sentence.
+        """
+        from mamori.domain.windowing import windows
+
+        text = "x" * 300 + chr(10) + "Contact Kenji tomorrow."
+        pieces = windows(text, 310)
+        assert len(pieces) > 1, "the fixture must actually be split"
+
+        index, window = next((i, w) for i, w in enumerate(pieces) if "Kenji" in w.text and i > 0)
+        local = window.text.index("Kenji")
+        answers = ["{}"] * index
+        answers.append(
+            answer(
+                {
+                    "type": "PERSON",
+                    "start": local,
+                    "end": local + len("Kenji"),
+                    "text": "Kenji",
+                }
+            )
         )
-        with pytest.raises(DetectionError):
-            pass_.run(DetectionContext(text="x" * 100))
+        found = LLMDetectionPass(ScriptedProvider(answers), max_input_characters=310).run(
+            DetectionContext(text=text)
+        )
+
+        assert [e.value for e in found] == ["Kenji"]
+        span = found[0].span
+        assert text[span.start : span.end] == "Kenji"
+        assert span.start == text.index("Kenji")
+
+    def test_the_same_entity_seen_in_two_windows_is_reported_once(self) -> None:
+        """Overlap is the library's business, not something the caller counts."""
+        text = "x" * 200 + " Contact Kenji now. " + "y" * 200
+        start = text.index("Kenji")
+        both = answer({"type": "PERSON", "start": 0, "end": 0, "text": ""})
+        provider = ScriptedProvider(both)
+        pass_ = LLMDetectionPass(provider, max_input_characters=250)
+        found = pass_.run(DetectionContext(text=text))
+        assert len({(e.span.start, e.span.end) for e in found}) == len(found)
+        assert start > 0
 
     def test_the_prompt_it_sends_is_inspectable(self) -> None:
         pass_ = LLMDetectionPass(ScriptedProvider("{}"))

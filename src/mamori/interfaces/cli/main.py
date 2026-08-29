@@ -8,6 +8,8 @@
     mamori config   -- show the settings that would be used, and where from
     mamori prompt   -- show exactly what would be sent to a model
     mamori llm      -- where the model is, and whether it answers
+    mamori serve    -- an OpenAI-compatible endpoint that protects as it forwards
+    mamori privacy  -- what this configuration actually does with your data
     mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
 
@@ -169,6 +171,38 @@ def build_parser() -> argparse.ArgumentParser:
         "pointing this at a server on another machine",
     )
     llm_cmd.add_argument("--json", action="store_true", help="emit JSON")
+
+    serve_cmd = sub.add_parser(
+        "serve", help="an OpenAI-compatible endpoint that protects what passes through"
+    )
+    add_config_args(serve_cmd)
+    serve_cmd.add_argument(
+        "--upstream",
+        required=True,
+        help="the service your application calls today, e.g. https://api.openai.com/v1/",
+    )
+    serve_cmd.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="bind address. The default accepts connections from this machine only; "
+        "anything that can reach this port can send documents through it",
+    )
+    serve_cmd.add_argument("--port", type=int, default=8100, help="bind port (default 8100)")
+    serve_cmd.add_argument(
+        "--no-guidance",
+        action="store_true",
+        help="do not prepend the briefing that tells the model to leave placeholders alone",
+    )
+    serve_cmd.add_argument("--quiet", action="store_true", help="do not print a line per request")
+
+    privacy_cmd = sub.add_parser(
+        "privacy", help="what this configuration actually does with your data"
+    )
+    add_config_args(privacy_cmd)
+    privacy_cmd.add_argument(
+        "--upstream", help="a proxy destination, to include it in the destinations"
+    )
+    privacy_cmd.add_argument("--json", action="store_true", help="emit JSON")
     sub.add_parser("demo", help="run a full round trip on a sample text")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
@@ -306,6 +340,105 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
         "mask_token": settings.mask_token,
         "llm": settings.llm.as_mapping() if settings.llm is not None else None,
     }
+
+
+def _cmd_privacy(args: argparse.Namespace) -> int:
+    from ...report import build_report
+
+    report = build_report(_settings_from(args), upstream=args.upstream)
+
+    if args.json:
+        print(json.dumps(report.as_mapping(), ensure_ascii=False, indent=2))
+        return _EXIT_ERROR if report.warnings else _EXIT_OK
+
+    detection = report.detection
+    locales = detection["locales"]
+    print("What is detected")
+    print()
+    print(f"  languages       {', '.join(locales) if isinstance(locales, list) else locales}")
+    print(f"  stance          {detection['stance']}")
+    print(f"  minimum conf.   {detection['minimum_confidence']}")
+    for action, names in sorted(detection["by_action"].items()):
+        shown = ", ".join(names[:6]) + (", ..." if len(names) > 6 else "")
+        print(f"  {action:<15} {len(names)} types: {shown}")
+
+    print()
+    print("Where your text goes")
+    print()
+    for destination in report.destinations:
+        print(f"  {destination['what']}")
+        print(f"    address       {destination['where'] or '(nowhere)'}")
+        print(f"    it sees       {destination['sees']}")
+        print(f"    why           {destination['why']}")
+        if destination.get("admitted") is False:
+            print("    status        REFUSED -- outside the trust boundary")
+        print()
+
+    print("What is kept")
+    print()
+    print(f"  mappings        {report.storage['mappings']}")
+    print(f"  on disk         {'yes' if report.storage['written_to_disk'] else 'no'}")
+    print(f"  {report.storage['note']}")
+
+    print()
+    print("True however this is configured")
+    print()
+    for claim in report.by_construction:
+        print(f"  - {claim.text}")
+        print(f"    checked by {claim.checked_by}")
+
+    print()
+    print("What mamori cannot check for you")
+    print()
+    for claim in report.your_responsibility:
+        print(f"  - {claim.text}")
+
+    if report.warnings:
+        print()
+        print("Warnings")
+        print()
+        for warning in report.warnings:
+            print(f"  ! {warning}")
+        return _EXIT_ERROR
+    return _EXIT_OK
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from ..proxy.server import ProxySettings, serve
+
+    settings = ProxySettings(
+        upstream=args.upstream,
+        host=args.host,
+        port=args.port,
+        config=_settings_from(args),
+        guidance=not args.no_guidance,
+        log=None if args.quiet else _serve_log,
+    )
+
+    print(f"mamori proxy on {settings.url()}")
+    print(f"  upstream        {settings.upstream}")
+    locales = ", ".join(settings.config.locales or ()) or "all locales"
+    print(f"  detection       {locales}, {settings.config.stance.value}")
+    print(f"  briefing        {'prepended' if settings.guidance else 'off'}")
+    print()
+    print("Point your application at the address above and change nothing else.")
+    print("Mappings live in memory for one request and are discarded with it.")
+    if settings.is_public:
+        print()
+        print("WARNING: this is bound to a public address. Anything that can reach")
+        print("this port can send documents through it and read the restored answers.")
+    print()
+
+    try:
+        serve(settings)
+    except KeyboardInterrupt:
+        print("stopped")
+    return _EXIT_OK
+
+
+def _serve_log(message: str) -> None:
+    """Counts and types only. A protected value never reaches here."""
+    print(f"  {message}", file=sys.stderr)
 
 
 def _cmd_llm(args: argparse.Namespace) -> int:
@@ -674,6 +807,8 @@ _COMMANDS = {
     "config": _cmd_config,
     "prompt": _cmd_prompt,
     "llm": _cmd_llm,
+    "serve": _cmd_serve,
+    "privacy": _cmd_privacy,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
     "eval": _cmd_eval,

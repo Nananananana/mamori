@@ -8,6 +8,107 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-29
+
+The proxy, and the machinery that says what it does. An application that
+already talks to an OpenAI-compatible API now moves behind mamori by changing
+one string -- and the privacy claims that makes reasonable are answerable from
+the command line and checked by the test suite.
+
+Several ideas in this release are borrowed, with thanks, from the sibling
+[kiseki](https://github.com/Nananananana/kiseki) project.
+
+### Added
+
+- **`mamori serve`: an OpenAI-compatible proxy.** Point an existing
+  application at it and change nothing else. Every message is protected on the
+  way out, the reply is restored on the way back, and the briefing telling the
+  model to leave placeholders alone is prepended automatically. See
+  [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md).
+
+  ```bash
+  mamori serve --upstream https://api.openai.com/v1/
+  ```
+
+  Built on `http.server`, so the runtime dependencies stay zero. It binds to
+  127.0.0.1 -- reaching it from another machine is a deliberate act and a
+  warning at startup, because anything that can reach the port can send
+  documents through it. Streaming is supported: a placeholder arriving as
+  `<PER`, `SON_0`, `01>` is held and restored as it passes. The system prompt
+  is protected too, since an organisation's briefing is exactly the context
+  that should stay local. One mapping scope per request, discarded with it.
+
+  It fails closed. A blocked credential, an unparsable body, or a path it does
+  not recognise are errors returned to the caller, and none of them forward
+  anything.
+
+- **`mamori privacy`: what your configuration actually does.** Computed from
+  the settings in front of it, not from the README -- which types are blocked
+  and which are pseudonymized, where a detection model is and whether the trust
+  boundary admits it, what is kept and where. Anything that widens exposure is
+  a warning and a non-zero exit status. See
+  [ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md).
+
+  It separates what is measured from what is true by construction from what
+  mamori cannot check for you, and prints, beside each construction claim, the
+  name of the test that fails if it stops being true.
+
+- **`tests/test_promises.py`: those tests.** `socket.connect` and its
+  neighbours are replaced with functions that raise, and the whole default path
+  then has to run without them -- protection, restoration, every language pack,
+  the evaluation harness, the command line, importing the package. A future
+  dependency that dials out fails in a build rather than in a deployment. The
+  guard has its own test that it can still trip. Mappings staying in memory,
+  values staying out of diagnostics, scope-bound restoration, keys never in
+  configuration, and the model-only-adds bound are each a class. A final class
+  checks that every claim in the report names a test that exists. See
+  [ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md).
+
+- **Optional batching on the provider port.** `BatchLLMProvider` is advertised
+  by implementing it, the same shape as `supports_structured_output`. A shared
+  model on another machine is dominated by round trips, and the windows of one
+  document should not cost ten of them. Nothing existing changes.
+
+### Changed
+
+- **A long document is scanned in overlapping windows instead of being
+  skipped.** This was a recall hole with a length threshold on it: over the
+  limit, the model pass silently returned nothing, so the documents most likely
+  to hold a name no rule can anchor -- a long thread, a contract, a transcript
+  -- got patterns only, with nothing in the output to say so. Windows overlap
+  by 400 characters, comfortably more than any entity this library detects, so
+  an address cut by one boundary is whole inside its neighbour; cuts prefer a
+  paragraph or sentence boundary, in the CJK forms as well as the ASCII ones.
+  See [ADR 0021](docs/adr/0021-a-long-document-is-windowed.md).
+
+  The offset arithmetic lives in one place in the domain layer, because a
+  detection at position 12 of the third window is not at position 12 of the
+  document and getting that wrong would cut characters out of the wrong
+  sentence. Both of its properties -- every character appears in some window,
+  every window is a real slice of the document -- are tested with Hypothesis
+  over arbitrary text.
+
+- **`Upstream` joins its base URL the way an OpenAI client does.** The path
+  appended is relative to a base URL that already ends at the version segment,
+  so `http://localhost:11434/v1/` no longer becomes `/v1/v1/`. A base URL with
+  no path at all gets `/v1` added rather than producing a 404 for the caller to
+  work out.
+
+- **The `MAMORI_` prefix note now appears in `mamori privacy` too**, alongside
+  everything else about where a key may live.
+
+- **The privacy report describes a configuration it cannot build.** Counting
+  the detectors is also what refuses an endpoint outside the trust boundary, so
+  the report used to raise on exactly the settings somebody would run it to
+  understand. It now reports the refusal as a warning and says the detector
+  count is unknown rather than guessing one.
+
+### Fixed
+
+- A document over `max_input_characters` is no longer silently unscanned by the
+  model tier. See above; this is the substance of the release for anybody who
+  runs a model.
+
 ## [0.5.0] - 2026-08-29
 
 The model tier stops assuming a laptop. Where the model runs, and which library
@@ -338,7 +439,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Nananananana/mamori/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nananananana/mamori/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Nananananana/mamori/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Nananananana/mamori/compare/v0.2.0...v0.3.0

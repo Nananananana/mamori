@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mamori"
-version = "0.5.0"
+version = "0.6.0"
 description = "Local-first privacy layer for generative AI. Detect and pseudonymize secrets before they reach an external LLM, and restore them locally afterwards."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -69,7 +69,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106", "S108"]
+# S310: the proxy tests drive a real server on a loopback port they opened.
+"tests/*" = ["S105", "S106", "S108", "S310"]
 "src/mamori/infrastructure/detectors/patterns.py" = ["S105", "E501"]
 
 [tool.mypy]

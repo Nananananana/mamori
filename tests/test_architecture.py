@@ -54,6 +54,10 @@ ALLOWED: dict[str, frozenset[str]] = {
         {"domain", "ports", "prompts", "application", "infrastructure", "llm_settings"}
     ),
     "llm_settings": frozenset({"domain", "ports"}),
+    # A description of a configuration. It reads settings and the domain
+    # vocabulary they resolve to, and nothing else -- a report that ran a
+    # detector or opened a socket would be doing rather than describing.
+    "report": frozenset({"domain", "config", "llm_settings"}),
     # The outside edge. Nothing imports it.
     "interfaces": frozenset(
         {
@@ -65,6 +69,7 @@ ALLOWED: dict[str, frozenset[str]] = {
             "evaluation",
             "config",
             "llm_settings",
+            "report",
         }
     ),
     # Exceptions are shared by everything and import nothing.

@@ -23,3 +23,7 @@ it, and — the part that is usually missing — what it costs.
 | [0015](0015-a-trust-boundary-not-a-localhost-check.md) | A trust boundary, not a localhost check |
 | [0016](0016-the-model-and-the-client-are-both-replaceable.md) | The model and the client are both replaceable |
 | [0017](0017-the-layering-is-a-test.md) | The layering is a test |
+| [0018](0018-a-proxy-on-the-standard-library.md) | A proxy, on the standard library |
+| [0019](0019-privacy-is-a-report-not-a-promise.md) | Privacy is a report, not a promise |
+| [0020](0020-the-promises-are-checked-by-machine.md) | The promises are checked by machine |
+| [0021](0021-a-long-document-is-windowed.md) | A long document is windowed, not skipped |

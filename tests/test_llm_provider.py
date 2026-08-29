@@ -17,22 +17,25 @@ from __future__ import annotations
 import json
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, ClassVar
 
 import pytest
 
 from mamori.domain.trust import EndpointPolicy, HostKind, TrustBoundary, classify_host
-from mamori.errors import ConfigurationError, ProviderError
+from mamori.errors import ConfigurationError, DetectionError, ProviderError
+from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
 from mamori.infrastructure.llm import (
     CallableProvider,
     OpenAICompatibleProvider,
+    ScriptedProvider,
     available_providers,
     create_provider,
     register_llm_provider,
 )
-from mamori.ports.llm import LLMProvider, LLMRequest, LLMResponse
+from mamori.ports.detection_pass import DetectionContext
+from mamori.ports.llm import BatchLLMProvider, LLMProvider, LLMRequest, LLMResponse
 from mamori.ports.llm_endpoint import LLMEndpoint
 
 CANARY = "leaky-canary@example.com"
@@ -499,3 +502,74 @@ class TestRegistry:
     def test_a_registration_without_a_name_is_refused(self) -> None:
         with pytest.raises(ConfigurationError):
             register_llm_provider("", lambda e: CallableProvider(lambda r: ""))
+
+
+class TestBatching:
+    """A provider may offer to take several windows at once.
+
+    Optional, and advertised by implementing it rather than by a flag. A long
+    document becomes several requests, and a model on a shared machine is
+    dominated by round trips -- ten windows is ten times the latency for one
+    document.
+    """
+
+    class Batching:
+        """A provider that answers a whole batch in one call."""
+
+        name = "batching"
+        supports_structured_output = False
+
+        def __init__(self) -> None:
+            self.batches: list[int] = []
+            self.single_calls = 0
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            self.single_calls += 1
+            return LLMResponse(text="{}", model=self.name)
+
+        def generate_batch(self, requests: Sequence[LLMRequest]) -> Sequence[LLMResponse]:
+            self.batches.append(len(requests))
+            return [LLMResponse(text="{}", model=self.name) for _ in requests]
+
+    class Miscounting(Batching):
+        """Returns the wrong number of answers, which desynchronises everything."""
+
+        def generate_batch(self, requests: Sequence[LLMRequest]) -> Sequence[LLMResponse]:
+            return [LLMResponse(text="{}", model=self.name)]
+
+    def test_the_capability_is_recognised_structurally(self) -> None:
+        assert isinstance(self.Batching(), BatchLLMProvider)
+
+    def test_a_plain_provider_is_not_mistaken_for_a_batching_one(self) -> None:
+        assert not isinstance(ScriptedProvider("{}"), BatchLLMProvider)
+
+    def test_a_long_document_goes_in_one_batch(self) -> None:
+        provider = self.Batching()
+        LLMDetectionPass(provider, max_input_characters=100).run(DetectionContext(text="x" * 1000))
+        assert len(provider.batches) == 1
+        assert provider.batches[0] > 1
+        assert provider.single_calls == 0
+
+    def test_a_short_document_does_not_pay_for_batching(self) -> None:
+        """One window is one question. Nothing is gained by wrapping it."""
+        provider = self.Batching()
+        LLMDetectionPass(provider).run(DetectionContext(text="Contact Kenji."))
+        assert provider.batches == []
+        assert provider.single_calls == 1
+
+    def test_a_miscounted_batch_is_refused_rather_than_paired_up_wrongly(self) -> None:
+        """Answers are matched to windows positionally.
+
+        A short batch silently pairs window two's answer with window one's
+        text, and the offsets in it then point at the wrong characters. The
+        parser would reject most of that, and 'most' is not a guarantee.
+        """
+        provider = self.Miscounting()
+        pass_ = LLMDetectionPass(provider, max_input_characters=100, require_model=True)
+        with pytest.raises(DetectionError):
+            pass_.run(DetectionContext(text="x" * 1000))
+
+    def test_a_miscounted_batch_degrades_rather_than_stopping_the_request(self) -> None:
+        provider = self.Miscounting()
+        pass_ = LLMDetectionPass(provider, max_input_characters=100)
+        assert pass_.run(DetectionContext(text="x" * 1000)) == []
