@@ -202,6 +202,30 @@ languages. It does not improve Japanese. At the recall-first default it does
 not move the leak rate at all, because the wide rules already reach those
 values, and costs roughly six times the over-redaction.
 
+**At 14B the answer is different, and 0.23 is where that was first measurable.**
+`qwen2.5:14b-instruct-q4_K_M` against `en-docs`, which is documents rather than
+fragments:
+
+| stance | leak: rules -> +model | over-redaction | recall |
+|---|---|---|---|
+| balanced | 20.02% -> **1.69%** | 0.03% -> 0.03% | 0.700 -> 0.950 |
+| recall-first | 3.50% -> **0.36%** | 0.90% -> 0.90% | 0.883 -> 0.967 |
+
+Over-redaction does not move on either stance, which is what did not happen at
+8B. What closes is the anchorless name, the largest measured gap in this
+project since 0.9. It costs **345 seconds per document** on the hardware these
+numbers come from, which is why the tier is off by default and why "measure it
+on your own hardware" is not a formality.
+
+**Why this took sixteen releases.** Every attempt since 0.7 reported that the
+model timed out, and every write-up repeated it. `LLMRequest.timeout` defaulted
+to thirty seconds and the provider took the smaller of the request's and the
+endpoint's, so `llm.timeout` above thirty did nothing -- three attempts plus
+backoff is ninety-seven seconds, which looks exactly like hardware that is too
+slow. The model pass degrades to nothing by design, so the symptom was silence.
+If you ran a model tier before 0.23 with a timeout above thirty seconds, you
+were not getting the timeout you configured.
+
 **About the correction.** The 0.7.0 figures were produced by a harness that
 rebuilt the detection pipeline by hand and left out the co-occurrence pass, so
 the model was being scored against a baseline that had a pass it lacked. The
@@ -218,8 +242,10 @@ proposed for weekdays and error codes. Both are fixed.
 
 Run `mamori eval --compare` against your own data --
 [docs/measuring-your-own-data.md](docs/measuring-your-own-data.md) says how,
-and what to be careful about. These are 8B numbers on small synthetic sets and
-they are a floor for judgement, not a substitute.
+and what to be careful about. These are two models on small synthetic sets and
+they are a floor for judgement, not a substitute. The thing they do establish
+is that "does a bigger model help" has a different answer at each size, which
+is an argument for measuring rather than for either of the two conclusions.
 
 ### It is not a compliance control
 
