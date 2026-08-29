@@ -26,6 +26,8 @@ list has moved every time.
 | 0.19 — deployment | 0.19 — deployment | the linter found a bug in this repository on its first run |
 | (not planned) | 0.20 — the reply corpus | the standing plan worked: measure something unmeasured, fix what it turns up |
 | (not planned) | 0.21 — the surrogate corpus | turned the scariest paragraph in the docs into two numbers |
+| (not planned) | 0.22 — time | a quadratic nobody had looked for |
+| (not planned) | 0.23 — the model tier | the oldest open question, and the bug in this library that kept it open |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -171,9 +173,10 @@ be worth it:
   for four releases. Surrogates followed in 0.21, and put a number on the
   option the docs had only warned about: 35% of stand-ins do not survive a
   model's rewriting, 100% of the losses are reported.
-- The anchorless name, which is the largest measured gap left (`en-docs` 3.50%,
-  `en-context` 9.69% on the generated set) and is not a regular-expression
-  problem.
+- ~~The anchorless name~~ — **the model tier closes it**, measured in 0.23, at
+  345 seconds a document. What is left is whether anything closes it at
+  interactive speed; the honest answer today is that a rule cannot and this is
+  what a model is for.
 - The optional Japanese morphological adapter, still unrun, still the right
   experiment.
 - Whether a model above 8B changes the model-tier table, still blocked on
@@ -188,9 +191,16 @@ be worth it:
   admitting that it keeps losing to whatever the corpus turned up that week.
 - **The encrypted store**, with retention as a stated rule rather than a
   background process. Wanted; blocked on nobody needing it yet.
-- **Whether a model above 8B changes the model tier.** Unanswered since 0.7.
-  The hardware here times out, and a measurement that cannot be run is not a
-  plan.
+- ~~**Whether a model above 8B changes the model tier.**~~ **Answered in 0.23:
+  it does, and by a lot.** A 14B model takes `en-docs` from 20.02% to 1.69% at
+  the balanced stance with over-redaction unmoved at 0.03%, which closes the
+  anchorless name — the largest measured gap in the project since 0.9.
+
+  What had made it unmeasurable for sixteen releases was not the hardware. It
+  was `llm.timeout` being silently capped at thirty seconds by this library, so
+  every attempt reported a timeout and every write-up repeated "the hardware
+  here times out". A sentence that has been true for five releases deserves one
+  afternoon of asking *why* rather than a sixth repetition.
 
 ### 1.0 — The contract
 

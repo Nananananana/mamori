@@ -450,6 +450,51 @@ class TestParsingAModelAnswer:
         assert outcome.entities == ()
         assert "unknown type" in outcome.rejected[0]
 
+    def test_a_near_miss_type_name_is_accepted(self) -> None:
+        """A model that says ORG means COMPANY_NAME.
+
+        Strictness about type names is right -- a model that invents a type has
+        told nobody anything. But in one measured run a 14B model reported 38
+        entities and 11 were rejected for spelling: ORG, EMAIL_ADDRESS,
+        PHONE_NUMBER. That is 29% of a model's work discarded over a synonym.
+        """
+        item = dict(self.entity("Kenji"), type="PERSON_NAME")
+        outcome = parse_detection_response(answer(item), self.TEXT)
+        assert outcome.entities[0].entity_type.name == "PERSON"
+        assert outcome.rejected == ()
+
+    @pytest.mark.parametrize(
+        ("said", "meant"),
+        [
+            ("ORG", "COMPANY_NAME"),
+            ("ORGANIZATION", "COMPANY_NAME"),
+            ("EMAIL_ADDRESS", "EMAIL"),
+            ("PHONE_NUMBER", "PHONE"),
+            ("CARD_NUMBER", "CREDIT_CARD"),
+            ("ZIP_CODE", "POSTAL_CODE"),
+            ("DOB", "DATE_OF_BIRTH"),
+        ],
+    )
+    def test_the_synonyms_that_are_unambiguous(self, said: str, meant: str) -> None:
+        item = dict(self.entity("Kenji"), type=said)
+        outcome = parse_detection_response(answer(item), self.TEXT)
+        assert outcome.entities[0].entity_type.name == meant
+
+    @pytest.mark.parametrize("said", ["IP_ADDRESS", "LOCATION", "CREDENTIAL", "PII"])
+    def test_the_ones_that_stay_refused(self, said: str) -> None:
+        """Each for its own reason, all of them recorded in `_ALIASES`.
+
+        `IP_ADDRESS` would map onto INTERNAL_IP and redact 8.8.8.8, when the
+        point of that type is that a public address is not sensitive.
+        `LOCATION` could be a country or a street. `CREDENTIAL` would map onto
+        PASSWORD, whose action is BLOCK, and a fuzzy label should not be able to
+        stop somebody's request.
+        """
+        item = dict(self.entity("Kenji"), type=said)
+        outcome = parse_detection_response(answer(item), self.TEXT)
+        assert outcome.entities == ()
+        assert "unknown type" in outcome.rejected[0]
+
     def test_other_sensitive_is_accepted(self) -> None:
         """A model saying 'this matters and I cannot name it' is worth keeping."""
         item = dict(self.entity("Kenji"), type="OTHER_SENSITIVE")

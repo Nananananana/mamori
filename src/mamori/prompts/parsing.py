@@ -181,6 +181,65 @@ def parse_detection_response(
     return ParseOutcome(entities=tuple(entities), rejected=tuple(rejected))
 
 
+#: Names a model uses for a type this library already has.
+#:
+#: Strictness about type names is right -- a model that invents a type has not
+#: told anybody anything, and 0.7 showed what happens when everything uncertain
+#: lands in one dustbin. But strictness was throwing away *near misses*: in one
+#: measured run a 14B model reported 38 entities and 11 were rejected for
+#: calling an organisation ``ORG`` and an address ``EMAIL_ADDRESS``. That is
+#: 29% of a model's work discarded over spelling.
+#:
+#: Only where the mapping is unambiguous. Four that a model produced in that
+#: same run are deliberately **not** here:
+#:
+#: ``IP_ADDRESS``
+#:     mamori has ``INTERNAL_IP``, which means a *private* address. Mapping the
+#:     general name onto it would redact 8.8.8.8, and the point of that type is
+#:     that a public address is not sensitive.
+#: ``LOCATION``
+#:     A country is a location. So is a street address. The two are not the
+#:     same kind of thing and the model did not say which it meant.
+#: ``CREDENTIAL``
+#:     Would map onto ``PASSWORD``, whose action is BLOCK. A fuzzy label should
+#:     not be able to stop somebody's request.
+#: ``PII``, ``SENSITIVE``
+#:     Not a type. A model that says this has restated the question.
+_ALIASES = {
+    "ORG": "COMPANY_NAME",
+    "ORGANIZATION": "COMPANY_NAME",
+    "ORGANISATION": "COMPANY_NAME",
+    "COMPANY": "COMPANY_NAME",
+    "EMAIL_ADDRESS": "EMAIL",
+    "E_MAIL": "EMAIL",
+    "MAIL_ADDRESS": "EMAIL",
+    "PHONE_NUMBER": "PHONE",
+    "TELEPHONE": "PHONE",
+    "TELEPHONE_NUMBER": "PHONE",
+    "MOBILE": "PHONE",
+    "CARD_NUMBER": "CREDIT_CARD",
+    "CREDIT_CARD_NUMBER": "CREDIT_CARD",
+    "PERSON_NAME": "PERSON",
+    "FULL_NAME": "PERSON",
+    "NAME": "PERSON",
+    "DOB": "DATE_OF_BIRTH",
+    "BIRTH_DATE": "DATE_OF_BIRTH",
+    "BIRTHDAY": "DATE_OF_BIRTH",
+    "POSTCODE": "POSTAL_CODE",
+    "ZIP": "POSTAL_CODE",
+    "ZIP_CODE": "POSTAL_CODE",
+    "STREET_ADDRESS": "ADDRESS",
+    "POSTAL_ADDRESS": "ADDRESS",
+    "EMPLOYEE_NUMBER": "EMPLOYEE_ID",
+    "STAFF_ID": "EMPLOYEE_ID",
+    "PROJECT": "PROJECT_NAME",
+    "PROJECT_CODE": "PROJECT_NAME",
+    "URL": "INTERNAL_URL",
+    "SOCIAL_SECURITY_NUMBER": "SSN",
+    "MY_NUMBER": "MY_NUMBER",
+}
+
+
 def _entities_from(
     item: object, text: str, source: str, confidence: Confidence
 ) -> list[SensitiveEntity] | str:
@@ -198,7 +257,7 @@ def _entities_from(
     if not type_name:
         return "no type"
 
-    entity_type = get_type(type_name)
+    entity_type = get_type(type_name) or get_type(_ALIASES.get(type_name, ""))
     if entity_type is None:
         if type_name != OTHER_SENSITIVE.name:
             return f"unknown type {type_name!r}"

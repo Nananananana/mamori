@@ -8,6 +8,97 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-30
+
+The oldest open question in the project, answered — and the reason it stayed
+open for sixteen releases was a bug in this library.
+
+`v0.7` asked whether a model above 8B changes the model-tier table. Every
+attempt since said the same thing: the model times out on this hardware. It
+does not. **`llm.timeout` did nothing above thirty seconds.**
+
+### Fixed
+
+- **A configured timeout that was silently discarded.** `LLMRequest.timeout`
+  defaulted to `30.0` and the provider takes the smaller of the request's and
+  the endpoint's, so an endpoint configured for three hundred seconds got
+  thirty. Three attempts of thirty seconds plus backoff is ninety-seven, which
+  looks exactly like a model too slow for the machine — and because the model
+  pass degrades to nothing by design, the symptom was silence rather than an
+  error.
+
+  The request's timeout is now `None` by default and may only ask for *less*
+  than the endpoint allows: the endpoint is where the operator set the limit.
+
+- **`max_input_characters` said "refuse to send more than this"** and has
+  windowed since [ADR 0021](docs/adr/0021-a-long-document-is-windowed.md). A
+  setting whose description and behaviour disagree is worse than one with no
+  description, because somebody configures the sentence they read.
+
+- **The proxy body cap drops from 32 MB to 8 MB.** Protecting a 534 KB document
+  peaks near **a hundred times** the size of the text — most of it detections
+  rather than characters — so the cap is a memory bound rather than a bandwidth
+  one, and 32 MB is gigabytes from one request. 8 MB is still about two million
+  tokens, far past any model's context window.
+
+### Measured: what the model tier is worth at 14B
+
+`qwen2.5:14b-instruct-q4_K_M`, locally, against `en-docs` at the **recall-first
+default** — the stance where the previous measurement said a model was worse
+than useless:
+
+| | rules only | + model | |
+|---|---|---|---|
+| leak rate | 3.50% | **0.36%** | −3.14 |
+| over-redaction | 0.90% | **0.90%** | ±0.00 |
+| entity precision | 0.946 | 0.935 | −0.011 |
+| entity recall | 0.883 | **0.967** | +0.083 |
+
+Three of the four leaking documents are now fully covered. **The leak rate falls
+by ninety percent and over-redaction does not move at all** — which is not what
+this project found at 8B, where the model bought English recall and paid for it
+in over-redaction everywhere.
+
+At the **balanced stance** it does more, not less — the rules leak 20.02%
+there, and the model takes it to **1.69%** with over-redaction unmoved at
+0.03%. That is worth reading twice: balanced plus a 14B model beats
+recall-first rules on *both* axes at once, 1.69% against 3.50% leaked and 0.03%
+against 0.90% over-redacted. Every stance table in this project describes a
+trade between those two numbers, and this is the first thing that has moved
+both in the same direction.
+
+What it closes is the **anchorless name**: a name in an attendee list, under a
+sign-off, after "Reported by:". That has been the largest measured gap in the
+project since 0.9 and is not a regular-expression problem.
+
+**It costs 345 seconds per document on this hardware.** That is fine for a
+batch and impossible for a chat, and it is why the model tier stays off by
+default. Measure it on your own hardware and your own documents before
+believing any of this.
+
+### Added
+
+- **Near-miss type names are accepted.** In that run the model reported 38
+  entities and **11 were rejected for spelling**: `ORG` for a company,
+  `EMAIL_ADDRESS` for an address, `PHONE_NUMBER` for a number. Twenty-nine
+  percent of a model's work discarded over a synonym.
+
+  On `en-docs` this changes no number, because the rules had already found
+  those values — which is said here rather than left for somebody to discover.
+  It is kept because a document where the model's `ORG` is the only finding is
+  not hypothetical.
+
+  Four names stay refused, each for its own reason and all of them recorded in
+  the code: `IP_ADDRESS` would map onto `INTERNAL_IP` and redact `8.8.8.8`,
+  when the point of that type is that a public address is not sensitive;
+  `LOCATION` could be a country or a street; `CREDENTIAL` would map onto
+  `PASSWORD`, whose action is BLOCK, and a fuzzy label should not be able to
+  stop somebody's request.
+
+- **`test_promises.py` covers the surfaces added since 0.16** — conversations,
+  tool-call arguments, the linter, the fail-closed refusal. A promise is only
+  as good as the newest surface it was checked on.
+
 ## [0.22.0] - 2026-08-30
 
 Time, which nothing here had ever measured.
@@ -1716,7 +1807,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/Nananananana/mamori/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/Nananananana/mamori/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/Nananananana/mamori/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/Nananananana/mamori/compare/v0.19.0...v0.20.0

@@ -935,8 +935,46 @@ sentences says nothing about a real inbox.
 
 ### What the model tier is actually worth
 
-Measured, not asserted. `llama3.1:8b` running locally, balanced stance, against
-the bundled sets:
+Measured, not asserted — and the answer changed at `v0.23`, when a bug in this
+library turned out to be why it had not.
+
+**At 14B, on documents, at the recall-first default.**
+`qwen2.5:14b-instruct-q4_K_M` running locally against `en-docs`:
+
+| | rules only | + model | |
+|---|---|---|---|
+| leak rate | 3.50% | **0.36%** | −3.14 |
+| over-redaction | 0.90% | **0.90%** | ±0.00 |
+| entity precision | 0.946 | 0.935 | −0.011 |
+| entity recall | 0.883 | **0.967** | +0.083 |
+
+The leak rate falls by ninety percent and over-redaction does not move at all.
+What it closes is the **anchorless name** — a name in an attendee list, under a
+sign-off, after "Reported by:" — which has been the largest measured gap here
+since `v0.9` and is not a regular-expression problem.
+
+**At the balanced stance the same model does more, not less.** The rules leak
+20.02% there, because a fifth of the sensitive characters in an English
+document have nothing anchored near them:
+
+| | rules only | + model | |
+|---|---|---|---|
+| leak rate | 20.02% | **1.69%** | −18.34 |
+| over-redaction | 0.03% | **0.03%** | ±0.00 |
+| entity precision | 1.000 | 0.983 | −0.017 |
+| entity recall | 0.700 | **0.950** | +0.250 |
+
+Which is worth reading twice: **balanced plus a 14B model beats recall-first
+rules on both axes at once** — 1.69% against 3.50% leaked, 0.03% against 0.90%
+over-redacted. Every stance table in this README describes a trade between
+those two numbers, and a model of this size is the first thing that has moved
+both in the same direction.
+
+**It costs 345 seconds per document on this hardware.** Fine for a batch,
+impossible for a chat, and the reason this stays off by default.
+
+**At 8B, on fragments, at the balanced stance**, which is what earlier versions
+of this section reported. `llama3.1:8b`:
 
 | | leak: rules → +model | over-redaction | precision |
 |---|---|---|---|
@@ -944,15 +982,15 @@ the bundled sets:
 | `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
 | `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
 
-**At this size it is an English-recall tool.** It closes `en-006` — a name in
-running prose with nothing to anchor on, the gap it was built for — and does
-nothing measurable for Japanese or Chinese while costing over-redaction in all
-three. Earlier versions of this README claimed it reached Chinese given names.
-It does not; the Chinese rules were already at 1.000 recall on that set.
+At that size it was an English-recall tool that paid for it in over-redaction
+everywhere, and at the recall-first default it was worse than useless. Both
+tables are here because they are both true, of different models on different
+material, and because "does a bigger model help" turns out to be a question
+with a different answer at each size — which is the argument for measuring
+rather than asking.
 
-At the **recall-first default** it is worse than useless: the wide rules already
-reach those values, so the leak rate does not move and over-redaction goes from
-1.44% to 9.58%. Leave it off until you have measured it on your own data.
+Leave it off until you have measured it on your own data and your own
+hardware.
 
 Measure it yourself — the delta is the only thing worth reading:
 
@@ -968,12 +1006,18 @@ says what to be careful about, since such a file is full of your real data. `--c
 prompt*, so re-running is free and rewriting one line of guidance invalidates
 exactly the answers that depended on it.
 
-Two findings from doing this came back into the code. The model was being asked
-for character offsets and got **0 of 52** right while 51 of those values were
-really in the document — so it now reports values and mamori locates them
-([ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)). And every
+Four findings from doing this came back into the code. The model was being
+asked for character offsets and got **0 of 52** right while 51 of those values
+were really in the document — so it now reports values and mamori locates them
+([ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)). Every
 English false positive was `OTHER_SENSITIVE` used as a dustbin; one guidance
 rule about what that type is for halved over-redaction from 8.80% to 4.43%.
+`llm.timeout` did nothing above thirty seconds, which is why every attempt to
+measure a larger model since `v0.7` reported a timeout. And of 38 entities a
+14B model reported, **11 were being discarded over spelling** — `ORG` for a
+company, `EMAIL_ADDRESS` for an address — so unambiguous synonyms are accepted
+now, while `IP_ADDRESS`, `LOCATION` and `CREDENTIAL` stay refused because each
+would mean something the model did not say.
 
 ---
 
@@ -1071,7 +1115,9 @@ since `v0.2`, and found that streamed and whole replies had disagreed for four
 releases. `v0.21` did the same to surrogates and turned the scariest paragraph
 in the documentation into two numbers. `v0.22` measured time for the first
 time and found a quadratic that took thirteen seconds on a half-megabyte
-document.
+document. `v0.23` answered the question `v0.7` left open — a model above 8B
+*does* change the table — after finding that the reason nobody could measure it
+was a timeout setting this library was ignoring.
 
 | | |
 |---|---|
