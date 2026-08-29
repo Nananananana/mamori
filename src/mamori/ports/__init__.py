@@ -6,7 +6,8 @@ import an adapter.
 
 from __future__ import annotations
 
+from .detection_pass import DetectionContext, DetectionPass
 from .detector import Detector
 from .mapping_store import MappingStore
 
-__all__ = ["Detector", "MappingStore"]
+__all__ = ["DetectionContext", "DetectionPass", "Detector", "MappingStore"]
