@@ -92,7 +92,7 @@ fails before a release does.
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets, at two scales. Run
-`mamori eval` yourself; as of `0.17.0`, at the default recall-first stance:
+`mamori eval` yourself; as of `0.18.0`, at the default recall-first stance:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
@@ -105,12 +105,22 @@ Detection is measured against bundled labelled datasets, at two scales. Run
 | `en-context` | 2 packages | **6.31%** | 0.92% | 1.000 / 0.900 |
 | `ja-context` | 2 packages | **0.00%** | 0.00% | 1.000 / 1.000 |
 | `zh-context` | 1 package | **0.00%** | 0.53% | 0.889 / 1.000 |
+| `en-agent` | 2 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
+| `ja-agent` | 2 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
+| `zh-agent` | 1 payload | **0.00%** | 0.00% | 1.000 / 1.000 |
 
 A third corpus of a thousand generated documents across twelve genres is not
 shipped -- it lives in the development repository, because the bundled sets are
 the regression floor and that one is for finding bugs. It found five in its
 first run, and four more in Chinese the run after that. See the 0.14.0 and
 0.15.0 entries in `CHANGELOG.md`.
+
+**The `-agent` rows are payloads rather than prose**: tool-call arguments and
+tool definitions, where the label is a *key* rather than a word in a sentence.
+They score perfectly because a key is a stronger anchor than any prose, which
+is worth reading as "the rules read keys now" rather than as a claim about
+agent payloads being easy -- before 0.18 the same rows would have been most of
+the way to a total loss. See [ADR 0030](docs/adr/0030-a-tool-call-is-text.md).
 
 **The `-context` rows are assembled prompts** -- what a retrieval layer or an
 agent framework renders, rather than what a person typed. They leak more than

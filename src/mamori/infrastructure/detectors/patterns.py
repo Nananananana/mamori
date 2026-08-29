@@ -325,6 +325,118 @@ _HOME_DIRECTORY = compile_rule(
 )
 
 
+# --- Structured payloads --------------------------------------------------
+# A prose rule looks for a label in front of a value: `社員番号: A-1234`,
+# `Employee ID: A-1234`. In JSON the label is the key, and until 0.18 nothing
+# read one -- so a tool call carrying `{"employee_id": "B-12778"}` had the
+# identifier sent in the clear while the same value in a sentence was caught.
+# In four hundred generated agent turns this was the largest leak, and it is
+# not a language problem: an API is written in English keys whatever language
+# its values are in.
+
+#: The value of a JSON string, escapes included, capped so that a key cannot
+#: swallow a document. `(?:[^"\\]|\\.)` is the standard JSON string body:
+#: anything but a quote or a backslash, or a backslash and whatever follows it.
+_JSON_VALUE = r'"((?:[^"\\]|\\.){1,200})"'
+
+
+def _json_key_rule(entity_type: EntityType, *keys: str) -> PatternRule:
+    """A rule that reads one family of key names.
+
+    Keys are matched case-insensitively and in the three shapes an API
+    actually uses -- ``employee_id``, ``employeeId``, ``employee-id`` -- by
+    ignoring the separators rather than listing every spelling.
+    """
+    alternatives = "|".join(key.replace("_", "[_\\-]?") for key in keys)
+    return compile_rule(
+        entity_type,
+        r'(?i)"(?:' + alternatives + r')"\s*:\s*' + _JSON_VALUE,
+        HIGH,
+        group=1,
+    )
+
+
+#: Key names whose value is the thing the key says it is.
+#:
+#: Deliberately not here: a bare ``name``. In JSON it is a tool name, a model
+#: name, a field name and a property name far more often than a person, and
+#: redacting the name of the function an agent is calling breaks the call. The
+#: keys below have one meaning each.
+_STRUCTURED_KEYS: tuple[PatternRule, ...] = (
+    _json_key_rule(
+        t.EMPLOYEE_ID,
+        "employee_id",
+        "employee_no",
+        "employee_number",
+        "staff_id",
+        "member_id",
+        "社員番号",
+        "社員ID",
+        "工号",
+        "员工编号",
+    ),
+    _json_key_rule(
+        t.POSTAL_CODE,
+        "postal_code",
+        "postcode",
+        "zip",
+        "zip_code",
+        "郵便番号",
+        "邮编",
+    ),
+    _json_key_rule(
+        t.PHONE,
+        "phone",
+        "phone_number",
+        "telephone",
+        "tel",
+        "mobile",
+        "mobile_number",
+        "電話番号",
+        "电话",
+    ),
+    _json_key_rule(
+        t.ADDRESS,
+        "address",
+        "street_address",
+        "postal_address",
+        "住所",
+        "地址",
+    ),
+    _json_key_rule(
+        t.PERSON,
+        "customer",
+        "customer_name",
+        "full_name",
+        "contact_name",
+        "recipient",
+        "attendee",
+        "applicant",
+        "氏名",
+        "姓名",
+        "担当者",
+    ),
+    _json_key_rule(
+        t.COMPANY_NAME,
+        "company",
+        "company_name",
+        "organisation",
+        "organization",
+        "会社名",
+        "公司名称",
+    ),
+    _json_key_rule(
+        t.DATE_OF_BIRTH,
+        "dob",
+        "date_of_birth",
+        "birth_date",
+        "birthday",
+        "生年月日",
+        "出生日期",
+    ),
+)
+
+
 # --- Wide tier ------------------------------------------------------------
 # Shape with no anchor. Each of these finds something no core rule can, and each
 # also fires on ordinary text. They run only under the recall-first stance.
@@ -379,6 +491,7 @@ UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     _INTERNAL_URL,
     _INTERNAL_IP,
     _HOME_DIRECTORY,
+    *_STRUCTURED_KEYS,
     _WIDE_SECRET,
     _WIDE_DIGIT_RUN,
 )

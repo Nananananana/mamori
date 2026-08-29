@@ -292,6 +292,54 @@ project depends on the other. See
 
 ---
 
+## An agent, not a chat
+
+By the time an application is an agent, most of the personal data has left the
+prose. It is in the arguments of a tool call:
+
+```json
+{"to": "jane.doe@example.com", "employee_id": "E-45033",
+ "body": "Dear Jane Doe, call 415-555-0198."}
+```
+
+Four values, one call. `mamori serve` protects all of them and puts them back
+when the model calls the tool:
+
+```json
+{"to": "<EMAIL_001>", "employee_id": "<EMPLOYEE_ID_001>",
+ "body": "Dear <PERSON_002>, call <PHONE_001>."}
+```
+
+**In a payload the label is a key.** `"employee_id"` says what the value is as
+plainly as `Employee ID:` does in a sentence, and there is no prose around it
+to give a rule a second chance. Seven key families are read, in English,
+Japanese and Chinese spellings. A bare `"name"` is deliberately not one of
+them: in JSON that is a tool name far more often than a person, and redacting
+the name of the function an agent is calling breaks the call.
+
+**The structure is a negative set.** `send_email`, `call_0042`, the JSON
+schema, the enum — untouched, and pinned by tests. If protection ever produced
+arguments that no longer parse, the request is refused rather than forwarded:
+a leak is visible, and a payload that breaks in somebody else's process three
+hours later is not.
+
+**And it comes back.** A model that answers with a tool call rather than a
+sentence has its arguments restored too — including in a stream, where each
+call is its own run of text. Without that the application emails
+`<EMAIL_001>`, which is the failure that looks like a bug rather than a leak.
+
+```bash
+mamori demo --scenario agent
+```
+
+Also fixed in `v0.18`: one kana character used to stand the Chinese rules down
+for a whole document, so a payload with a Japanese subject and a Chinese body
+sent the body in the clear. Evidence about a script now reaches to the end of
+its sentence and no further. See
+[ADR 0030](docs/adr/0030-a-tool-call-is-text.md).
+
+---
+
 ## Languages
 
 Japanese, English and Chinese, in one document if that is what you have:
@@ -403,6 +451,9 @@ default**:
 | `ja-context` | 0.00% | **0.00%** | 0.00% | **0.00%** |
 | `en-context` | 46.85% | **6.31%** | 0.00% | **0.92%** |
 | `zh-context` | 0.00% | **0.00%** | 0.00% | **0.53%** |
+| `ja-agent` | 0.00% | **0.00%** | 0.00% | **0.00%** |
+| `en-agent` | 0.00% | **0.00%** | 0.00% | **0.00%** |
+| `zh-agent` | 0.00% | **0.00%** | 0.00% | **0.00%** |
 
 The `-docs` rows are the ones to read. They are business documents at the
 length people actually send; the `-core` rows are sentence fragments with a
@@ -918,7 +969,8 @@ a thousand documents and a thousand replies, and they found five bugs in an hour
 had been invisible since the first release. `v0.16` gave the proxy conversations,
 and checked a four-release-old argument that turned out to be correct. `v0.17`
 pointed a corpus at prompts nobody typed and found four bugs, three of which had
-nothing to do with assembled prompts and had been there for releases.
+nothing to do with assembled prompts and had been there for releases. `v0.18`
+found that a tool call's arguments had never been protected at all.
 
 | | |
 |---|---|

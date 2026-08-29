@@ -15,6 +15,7 @@ Each scenario answers one question somebody actually has.
 ``surrogates``  Can I have readable values instead of tokens?
 ``conversation`` What happens on turn two, when the client sent only turn two?
 ``package``     What about a prompt that was assembled rather than typed?
+``agent``       And when the values are in a tool call rather than a sentence?
 
 The demo text is invented, like everything else that ships in this package.
 ``--text`` and ``--file`` run the same tour on yours instead, which is the
@@ -329,6 +330,93 @@ def _package(config: MamoriConfig, text: str) -> None:
         print("  Only one of them can be undone, so the caller is told which.")
 
 
+AGENT_REQUEST = {
+    "model": "gpt-4o",
+    "messages": [
+        {"role": "user", "content": "Email the contract to Jane.", "name": "Robert Lang"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_0042",
+                    "type": "function",
+                    "function": {
+                        "name": "send_email",
+                        "arguments": (
+                            '{"to": "jane.doe@example.com", "employee_id": "E-45033", '
+                            '"body": "Dear Jane Doe, call 415-555-0198."}'
+                        ),
+                    },
+                }
+            ],
+        },
+    ],
+    "tools": [
+        {
+            "type": "function",
+            "function": {
+                "name": "send_email",
+                "description": "Send mail. Example: to=j.smith@example.com",
+                "parameters": {"type": "object", "properties": {"to": {"type": "string"}}},
+            },
+        }
+    ],
+    "user": "r.lang@example.com",
+}
+
+
+def _agent(config: MamoriConfig, text: str) -> None:
+    _heading("9. An agent, not a chat")
+    print("By the time an application is an agent, most of the personal data")
+    print("has left the prose. It is in the arguments of a tool call, the name")
+    print("on a message, the example in a tool description, the end-user id.")
+    del text
+
+    from ..proxy.exchange import protect_request, restore_reply
+
+    with config.session() as session:
+        protected, report = protect_request(session, AGENT_REQUEST, add_guidance=False)
+        _block("what the application sends", json.dumps(AGENT_REQUEST, indent=1)[:520])
+        _block("what the service sees", json.dumps(protected, indent=1)[:620])
+
+        print(
+            f"\n{report.scanned_messages} place(s) held text; replaced "
+            f"{report.total_replaced} value(s):"
+        )
+        for slot in report.slots:
+            print(f"  {slot.where}")
+
+        print("\nthree things worth noticing:")
+        print("  1. the arguments are still JSON, and the application can parse")
+        print("     them. If protection ever broke that, the request would be")
+        print("     refused rather than forwarded")
+        print('  2. "employee_id" was found because of its *key*. There is no')
+        print("     sentence around it to anchor a rule -- in a payload the key")
+        print("     is the label")
+        print("  3. send_email, call_0042 and the schema are untouched. Redact")
+        print("     one of those and the call breaks rather than the sentence")
+
+        arguments = protected["messages"][1]["tool_calls"][0]["function"]["arguments"]
+        reply = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Sent.",
+                        "tool_calls": [
+                            {"function": {"name": "send_email", "arguments": arguments}}
+                        ],
+                    }
+                }
+            ]
+        }
+        restored = restore_reply(session, reply)
+        back = restored["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+        _block("the model calls the tool back, and the application gets", back)
+        print("\n  Without this the application would have emailed <EMAIL_001>,")
+        print("  which is the failure that looks like a bug rather than a leak.")
+
+
 SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "roundtrip": _roundtrip,
     "stream": _stream,
@@ -338,6 +426,7 @@ SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "surrogates": _surrogates,
     "conversation": _conversation,
     "package": _package,
+    "agent": _agent,
 }
 
 

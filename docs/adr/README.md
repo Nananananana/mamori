@@ -40,3 +40,4 @@ it, and — the part that is usually missing — what it costs.
 | [0027](0027-say-why-and-say-why-not.md) | Say why, and say why not |
 | [0028](0028-the-server-names-the-conversation.md) | The server names the conversation |
 | [0029](0029-a-prompt-nobody-typed.md) | A prompt nobody typed |
+| [0030](0030-a-tool-call-is-text.md) | A tool call is text, and evidence is local |

@@ -1,0 +1,14 @@
+{
+ "format_version": 1,
+ "name": "zh-agent",
+ "locale": "zh",
+ "source": "synthetic",
+ "description": "智能体的结构化载荷：标签是键名，而不是句子里的词。工具名、调用 ID 和 JSON 结构是负例——涂掉其中任何一个，坏掉的是这次调用而不是句子。",
+ "samples": [
+  {
+   "id": "zh-agent-001",
+   "note": "工具调用的参数。支撑这些值的只有键名，周围没有散文可以作为第二次机会。",
+   "annotated": "{\"customer\": \"[[PERSON:张伟]]\", \"电话\": \"[[PHONE:13812345678]]\", \"工号\": \"[[EMPLOYEE_ID:B-12778]]\", \"邮编\": \"[[POSTAL_CODE:100081]]\", \"priority\": \"low\", \"tool\": \"create_ticket\"}"
+  }
+ ]
+}

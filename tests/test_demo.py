@@ -94,6 +94,22 @@ class TestTheTour:
         assert "p.doe" not in sent
         assert "the quotation came back exactly: True" in out
 
+    def test_the_agent_scenario_protects_the_call_and_restores_it(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["demo", "--scenario", "agent"]) == 0
+        out = capsys.readouterr().out
+        # The scene prints the original request first; the check is on what
+        # goes to the service and on what comes back to the application.
+        _, after = out.split("what the service sees")
+        sent, back = after.split("the model calls the tool back")
+        for value in ("jane.doe@example.com", "E-45033", "415-555-0198", "r.lang@example.com"):
+            assert value not in sent, "a value reached the service"
+        # Only the arguments come back: the end-user id was in the request.
+        for value in ("jane.doe@example.com", "E-45033", "415-555-0198"):
+            assert value in back, "and the application did not get it back"
+        assert "send_email" in sent and "call_0042" in sent, "structure is untouched"
+
     def test_the_corrections_scenario_shows_a_before_and_an_after(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

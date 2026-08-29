@@ -22,6 +22,7 @@ list has moved every time.
 | 0.14 — the `mamori[ja]` morphological adapter | not built | still the right experiment; still not run |
 | 0.16 — conversations | 0.16 — conversations | with a token the server mints, not a salt |
 | 0.17 — the assembled prompt | 0.17 — the assembled prompt | the first version number this document got right |
+| 0.18 — deployment | 0.18 — the agent-shaped payload | an audit found a leak; deployment moved to 0.19 |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -127,9 +128,24 @@ development repository being present. The other half of the seam is checked
 too: three hundred model answers quoting the passages they were given, restored
 through the same session, **300 of 300 character for character**.
 
-### 0.18 — Deployment
+### 0.18 — The agent-shaped payload *(delivered, and not what was planned)*
 
-Carried from proposal 0002, unchanged and still wanted:
+Deployment was next on this list. An audit of what the proxy actually walks
+came first, because it found a leak: **a tool call's arguments had never been
+protected**, in either direction. In an agent loop that is where the personal
+data is. A generated corpus of four hundred agent turns took requests carrying
+nothing known from 106 to 397 out of 400, and turned up the second finding on
+the way -- one kana character was standing the Chinese rules down for a whole
+document.
+
+The rule this project keeps rediscovering, now stated as policy: **a leak found
+by audit outranks a feature on the plan.** Both of these had been present for
+releases and neither was in any roadmap, because a roadmap is written from what
+you already know to look at.
+
+### 0.19 — Deployment
+
+Carried from proposal 0002, twice postponed, unchanged and still wanted:
 
 - The fail-closed stance: a detection below the confidence threshold escalates
   to `BLOCK` rather than being dropped, for a deployment that would rather stop

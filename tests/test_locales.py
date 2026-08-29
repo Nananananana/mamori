@@ -7,6 +7,8 @@ document comes back full of placeholders standing in for ordinary words.
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 from mamori import ConfigurationError, MamoriConfig, PrivacySession
@@ -132,6 +134,110 @@ class TestCrossLanguageBehaviour:
             protected = session.protect(text)
             assert protected.protected_text.count("<PERSON_") >= 2
             assert session.restore(protected.protected_text).text == text
+
+
+class TestEvidenceIsLocal:
+    """One kana character speaks for its sentence, and not for the document.
+
+    Until 0.18 it spoke for all of it: a payload whose subject line was
+    Japanese and whose body was Chinese had the Chinese sent in the clear,
+    because the Chinese pack stood down for the whole text. So did any
+    bilingual thread, ticket or context package.
+    """
+
+    JAPANESE_THEN_CHINESE = (
+        '{"subject": "契約更新のご連絡", "body": "关于朱强的事，我会和新程工业集团确认后回复。"}'
+    )
+
+    def test_a_chinese_sentence_beside_a_japanese_one(self) -> None:
+        with PrivacySession() as session:
+            protected = session.protect(self.JAPANESE_THEN_CHINESE).protected_text
+        assert "朱强" not in protected
+        assert "新程工业集团" not in protected
+
+    def test_the_japanese_sentence_keeps_its_own_rules(self) -> None:
+        """And is not reported as Chinese, which is what the suppression was for."""
+        with PrivacySession() as session:
+            protected = session.protect(self.JAPANESE_THEN_CHINESE).protected_text
+        assert "契約更新のご連絡" in protected
+
+    def test_a_sentence_boundary_is_what_separates_them(self) -> None:
+        text = "契約更新のご連絡。关于朱强的事。"
+        with PrivacySession() as session:
+            assert "朱强" not in session.protect(text).protected_text
+
+    def test_a_comma_is_not_a_boundary(self) -> None:
+        """本日、会議資料を送付します is one sentence, and the kana at the end
+        of it are evidence about the kanji at the start."""
+        with MamoriConfig(stance=Stance.BALANCED).session() as session:
+            protected = session.protect("本日、会議資料を送付します。").protected_text
+        assert protected == "本日、会議資料を送付します。"
+
+    def test_japanese_prose_is_still_free_of_chinese_rules(self) -> None:
+        text = "メモに13812345678と書いてありました。"
+        with MamoriConfig(stance=Stance.BALANCED).session() as session:
+            assert session.protect(text).protected_text == text
+
+    def test_the_regions_are_ordered_and_do_not_overlap(self) -> None:
+        from mamori.domain.script import Script, script_regions
+
+        regions = script_regions("あ。x。い。y。う", frozenset({Script.KANA}))
+        assert list(regions) == sorted(regions)
+        for earlier, later in itertools.pairwise(regions):
+            assert earlier[1] <= later[0]
+
+    def test_no_evidence_means_no_regions(self) -> None:
+        from mamori.domain.script import Script, script_regions
+
+        assert script_regions("张伟先生", frozenset({Script.KANA})) == ()
+
+
+class TestAKeyIsALabel:
+    """`{"employee_id": "B-12778"}` says what the value is as plainly as a
+    sentence does. In four hundred generated agent turns this was the largest
+    leak, and it is not a language problem: an API is written in English keys
+    whatever language its values are in."""
+
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            ('{"employee_id": "B-12778"}', "EMPLOYEE_ID"),
+            ('{"employeeId": "B-12778"}', "EMPLOYEE_ID"),
+            ('{"employee-id": "B-12778"}', "EMPLOYEE_ID"),
+            ('{"postal_code": "36099"}', "POSTAL_CODE"),
+            ('{"customer": "Jane Doe"}', "PERSON"),
+            ('{"attendee": "Jane Doe"}', "PERSON"),
+            ('{"company": "Northwind Ltd"}', "COMPANY_NAME"),
+            ('{"dob": "1988-10-14"}', "DATE_OF_BIRTH"),
+            ('{"社員番号": "A-99"}', "EMPLOYEE_ID"),
+            ('{"住所": "東京都港区1-2"}', "ADDRESS"),
+            ('{"工号": "B-12778"}', "EMPLOYEE_ID"),
+        ],
+    )
+    def test_the_key_names_the_type(self, payload: str, expected: str) -> None:
+        assert expected in types_in(payload)
+
+    def test_a_bare_name_key_is_not_a_person(self) -> None:
+        """In JSON it is a tool name, a model name or a field name far more
+        often than a person, and redacting the name of the function an agent is
+        calling breaks the call."""
+        with PrivacySession() as session:
+            protected = session.protect('{"name": "send_email", "type": "function"}')
+        assert protected.protected_text == '{"name": "send_email", "type": "function"}'
+
+    def test_a_schema_is_not_a_payload(self) -> None:
+        schema = '{"type": "object", "properties": {"customer": {"type": "string"}}}'
+        with PrivacySession() as session:
+            assert session.protect(schema).protected_text == schema
+
+    def test_the_value_keeps_its_quotes(self) -> None:
+        """An application parses this. A span that crossed a quote would turn a
+        payload into a parse error in somebody else's process."""
+        import json
+
+        with PrivacySession() as session:
+            protected = session.protect('{"customer": "Jane Doe", "priority": "high"}')
+        assert json.loads(protected.protected_text)["priority"] == "high"
 
 
 class TestLocaleSelection:

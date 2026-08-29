@@ -44,7 +44,7 @@ from ...application.conversations import ConversationRegistry
 from ...application.session import PrivacySession
 from ...config import MamoriConfig
 from ...errors import DetectionError, MamoriError, PolicyViolationError
-from .exchange import protect_request, restore_reply, restore_stream_chunk, summarise
+from .exchange import StreamRestoration, protect_request, restore_reply, summarise
 from .upstream import Upstream, UpstreamError
 
 __all__ = ["END_HEADER", "SESSION_HEADER", "ProxySettings", "build_server", "serve"]
@@ -203,14 +203,19 @@ class _Handler(BaseHTTPRequestHandler):
             restored = restore_reply(session, reply.json())
             self._json(HTTPStatus(reply.status), restored)
 
-    def _stream(self, session: Any, protected: object, headers: Mapping[str, str]) -> None:
+    def _stream(
+        self, session: PrivacySession, protected: object, headers: Mapping[str, str]
+    ) -> None:
         """Relay server-sent events, restoring as they pass.
 
-        A placeholder arrives split across chunks, so one restorer spans the
-        whole stream and holds back the shortest suffix that could still become
-        one. Its held text is flushed when the stream ends.
+        A placeholder arrives split across chunks, so a restorer spans the whole
+        stream and holds back the shortest suffix that could still become one.
+        A reply has more than one run of text in it -- the prose, and one per
+        tool call -- and each needs its own held suffix, which is what
+        :class:`StreamRestoration` keeps. Whatever is still held when the model
+        stops is flushed as a final chunk per run.
         """
-        restorer = session.stream_restore()
+        restoration = StreamRestoration(session)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -218,13 +223,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         for line in self.upstream.stream(UPSTREAM_CHAT_PATH, protected, headers):
-            for out in _restored_event(line, restorer.feed):
+            for out in _restored_event(line, restoration.feed):
                 self.wfile.write(out)
                 self.wfile.flush()
 
-        tail = restorer.finish()
-        if tail:
-            self.wfile.write(_event({"choices": [{"delta": {"content": tail}}]}))
+        for trailing in restoration.finish():
+            self.wfile.write(_event(trailing))
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
 
@@ -317,7 +321,7 @@ class _BadRequestError(Exception):
     """The caller's payload could not be read."""
 
 
-def _restored_event(line: bytes, restore: Callable[[str], str]) -> Iterator[bytes]:
+def _restored_event(line: bytes, restore: Callable[[object], dict[str, Any]]) -> Iterator[bytes]:
     """Restore one line of a server-sent event stream.
 
     Anything that is not a data line -- a comment, a blank separator, the
@@ -330,13 +334,13 @@ def _restored_event(line: bytes, restore: Callable[[str], str]) -> Iterator[byte
         return
     body = stripped[len(_SSE_DATA.strip()) :].strip()
     if body == _SSE_DONE:
-        return  # emitted once by the caller, after the held tail is flushed
+        return  # emitted once by the caller, after the held tails are flushed
     try:
         chunk = json.loads(body)
     except ValueError:
         yield line
         return
-    yield _event(restore_stream_chunk(chunk, restore))
+    yield _event(restore(chunk))
 
 
 def _event(payload: object) -> bytes:

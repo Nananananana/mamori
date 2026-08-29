@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-__all__ = ["Script", "scripts_in"]
+__all__ = ["Script", "covered_by", "script_regions", "scripts_in"]
 
 
 class Script(Enum):
@@ -86,3 +86,60 @@ def scripts_in(text: str, *, sample_limit: int = 20_000) -> frozenset[Script]:
         if script is not None:
             found.add(script)
     return frozenset(found)
+
+
+#: Where one sentence stops speaking for the next.
+#:
+#: Sentence-final punctuation and line breaks, in both widths, plus the
+#: characters that separate one JSON string from another. A comma is
+#: deliberately absent: `本日、会議資料を送付します` is one sentence and the
+#: kana at the end of it are evidence about the kanji at the start.
+_BOUNDARIES = frozenset("\n\r\u2028\u2029。．.!?！？；;：:\"'`{}[]()（）「」『』")
+
+
+def script_regions(text: str, scripts: frozenset[Script]) -> tuple[tuple[int, int], ...]:
+    """Character ranges where ``scripts`` are the evidence about the text.
+
+    A sentence containing one of those scripts claims itself, and nothing
+    further. This is the whole of what makes the Japanese/Chinese decision
+    local: one kana character says the words *around* it are Japanese, and it
+    says nothing about a passage two sentences later.
+
+    Returns ordered, non-overlapping ranges, empty when none of the scripts
+    appear -- which lets a caller tell "nowhere" from "everywhere" without
+    inspecting the text again.
+    """
+    if not scripts or not text:
+        return ()
+
+    regions: list[tuple[int, int]] = []
+    start = 0
+    seen = False
+    for index, char in enumerate(text):
+        if char in _BOUNDARIES:
+            if seen:
+                regions.append((start, index))
+            start, seen = index + 1, False
+            continue
+        if _script_of(char) in scripts:
+            seen = True
+    if seen:
+        regions.append((start, len(text)))
+
+    merged: list[tuple[int, int]] = []
+    for region in regions:
+        if merged and region[0] <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], region[1]))
+        else:
+            merged.append(region)
+    return tuple(merged)
+
+
+def covered_by(regions: tuple[tuple[int, int], ...], start: int, end: int) -> bool:
+    """Whether ``[start, end)`` overlaps any region.
+
+    Overlap rather than containment: a name that begins inside Japanese text
+    and runs out of it is still in Japanese text, and the point of asking is to
+    decide whether to trust a rule set that would be wrong there.
+    """
+    return any(start < region_end and end > region_start for region_start, region_end in regions)

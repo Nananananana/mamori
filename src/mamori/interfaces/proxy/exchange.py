@@ -32,15 +32,20 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...application.session import PrivacySession
+from ...application.streaming import StreamingRestorer
+from ...errors import MamoriError
 from .messages import (
     TextSlot,
+    json_survived,
     map_choice_strings,
+    map_tool_arguments,
     request_texts,
     with_texts,
 )
 
 __all__ = [
     "ExchangeReport",
+    "StreamRestoration",
     "protect_request",
     "restore_reply",
     "restore_stream_chunk",
@@ -101,6 +106,16 @@ def protect_request(
 
     for slot in slots:
         result = session.protect(slot.text)
+        # A tool call's arguments are JSON that an application will parse. No
+        # rule in this library matches across a structural boundary, so this
+        # should never fire -- which is exactly why it is checked here rather
+        # than assumed: the failure would otherwise be a caller's parse error
+        # in a different process, hours later.
+        if not json_survived(slot.text, result.protected_text):
+            raise MamoriError(
+                f"protecting {slot.where} produced text that is no longer valid JSON; "
+                "nothing was forwarded"
+            )
         protected.append(result.protected_text)
         for name, count in result.counts_by_type().items():
             counts[name] = counts.get(name, 0) + count
@@ -120,8 +135,14 @@ def restore_reply(session: PrivacySession, payload: object) -> dict[str, Any]:
     The reply is untrusted input. Restoration resolves only placeholders this
     session actually allocated, so a model that invents ``<PERSON_042>`` gets
     it back unchanged rather than being handed a value it was never given.
+
+    Tool-call arguments are restored as well as prose. A model that answers
+    with a call rather than a sentence puts the values there, and an
+    application handed ``{"to": "<EMAIL_001>"}`` sends mail to nobody.
     """
-    return map_choice_strings(payload, "message", lambda text: session.restore(text).text)
+    restore = lambda text: session.restore(text).text  # noqa: E731
+    restored = map_choice_strings(payload, "message", restore)
+    return map_tool_arguments(restored, "message", restore)
 
 
 def restore_stream_chunk(payload: object, restore: Callable[[str], str]) -> dict[str, Any]:
@@ -131,8 +152,107 @@ def restore_stream_chunk(payload: object, restore: Callable[[str], str]) -> dict
     so the restorer holds back the shortest suffix that could still become one.
     That state belongs to the stream, which is why it is passed in rather than
     created here.
+
+    Prose only. Tool-call arguments stream as their own runs of text and are
+    handled by :class:`StreamRestoration`, which keeps one restorer each: feeding
+    two interleaved runs through a single restorer would splice one's held
+    suffix onto the other's next chunk.
     """
     return map_choice_strings(payload, "delta", restore)
+
+
+class StreamRestoration:
+    """Every run of text in one streamed reply, each reassembled on its own.
+
+    A streamed answer is not one stream of words. It is the prose, plus one
+    independent run per tool call, arriving interleaved and identified by the
+    ``index`` inside each ``tool_calls`` entry. Each needs its own held suffix,
+    because the whole point of holding one is that the next chunk of *the same
+    run* completes it.
+
+    What is held at the end is flushed as a final chunk per run, so a
+    placeholder that was still incomplete when the model stopped is emitted as
+    the value rather than as half a token.
+    """
+
+    def __init__(self, session: PrivacySession) -> None:
+        self._session = session
+        self._prose = session.stream_restore()
+        self._arguments: dict[tuple[int, int], StreamingRestorer] = {}
+
+    def feed(self, chunk: object) -> dict[str, Any]:
+        """Restore one chunk. Returns it rebuilt, whatever shape it was."""
+        restored = map_choice_strings(chunk, "delta", self._prose.feed)
+        return self._feed_tool_calls(restored)
+
+    def finish(self) -> list[dict[str, Any]]:
+        """Whatever each run was still holding, as chunks ready to emit."""
+        trailing: list[dict[str, Any]] = []
+        tail = self._prose.finish()
+        if tail:
+            trailing.append({"choices": [{"index": 0, "delta": {"content": tail}}]})
+        for (choice_index, call_index), restorer in self._arguments.items():
+            held = restorer.finish()
+            if held:
+                trailing.append(
+                    {
+                        "choices": [
+                            {
+                                "index": choice_index,
+                                "delta": {
+                                    "tool_calls": [
+                                        {"index": call_index, "function": {"arguments": held}}
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                )
+        return trailing
+
+    def _feed_tool_calls(self, chunk: object) -> dict[str, Any]:
+        if not isinstance(chunk, dict):
+            return {}
+        choices = chunk.get("choices")
+        if not isinstance(choices, list):
+            return dict(chunk)
+
+        rebuilt: list[Any] = []
+        for position, choice in enumerate(choices):
+            if not isinstance(choice, dict):
+                rebuilt.append(choice)
+                continue
+            delta = choice.get("delta")
+            if not isinstance(delta, dict):
+                rebuilt.append(choice)
+                continue
+            calls = delta.get("tool_calls")
+            if not isinstance(calls, list):
+                rebuilt.append(choice)
+                continue
+
+            choice_index = choice.get("index")
+            choice_index = choice_index if isinstance(choice_index, int) else position
+            rebuilt_calls = [self._feed_call(choice_index, call, n) for n, call in enumerate(calls)]
+            rebuilt.append({**choice, "delta": {**delta, "tool_calls": rebuilt_calls}})
+        return {**chunk, "choices": rebuilt}
+
+    def _feed_call(self, choice_index: int, call: object, position: int) -> Any:
+        if not isinstance(call, dict):
+            return call
+        function = call.get("function")
+        if not isinstance(function, dict) or not isinstance(function.get("arguments"), str):
+            return call
+        # The call's own `index`, not its position in this chunk's list: a
+        # chunk carries only the calls it has news about, so position moves.
+        call_index = call.get("index")
+        call_index = call_index if isinstance(call_index, int) else position
+        key = (choice_index, call_index)
+        restorer = self._arguments.get(key)
+        if restorer is None:
+            restorer = self._session.stream_restore()
+            self._arguments[key] = restorer
+        return {**call, "function": {**function, "arguments": restorer.feed(function["arguments"])}}
 
 
 def _with_guidance(payload: dict[str, Any], guidance: str) -> dict[str, Any]:

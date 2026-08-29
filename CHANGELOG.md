@@ -8,6 +8,119 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-30
+
+Two leaks, found by looking at the shape of the payload rather than at the
+words in it. Both are the same mistake made twice: a rule written for prose and
+applied to everything.
+
+### The proxy protected the prose and forwarded the rest
+
+`messages.py` had said since 0.6 that a tool call was "not text". True of the
+call. False of its arguments:
+
+```json
+{"to": "jane.doe@example.com", "body": "Dear Jane Doe, call 415-555-0198."}
+```
+
+Four values, four leaks, one request -- and in an agent loop that is where the
+personal data is, more reliably than in the prose around it. Symmetrically on
+the way back: a model that answers with a tool call had its arguments left
+unrestored, so the application was handed `{"to": "<EMAIL_001>"}` and sent mail
+to nobody. That one does not even look like a leak; it looks like a bug.
+
+Four hundred generated agent turns: **106 of 400 requests carried nothing known
+before this release. 397 of 400 do now.**
+
+### One kana character spoke for a whole document
+
+The locale selector's rule is decisive and correct -- kana appear in Japanese
+and never in Chinese, so the Chinese pack stands down. It was applied to the
+whole text, so this went out with the body in the clear:
+
+```json
+{"subject": "契約更新のご連絡", "body": "关于朱强的事，我会和新程工业集团确认后回复。"}
+```
+
+So would any bilingual thread, ticket or assembled context package. The
+evidence was local and the conclusion was global.
+
+### Fixed
+
+- **A tool call's arguments are protected and restored, both ways**, including
+  in a stream -- where each call's arguments are their own run of text and get
+  their own restorer. Feeding two interleaved runs through one restorer splices
+  one's held suffix onto the other's next chunk.
+
+- **Three more places a caller's words sit**: `messages[].name`,
+  `tools[].function.description` (which conventionally carries an example, and
+  an example is a real address in a real deployment), and `user` -- an "opaque
+  identifier" that people fill with an email address.
+
+- **Evidence about a script reaches to the end of its sentence and no further.**
+  A pack that a script would suppress runs anyway, and its detections are kept
+  outside the sentences where that script appears. Rules still see the whole
+  text; only the answers are filtered. A comma is not a boundary:
+  `本日、会議資料を送付します` is one sentence.
+
+- **The walk and the rebuild follow a path.** Slots used to be yielded as
+  strings and put back positionally, which works exactly as long as both
+  functions are edited together -- so adding a place to look was a chance to
+  leak the place you added.
+
+- **Protection that breaks JSON fails closed.** It should never happen, because
+  no rule matches across a structural boundary; it is checked at the one place
+  where the failure would otherwise surface as a parse error in somebody else's
+  process, hours later.
+
+### Added
+
+- **A key is a label.** `{"employee_id": "B-12778"}` says what the value is as
+  plainly as `社員番号: B-12778` does, and nothing read one. Seven key families
+  -- employee id, postal code, phone, address, person, company, date of birth --
+  case- and separator-insensitive, in English, Japanese and Chinese spellings,
+  because an API is written in English keys whatever language its values are
+  in. This was the largest single leak in the agent corpus: 97 employee ids and
+  35 postal codes out of 145.
+
+  A bare `name` is deliberately **not** one of them. In JSON it is a tool name,
+  a model name or a field name far more often than a person, and redacting the
+  name of the function an agent is calling breaks the call.
+
+- **`en-agent`, `ja-agent`, `zh-agent`** -- bundled datasets of agent-shaped
+  text, a fourth scale after fragments, documents and assembled prompts. Tool
+  names, call ids and JSON schemas are a negative set in them.
+
+- **`mamori demo --scenario agent`**, and
+  [ADR 0030](docs/adr/0030-a-tool-call-is-text.md).
+
+### Changed
+
+| | 0.17 | 0.18 |
+|---|---|---|
+| agent turns carrying nothing known (of 400) | 106 | **397** |
+| tool calls restored byte-identically (of 400) | 0 | **400** |
+| `ja-generated` over-redaction | 0.72% | 0.92% |
+
+That last row is the cost of local evidence, and it is the whole of it: the
+Japanese leak rate did not move and the bundled Japanese sets did not move. A
+Han-only sentence inside a Japanese document is now ambiguous and gets Chinese
+rules too -- which is what the selector already claimed to do for Han-only
+*text*. The change is that "text" now means "sentence".
+
+### Stated rather than solved
+
+- **A schema's `enum` is left alone.** It is the contract the model is being
+  asked to satisfy, and replacing a value changes what it may emit rather than
+  what it may see.
+- **`user` is replaced**, so the upstream's abuse tracking sees a different id
+  per session. The field is opaque to them by definition, so nothing they can
+  act on is lost -- but it is a consequence worth knowing before it is
+  discovered.
+- **YAML keys are not read.** The rules match JSON string syntax. A
+  configuration file with `employee_id: B-12778` in it is the prose-label case
+  and is only covered where a locale pack has that label.
+
 ## [0.17.0] - 2026-08-30
 
 Prompts nobody typed.
@@ -1345,7 +1458,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/Nananananana/mamori/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/Nananananana/mamori/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/Nananananana/mamori/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/Nananananana/mamori/compare/v0.14.0...v0.15.0

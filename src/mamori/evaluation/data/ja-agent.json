@@ -1,0 +1,19 @@
+{
+ "format_version": 1,
+ "name": "ja-agent",
+ "locale": "ja",
+ "source": "synthetic",
+ "description": "エージェントの構造化ペイロード。ラベルは文中の語ではなくキーである。1つのJSONに複数の言語が同居する場合、仮名はその文についての証拠でしかない。Agent-shaped text: the label is a key, and one payload can hold more than one language -- kana are evidence about their own sentence and no further.",
+ "samples": [
+  {
+   "id": "ja-agent-001",
+   "note": "ツール呼び出しの引数。値を支えているのはキーだけで、周囲に散文はない。",
+   "annotated": "{\"customer\": \"[[PERSON:田中太郎]]\", \"電話番号\": \"[[PHONE:090-1234-5678]]\", \"社員番号\": \"[[EMPLOYEE_ID:A-44881]]\", \"住所\": \"[[ADDRESS:東京都港区1-2-3]]\", \"priority\": \"normal\", \"call_id\": \"call_0042\"}"
+  },
+  {
+   "id": "ja-agent-002",
+   "note": "1つのJSONに日本語と中国語が同居する。仮名は日本語の証拠だが、それはその文についての証拠であって、2つ先の文については何も言っていない。",
+   "annotated": "{\"subject\": \"契約更新のご連絡\", \"body\": \"关于[[PERSON:朱强]]的事，我会和[[COMPANY_NAME:新程工业集团]]确认后回复。\"}"
+  }
+ ]
+}

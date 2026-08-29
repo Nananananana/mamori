@@ -46,6 +46,19 @@ _BALANCED = Stance.BALANCED
 _RECALL = Stance.RECALL_FIRST
 
 FLOORS = (
+    # -- agent payloads ------------------------------------------------------
+    # The fourth scale. What is different is not the length: it is that the
+    # label is a *key*. `{"employee_id": "B-12778"}` says what the value is as
+    # plainly as a sentence does, and until 0.18 nothing read one. These are
+    # pinned at zero because they are anchored by construction -- a key is a
+    # stronger anchor than any word in prose -- and a number that moves off
+    # zero here means a rule stopped reading keys.
+    Floor("en-agent", _RECALL, 0.010, 0.010, 0.990, 0.990),
+    Floor("ja-agent", _RECALL, 0.010, 0.010, 0.990, 0.990),
+    Floor("zh-agent", _RECALL, 0.010, 0.010, 0.990, 0.990),
+    Floor("en-agent", _BALANCED, 0.010, 0.010, 0.990, 0.990),
+    Floor("ja-agent", _BALANCED, 0.010, 0.010, 0.990, 0.990),
+    Floor("zh-agent", _BALANCED, 0.010, 0.010, 0.990, 0.990),
     # -- assembled prompts ---------------------------------------------------
     # A third scale, added in 0.17. Not longer than a document -- *shaped*
     # differently: passages selected out of notes, headers carrying a file

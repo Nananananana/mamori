@@ -1,0 +1,19 @@
+{
+ "format_version": 1,
+ "name": "en-agent",
+ "locale": "en",
+ "source": "synthetic",
+ "description": "Agent-shaped text: tool-call arguments and tool definitions. The label is a key rather than a word in a sentence, and there is no prose around a value to give a rule a second chance. Tool names, call ids, JSON schemas and enums are a negative set: replacing one breaks the call rather than the sentence.",
+ "samples": [
+  {
+   "id": "en-agent-001",
+   "note": "A tool call's arguments. Every value here is anchored by its key and by nothing else -- there is no prose around it to give a rule a second chance.",
+   "annotated": "{\"customer\": \"[[PERSON:Priya Raman]]\", \"phone\": \"[[PHONE:415-555-0198]]\", \"employee_id\": \"[[EMPLOYEE_ID:E-45033]]\", \"postal_code\": \"[[POSTAL_CODE:94107]]\", \"company\": \"[[COMPANY_NAME:Northwind Ltd]]\", \"dob\": \"[[DATE_OF_BIRTH:1988-10-14]]\", \"priority\": \"high\", \"ticket\": \"SUP-40127\"}"
+  },
+  {
+   "id": "en-agent-002",
+   "note": "The tool definition around the call. The name, the schema and the enum are structure: replacing one breaks the call rather than the sentence. The example in the description is a real address in a real deployment.",
+   "annotated": "{\"name\": \"send_email\", \"description\": \"Send mail. Example: to=[[EMAIL:j.smith@example.com]]\", \"parameters\": {\"type\": \"object\", \"required\": [\"to\"], \"properties\": {\"to\": {\"type\": \"string\", \"description\": \"recipient\"}, \"priority\": {\"enum\": [\"low\", \"high\"]}}}}"
+  }
+ ]
+}
