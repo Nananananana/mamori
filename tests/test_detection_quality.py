@@ -46,6 +46,16 @@ _BALANCED = Stance.BALANCED
 _RECALL = Stance.RECALL_FIRST
 
 FLOORS = (
+    # -- assembled prompts ---------------------------------------------------
+    # A third scale, added in 0.17. Not longer than a document -- *shaped*
+    # differently: passages selected out of notes, headers carrying a file
+    # path, and structure that must survive untouched. Over-redaction is the
+    # number to watch here rather than the leak rate, because the thing being
+    # over-redacted is a content hash or an item id, and a package whose id no
+    # longer verifies is indistinguishable from one that was tampered with.
+    Floor("en-context", _RECALL, 0.100, 0.020, 0.850, 0.950),
+    Floor("ja-context", _RECALL, 0.020, 0.010, 0.950, 0.950),
+    Floor("zh-context", _RECALL, 0.020, 0.020, 0.950, 0.850),
     # -- the shipping default ------------------------------------------------
     # Sentence fragments. Anchors are close by and there is little ordinary
     # text, so these are the flattering numbers.
@@ -67,6 +77,15 @@ FLOORS = (
     # a change is not the last word on it.
     Floor("zh-docs", _RECALL, 0.030, 0.020, 0.960, 0.890),
     # -- anchored rules only -------------------------------------------------
+    # en-context leaks 47% here, which is worse than en-docs at 20% and is the
+    # clearest measurement in the project of what *selection* costs. A passage
+    # chosen out of a note arrives without the salutation, the signature block
+    # and the form label that made its values detectable: the anchor stayed
+    # behind in the part that was not selected. Assembled prompts need the
+    # recall-first default more than prose does, and this row is what says so.
+    Floor("en-context", _BALANCED, 0.500, 0.010, 0.450, 0.950),
+    Floor("ja-context", _BALANCED, 0.020, 0.010, 0.950, 0.950),
+    Floor("zh-context", _BALANCED, 0.020, 0.010, 0.950, 0.950),
     Floor("en-core", _BALANCED, 0.035, 0.010, 0.940, 0.970),
     Floor("ja-core", _BALANCED, 0.015, 0.020, 0.970, 0.950),
     Floor("zh-core", _BALANCED, 0.020, 0.020, 0.950, 0.900),
@@ -204,9 +223,9 @@ class TestExactMatchIsTracked:
 
     @pytest.mark.parametrize("locale", ["ja", "en"])
     def test_spans_line_up_with_the_labels(self, locale: str) -> None:
-        datasets = bundled_datasets(locale)
+        fragments = next(d for d in bundled_datasets(locale) if d.name.endswith("-core"))
         report = evaluate(
-            datasets[0],
+            fragments,
             detectors=list(MamoriConfig(stance=Stance.BALANCED).detectors()),
             match=MatchMode.EXACT,
         )

@@ -1,0 +1,19 @@
+{
+ "format_version": 1,
+ "name": "en-context",
+ "locale": "en",
+ "source": "synthetic",
+ "description": "Assembled prompts, in the shape a retrieval layer renders one. Three kinds of thing share a document: prose passages, headers carrying a file path (a home directory names its owner), and structure -- ids, hashes, offsets -- which is a negative set. Anything replaced there is a bug: a redacted hash is a package whose id no longer verifies. Smaller than the document sets on purpose; the large corpus of these lives in the development repository.",
+ "samples": [
+  {
+   "id": "en-context-001",
+   "note": "An assembled prompt. The home directory names its owner in a form that appears nowhere else in the text; ids, hashes and offsets are negatives.",
+   "annotated": "# SYSTEM\nAnswer the question using only the context provided below.\n- Quote the exact text you rely on.\n- Do not report character offsets.\n\n# TASK\nWhat happened with the [[COMPANY_NAME:Northwind Ltd]] quote?\n\n# CONTEXT\n\n[fbd4c2a631fd] /home/[[PERSON:p.doe]]/notes/meeting-log.md (Meeting)[464:562]\nMet with [[PERSON:Priya Raman]] from [[COMPANY_NAME:Northwind Ltd]] on Tuesday. They asked for the quote to be reissued; [[PERSON:Michael Chen]] is handling it.\n\n[92485203fd8a] //fileserver/team/2026/review.md (Open)[12:140]\nReview notes for [[EMPLOYEE_ID:E-45033]] -- [[PERSON:Priya Raman]], born [[DATE_OF_BIRTH:1988-10-14]]. Transfer request to be considered against next quarter's 12 openings.\n\n# NOT INCLUDED\n2 relevant-looking passages were considered and left out of this context. Do not assume what you have been given is complete."
+  },
+  {
+   "id": "en-context-002",
+   "note": "Every system account a home-directory rule must refuse: a CI runner, a public profile, a service account. None of them is a person.",
+   "annotated": "# TASK\nWhere did the build write its output?\n\n# CONTEXT\n\n[a0c5c4ba096d] /home/runner/work/repo/build.md (Background)[0:88]\nThe build wrote to C:/Users/Public/artifacts and ran as /home/ubuntu/agent. Contact [[PERSON:Robert Lang]] at [[EMAIL:r.lang@example.com]] if it fails again."
+  }
+ ]
+}

@@ -14,6 +14,7 @@ Each scenario answers one question somebody actually has.
 ``blocked``     What if there is a password in my text?
 ``surrogates``  Can I have readable values instead of tokens?
 ``conversation`` What happens on turn two, when the client sent only turn two?
+``package``     What about a prompt that was assembled rather than typed?
 
 The demo text is invented, like everything else that ships in this package.
 ``--text`` and ``--file`` run the same tour on yours instead, which is the
@@ -264,6 +265,70 @@ def _conversation(config: MamoriConfig, text: str) -> None:
     print("on with  mamori serve --conversations.")
 
 
+PACKAGE_TEXT = """# SYSTEM
+Answer the question using only the context provided below.
+- Quote the exact text you rely on.
+- Do not report character offsets.
+
+# TASK
+What happened with the Northwind Ltd quote?
+
+# CONTEXT
+
+[fbd4c2a631fd] /home/p.doe/notes/meeting-log.md (Meeting)[464:562]
+Met with Priya Raman from Northwind Ltd on Tuesday. They asked for the quote
+to be reissued; Michael Chen is handling it.
+
+[92485203fd8a] //fileserver/team/2026/review.md (Open)[12:140]
+Review notes for E-45033 -- Priya Raman, born 1988-10-14.
+
+# NOT INCLUDED
+2 relevant-looking passages were considered and left out of this context."""
+
+QUOTED = "Met with Priya Raman from Northwind Ltd on Tuesday."
+
+
+def _package(config: MamoriConfig, text: str) -> None:
+    _heading("8. A prompt nobody typed")
+    print("More and more prompts are not written, they are assembled: a")
+    print("retrieval layer picks passages out of your notes, puts the file")
+    print("each came from in a header, and renders the lot. Three kinds of")
+    print("thing end up in one document and they are not the same kind.")
+    del text
+
+    with config.session() as session:
+        result = session.protect(PACKAGE_TEXT)
+        _block("assembled, and about to be sent", PACKAGE_TEXT)
+        _block("what the service sees", result.protected_text)
+
+        print("\nthree things to look at, in order of how surprising they are:")
+        print("  1. /home/<PERSON_00n>/  -- a home directory names its owner, and")
+        print("     that name is nowhere else in the document")
+        print("  2. [fbd4c2a631fd], [464:562], //fileserver/team/  -- untouched.")
+        print("     Structure is a negative set: a redacted hash is a package")
+        print("     whose id no longer verifies, which downstream is")
+        print("     indistinguishable from one somebody tampered with")
+        print("  3. the passages, protected the way any prose would be")
+
+        start = result.protected_text.index("Met with")
+        quoted = result.protected_text[start:].split("\n")[0]
+        answer = f"The context says:\n\n> {quoted}\n\nSo the quote needs reissuing."
+        _block("the model answers, quoting what it was given", answer)
+        restored = session.restore(answer).text
+        _block("restored", restored)
+
+        exact = QUOTED in restored
+        print(f"\n  the quotation came back exactly: {exact}")
+        print("  which is the property this has to have. Anything that checks a")
+        print("  model's citations does it by matching text, so one character of")
+        print("  drift reads as a fabricated quote rather than a redacted one.")
+        print(
+            f"\n  reversible: {result.reversible}  (masked types: {result.masked_types or 'none'})"
+        )
+        print("  <PERSON_001> and [REDACTED] look equally replaced in the text.")
+        print("  Only one of them can be undone, so the caller is told which.")
+
+
 SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "roundtrip": _roundtrip,
     "stream": _stream,
@@ -272,6 +337,7 @@ SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "blocked": _blocked,
     "surrogates": _surrogates,
     "conversation": _conversation,
+    "package": _package,
 }
 
 

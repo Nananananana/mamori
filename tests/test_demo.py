@@ -80,6 +80,20 @@ class TestTheTour:
                 assert shown.endswith("...")
                 assert len(shown) <= 12
 
+    def test_the_package_scenario_leaves_the_structure_alone(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The negative set, on screen: ids, offsets and shared paths."""
+        assert main(["demo", "--scenario", "package"]) == 0
+        out = capsys.readouterr().out
+        for structure in ("[fbd4c2a631fd]", "[464:562]", "//fileserver/team"):
+            assert structure in out
+        assert "/home/<PERSON" in out, "and the home directory is not left alone"
+        # The scene prints the original first, so the check is on what is sent.
+        _, sent = out.split("what the service sees")
+        assert "p.doe" not in sent
+        assert "the quotation came back exactly: True" in out
+
     def test_the_corrections_scenario_shows_a_before_and_an_after(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

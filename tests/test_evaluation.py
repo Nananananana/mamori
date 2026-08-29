@@ -393,7 +393,7 @@ class TestToleratedSpans:
         assert score.leaked_characters == len("Ann")
 
     def test_the_counts_are_reported_separately(self) -> None:
-        dataset = bundled_datasets("en")[0]
+        dataset = next(d for d in bundled_datasets("en") if d.name == "en-core")
         assert dataset.tolerated_count > 0
         assert dataset.annotation_count > dataset.tolerated_count
 

@@ -252,7 +252,11 @@ RULES: tuple[PatternRule, ...] = (
     # the two languages got it.
     compile_rule(
         t.PROJECT_NAME,
-        r"项目(?!名称|代号|编号)(?![的是在和与或])([^\s,;。、:：]{2,20})",
+        # Function words are excluded from the name's own characters, not only
+        # from its first one -- 项目子午的进度 was a codename called 子午的进度.
+        # Same fix as the Japanese rule above, same release, same corpus.
+        r"项目(?!名称|代号|编号)(?![的是在和与或])"
+        r"([^\s,;。、:：？?！!的是在和与或了给从到还]{1,20})",
         LOW,
         group=1,
     ),
@@ -332,7 +336,8 @@ WIDE_RULES: tuple[PatternRule, ...] = (
     # Six bare digits, no 邮编 label.
     compile_rule(
         t.POSTAL_CODE,
-        r"(?<!\d)\d{6}(?!\d)",
+        # Letters guard the edges too: six digits inside a hash are a hash.
+        r"(?<![\dA-Za-z])\d{6}(?![\dA-Za-z])",
         LOW,
         tier=RuleTier.WIDE,
     ),

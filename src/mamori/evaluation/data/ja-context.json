@@ -1,0 +1,19 @@
+{
+ "format_version": 1,
+ "name": "ja-context",
+ "locale": "ja",
+ "source": "synthetic",
+ "description": "組み立てられたプロンプト（tsumugiのContextPackageの形）。散文・パスを含むヘッダ・触れてはならない構造の3種類が1つの文書に同居する。A rendered context package: prose passages, headers carrying a file path, and structure -- item ids, content hashes, character offsets -- which is a negative set. Anything replaced there is a bug, because a redacted hash is a package whose id no longer verifies.",
+ "samples": [
+  {
+   "id": "ja-context-001",
+   "note": "組み立てられたプロンプト。個人のホームディレクトリが所有者を名指しし、本文の氏名とは別の表記になっている。ID・ハッシュ・オフセットは負例。",
+   "annotated": "# SYSTEM\n以下の文脈のみを使って答えてください。\n- 根拠にした文をそのまま引用すること。\n- 文字オフセットは報告しないこと。\n\n# TASK\n[[COMPANY_NAME:株式会社さくら商事]]との費用の話はどうなっていた?\n\n# CONTEXT\n\n[1a78a34e8a99] C:/Users/[[PERSON:sato.hanako]]/notes/顧客メモ.md (打ち合わせ)[120:193]\n金曜の打ち合わせ。[[COMPANY_NAME:株式会社さくら商事]]の[[PERSON:田中太郎]]さんから見積の再提出について依頼あり。担当は[[PERSON:佐藤花子]]。\n\n[5b469054284c] /srv/shared/notes/2026/引き継ぎ.md (連絡先)[2053:2126] -- interpretation, confidence 0.61\n[[PERSON:田中太郎]]さんの連絡先を更新した。[[EMAIL:tanaka@example.co.jp]]、携帯は[[PHONE:090-1234-5678]]。旧アドレスは月曜以降無効。\n\n# NOT INCLUDED\n4 relevant-looking passages were considered and left out of this context. Do not assume what you have been given is complete."
+  },
+  {
+   "id": "ja-context-002",
+   "note": "共有ストレージのパスは誰も名指ししない。ここで置換が起きたら過剰である。",
+   "annotated": "# TASK\nプロジェクト[[PROJECT_NAME:鶴]]の残作業は?\n\n# CONTEXT\n\n[70f561755348] /mnt/corpus/docs/作業記録.md (未解決)[10:96]\nプロジェクト[[PROJECT_NAME:鶴]]の進捗。83%まで完了、残りは検証のみ。サーバは[[INTERNAL_IP:10.0.4.17]]、手順は[[INTERNAL_URL:https://wiki.corp.local/runbook]]に置いた。\n\n# CONSTRAINTS\n- answer_language: ja\n- max_words: 200"
+  }
+ ]
+}

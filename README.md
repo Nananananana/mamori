@@ -237,6 +237,61 @@ See [ADR 0028](docs/adr/0028-the-server-names-the-conversation.md).
 
 ---
 
+## A prompt nobody typed
+
+More and more prompts are not written, they are **assembled** — a retrieval
+layer picks passages out of your notes, puts the file each came from in a
+header, and renders the lot. Three kinds of thing end up in one document and
+they are not the same kind:
+
+```text
+[fbd4c2a631fd] /home/p.doe/notes/meeting-log.md (Meeting)[464:562]
+Met with Priya Raman from Northwind Ltd on Tuesday.
+```
+
+```text
+[fbd4c2a631fd] /home/<PERSON_001>/notes/meeting-log.md (Meeting)[464:562]
+Met with <PERSON_002> from <COMPANY_NAME_001> on Tuesday.
+```
+
+**The header names a person.** A home directory identifies its owner as surely
+as a signature block does, and that name is often nowhere else in the document.
+Only the one segment is replaced: the rest of the path is provenance, and
+something downstream may be checking it. System accounts — `runner`, `Public`,
+`www-data` — are refused from a closed list.
+
+**The structure is not touched.** `[fbd4c2a631fd]`, `[464:562]`,
+`//fileserver/team/`. Over-redacting a word costs answer quality; over-redacting
+a content hash produces a package whose id no longer verifies, which downstream
+is indistinguishable from one somebody tampered with. In the bundled datasets
+these are labelled as ordinary text, so anything replaced there fails a test.
+
+**A quotation comes back exactly.** If something is checking the model's
+citations against what was sent, restoration has to be character-for-character:
+one character of drift reads as a fabricated quote rather than a redacted one.
+Three hundred generated answers, all three hundred exact.
+
+```python
+result = session.protect(package)
+result.reversible      # False if anything was masked rather than replaced
+result.masked_types    # ('PHONE',) — types, never values
+```
+
+`<PERSON_001>` and `[REDACTED]` look equally replaced in the text, and only one
+of them can be undone. Anything verifying claims needs that as data, because it
+is the difference between *unsupported* and *unverifiable*.
+
+```bash
+mamori demo --scenario package
+```
+
+This was measured against [tsumugi](https://github.com/Nananananana/tsumugi),
+which renders exactly this shape and checks the citations afterwards. Neither
+project depends on the other. See
+[ADR 0029](docs/adr/0029-a-prompt-nobody-typed.md).
+
+---
+
 ## Languages
 
 Japanese, English and Chinese, in one document if that is what you have:
@@ -344,7 +399,10 @@ default**:
 | `zh-core` | 0.00% | **0.00%** | 1.63% | **2.94%** |
 | `ja-docs` | 0.33% | **0.33%** | 0.18% | **1.06%** |
 | `en-docs` | 20.02% | **3.50%** | 0.03% | **0.90%** |
-| `zh-docs` | 2.37% | **2.37%** | 0.88% | **1.68%** |
+| `zh-docs` | 2.37% | **2.37%** | 0.40% | **1.20%** |
+| `ja-context` | 0.00% | **0.00%** | 0.00% | **0.00%** |
+| `en-context` | 46.85% | **6.31%** | 0.00% | **0.92%** |
+| `zh-context` | 0.00% | **0.00%** | 0.00% | **0.53%** |
 
 The `-docs` rows are the ones to read. They are business documents at the
 length people actually send; the `-core` rows are sentence fragments with a
@@ -858,7 +916,9 @@ more from the two fixes that failed than the two that worked. `v0.14` generated
 a thousand documents and a thousand replies, and they found five bugs in an hour.
 `v0.15` spent that corpus on Chinese, where a name followed by an ordinary word
 had been invisible since the first release. `v0.16` gave the proxy conversations,
-and checked a four-release-old argument that turned out to be correct.
+and checked a four-release-old argument that turned out to be correct. `v0.17`
+pointed a corpus at prompts nobody typed and found four bugs, three of which had
+nothing to do with assembled prompts and had been there for releases.
 
 | | |
 |---|---|

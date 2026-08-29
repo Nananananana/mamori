@@ -21,6 +21,7 @@ list has moved every time.
 | 0.14 — per-session salt | **not built, and will not be** | [ADR 0028](../adr/0028-the-server-names-the-conversation.md) |
 | 0.14 — the `mamori[ja]` morphological adapter | not built | still the right experiment; still not run |
 | 0.16 — conversations | 0.16 — conversations | with a token the server mints, not a salt |
+| 0.17 — the assembled prompt | 0.17 — the assembled prompt | the first version number this document got right |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -106,17 +107,25 @@ Sessions that outlive one request, named by a token the server mints. The
 argument that made one-scope-per-request sufficient is now a test rather than a
 paragraph, and it holds — for the clients it was about.
 
-### 0.17 — The assembled prompt
+### 0.17 — The assembled prompt *(delivered)*
 
-- A generated corpus of **structured prompts**, in the shape tsumugi renders,
-  with the PII inside the passages and inside the paths in the headers.
-  Measured like every other corpus: leak rate, over-redaction, and a per-type
-  breakdown.
-- The structural elements as a **negative** set: hashes, ids, offsets, section
-  names, budgets. Anything replaced there is a bug with a number attached.
-- Whatever that finds. On the evidence of 0.14 and 0.15, that is the release.
-- `ProtectionResult` says whether what it did is reversible, because the
-  consumer on the other side has to classify claims by it.
+All of it, and the third item was the release again: three hundred generated
+packages found four bugs, and **three of them had nothing to do with assembled
+prompts**. A home directory naming its owner, a digit run inside a hash read as
+an identifier, a lookahead that scanned past its own token, and a Japanese
+codename that swallowed the sentence after it. Prose had never shown any of
+them; they were not new.
+
+That is now the third release in a row where generating data beat building a
+feature, and the pattern is specific enough to state as a rule: **a corpus in a
+shape the rules were not written against finds bugs that are not about the
+shape.** The shape is what gets you to look.
+
+`ProtectionResult.reversible` and `masked_types` shipped with it, and a bundled
+`-context` dataset per language so the finding does not depend on the
+development repository being present. The other half of the seam is checked
+too: three hundred model answers quoting the passages they were given, restored
+through the same session, **300 of 300 character for character**.
 
 ### 0.18 — Deployment
 

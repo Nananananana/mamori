@@ -259,6 +259,72 @@ _INTERNAL_IP = compile_rule(
     validator=_private_ip,
 )
 
+#: System accounts. A closed set of well-known names that are not people, which
+#: is what makes this list defensible where a vocabulary list would not be:
+#: nobody coins a new value for the Windows public profile. `runner` and
+#: `vagrant` are here because CI logs and build output are full of them and a
+#: build agent is not a person.
+_NOT_A_USER = (
+    "public",
+    "default",
+    "default user",
+    "all users",
+    "shared",
+    "guest",
+    "administrator",
+    "admin",
+    "root",
+    "user",
+    "users",
+    "ubuntu",
+    "ec2-user",
+    "vagrant",
+    "runner",
+    "runneradmin",
+    "jenkins",
+    "docker",
+    "www-data",
+    "service",
+    "svc",
+    "test",
+    "temp",
+    "tmp",
+)
+
+
+def _is_a_person(value: str) -> bool:
+    """Reject the accounts that ship with an operating system or a CI runner."""
+    return value.strip().lower() not in _NOT_A_USER
+
+
+#: The segment after a home root is the account's owner.
+#:
+#: `/home/p.doe/notes/`, `/Users/sato.hanako/`, `C:\Users\t.mercer\`. This is
+#: not prose and no other rule was ever going to reach it, which is why it went
+#: unnoticed until prompts started being *assembled*: a retrieval layer names
+#: the file each passage came from, and a personal note lives under a personal
+#: directory. In a corpus of three hundred rendered context packages this was
+#: the single largest leak in Japanese, English and Chinese alike.
+#:
+#: Only the one segment is replaced. The rest of the path is provenance, the
+#: consumer on the other side may be checking it, and a redaction that breaks
+#: a checksum costs more than it saves.
+#:
+#: MEDIUM rather than HIGH: the shape is unambiguous but what it names is not
+#: always a person -- a shared account, a role mailbox, a machine. The stoplist
+#: takes the ones that are known, and the confidence says the rest out loud.
+_HOME_DIRECTORY = compile_rule(
+    t.PERSON,
+    r"(?:(?<=[/\\])|(?<=^)|(?<=[\s\"\'(<]))"
+    r"(?:[A-Za-z]:)?[/\\]?(?:home|Users|users|export[/\\]home)[/\\]"
+    r"([A-Za-z0-9][A-Za-z0-9._\-]{1,31})"
+    r"(?=[/\\])",
+    MEDIUM,
+    group=1,
+    validator=_is_a_person,
+)
+
+
 # --- Wide tier ------------------------------------------------------------
 # Shape with no anchor. Each of these finds something no core rule can, and each
 # also fires on ordinary text. They run only under the recall-first stance.
@@ -269,9 +335,21 @@ _INTERNAL_IP = compile_rule(
 #: look identical. Requires a mix of cases and digits, which removes most prose.
 _WIDE_SECRET = compile_rule(
     t.API_KEY,
+    # The three lookaheads are what make this "a mixed-case run with digits in
+    # it" rather than "a long word", and until 0.17 they did not do that. They
+    # were written `(?=[^A-Z]*[A-Z])`, which is satisfied by a capital letter
+    # ANYWHERE LATER IN THE DOCUMENT: `[^A-Z]*` walks straight past the end of
+    # the candidate. Every long lowercase run in a document containing a
+    # capital somewhere qualified, which in practice is every document. Bounded
+    # to the token's own alphabet, the requirement means what it says.
+    #
+    # The leading `/` is excluded for the same reason, from the other side: a
+    # POSIX path is a long run of these characters, and `/srv/shared/notes/
+    # customer-notes` was being reported as a credential. Found in a corpus of
+    # assembled prompts, where a path is in the header of every passage.
     r"(?<![A-Za-z0-9+/=_\-])(?=[A-Za-z0-9+/_\-]{32,})"
-    r"(?=[^a-z]*[a-z])(?=[^A-Z]*[A-Z])(?=[^0-9]*[0-9])"
-    r"[A-Za-z0-9+/_\-]{32,}={0,2}(?![A-Za-z0-9+/=_\-])",
+    r"(?=[A-Za-z0-9+/_\-]*[a-z])(?=[A-Za-z0-9+/_\-]*[A-Z])(?=[A-Za-z0-9+/_\-]*[0-9])"
+    r"[A-Za-z0-9+_\-][A-Za-z0-9+/_\-]{31,}={0,2}(?![A-Za-z0-9+/=_\-])",
     LOW,
     tier=RuleTier.WIDE,
 )
@@ -279,9 +357,15 @@ _WIDE_SECRET = compile_rule(
 #: Any long digit run. Order numbers look the same, which is the point: under
 #: the recall-first stance an order number becoming a placeholder is cheaper
 #: than an unformatted account number leaving the machine.
+#:
+#: The guard rejects an adjacent letter as well as an adjacent digit. Without
+#: that, `5b469054284c` -- a content hash, a commit, an item id -- contains a
+#: nine-digit run and was reported as one, which redacts a checksum and leaves
+#: the document it identifies unverifiable. Digits inside a longer alphanumeric
+#: token are part of the token.
 _WIDE_DIGIT_RUN = compile_rule(
     t.IDENTIFIER,
-    r"(?<![\d\-])\d{8,20}(?![\d\-])",
+    r"(?<![\dA-Za-z\-])\d{8,20}(?![\dA-Za-z\-])",
     LOW,
     tier=RuleTier.WIDE,
 )
@@ -294,6 +378,7 @@ UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     *_CREDENTIAL_RULES,
     _INTERNAL_URL,
     _INTERNAL_IP,
+    _HOME_DIRECTORY,
     _WIDE_SECRET,
     _WIDE_DIGIT_RUN,
 )

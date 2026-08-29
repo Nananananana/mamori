@@ -8,6 +8,117 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-30
+
+Prompts nobody typed.
+
+Every dataset in this repository until now was prose somebody wrote: an email,
+a ticket, a set of minutes. A growing share of what reaches a model is not that
+-- it is **assembled**, by a retrieval layer or an agent framework, out of
+passages and headers and structure. Three hundred rendered context packages,
+built with the sibling project [tsumugi](https://github.com/Nananananana/tsumugi)'s
+own domain classes rather than an imitation of its output, said what that
+assumption had been hiding:
+
+| | prose | assembled |
+|---|---|---|
+| leak rate, ja | 2.7% | **20.4%** |
+| leak rate, en | 1.5% | **21.7%** |
+| leak rate, zh | 0.4% | **15.8%** |
+
+### Fixed
+
+Four bugs, and three of them were not about assembled prompts at all. They were
+general, they had been there for releases, and prose had never shown them.
+
+- **A home directory names its owner.** `/home/p.doe/notes/customers.md`,
+  `C:\Users\sato.hanako\`. The largest leak in all three languages, and no
+  rule had ever looked at a path. Only the one segment is replaced -- the rest
+  is provenance somebody may be checking -- and a closed list of system
+  accounts (`runner`, `Public`, `www-data`) is refused, the same argument that
+  justifies the weekday list in Chinese.
+
+- **A digit run inside a hash was read as an identifier, and as an SSN.**
+  `5b469054284c` contains nine digits. The guards said `(?<!\d)` and `(?!\d)`,
+  which do not stop a run in the middle of a token, so any content hash, commit
+  id or UUID could be redacted -- breaking a checksum to protect nothing.
+
+- **`(?=[^A-Z]*[A-Z])` does not mean what it looks like.** It was the wide
+  secret rule's "mixed case" requirement, and `[^A-Z]*` walks straight past the
+  end of the candidate: **a capital letter anywhere later in the document
+  satisfied it**. In practice every document. Every long path in an assembled
+  prompt was reported as a credential.
+
+- **`プロジェクト鶴の残作業は?` was a codename called `鶴の残作業は?`** -- the
+  whole question. Same in Chinese: `项目子午的进度` gave `子午的进度`. Two
+  costs, and the second is worse than the over-redaction: the same project in
+  two sentences got two *different* placeholders, so the model could not tell
+  they were the same project and a quotation restored to a different string
+  than the passage it came from.
+
+Two more turned up in passing, both Japanese, both general:
+
+- **A hiragana given name was invisible.** `西村さくら様` was missed while
+  `西村花子様` was found: every rule wanted Han or katakana, and さくら, ゆき
+  and あおい are ordinary names. Offered where an honorific or a label is
+  present and nowhere else -- after a bare surname a hiragana run is a particle
+  far more often than a name.
+
+- **`社員番号は入社時にA-44881を付与予定です`** did not read as an employee id.
+  The same label-gap bug fixed for Chinese in 0.15, in the other language,
+  thirty times in a thousand documents.
+
+### Added
+
+- **`en-context`, `ja-context`, `zh-context`** -- bundled datasets of assembled
+  prompts, and a third set of quality floors. Structure is a **negative** set
+  in them: item ids, content hashes, character offsets and budgets are labelled
+  as ordinary text, so anything replaced there is a bug with a number attached
+  rather than a matter of taste.
+
+- **`ProtectionResult.reversible`** and **`masked_types`**. The caller cannot
+  see this from the text -- `<PERSON_001>` and `[REDACTED]` look equally
+  replaced -- and downstream it is the difference between *unsupported* and
+  *unverifiable*: between accusing a model of inventing something and admitting
+  you cannot tell.
+
+- **`mamori demo --scenario package`**, and
+  [ADR 0029](docs/adr/0029-a-prompt-nobody-typed.md).
+
+### The property that matters for this composition
+
+A consumer that checks a model's citations does it by matching text, so
+restoration has to be exact -- not nearly. One character of drift reads as a
+fabricated quotation rather than a redacted one, and an evidence system that
+reports honest citations as fabrications trains its reader to ignore the
+signal.
+
+Three hundred generated answers, each quoting a passage it was given, restored
+through the same session: **300 of 300 exactly**, including the 168 whose quoted
+span contains placeholders.
+
+### Changed
+
+| default stance | 0.16 | 0.17 |
+|---|---|---|
+| `ja-generated` leak (1000 documents) | 2.64% | **1.37%** |
+| `en-context` leak | 21.68% | **9.69%** |
+| `ja-context` leak | 20.42% | **3.60%** |
+| `zh-context` leak | 15.82% | **3.12%** |
+| `en-context` over-redaction | 1.43% | **0.18%** |
+| `zh-docs` over-redaction | 1.68% | **1.20%** |
+
+`en-context` still leaks 9.69% on the generated set, and the residue is one
+class: a value whose anchor **stayed behind in the part that was not selected**.
+`Progress on Meridian: 31% done` has no word "project" in it, and
+`Review notes for E-45033` has no word "employee number". That is what
+selection does to a document, it is measured now, and the answer to it is not a
+regular expression.
+
+The same effect is why `en-context` leaks 46.85% at the balanced stance against
+`en-docs`'s 20.02%. Assembled prompts need the recall-first default more than
+prose does.
+
 ## [0.16.0] - 2026-08-30
 
 Conversations: sessions that outlive one request, for the clients that need
@@ -1234,7 +1345,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/Nananananana/mamori/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/Nananananana/mamori/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/Nananananana/mamori/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Nananananana/mamori/compare/v0.13.0...v0.14.0

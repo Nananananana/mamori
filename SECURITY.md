@@ -92,7 +92,7 @@ fails before a release does.
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets, at two scales. Run
-`mamori eval` yourself; as of `0.15.0`, at the default recall-first stance:
+`mamori eval` yourself; as of `0.17.0`, at the default recall-first stance:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
@@ -101,13 +101,24 @@ Detection is measured against bundled labelled datasets, at two scales. Run
 | `zh-core` | 27 fragments | 0.00% | 2.94% | 0.875 / 1.000 |
 | `en-docs` | 8 documents | **3.50%** | 0.90% | 0.946 / 0.883 |
 | `ja-docs` | 8 documents | **0.33%** | 1.06% | 0.938 / 0.984 |
-| `zh-docs` | 6 documents | **2.37%** | 1.68% | 0.918 / 0.978 |
+| `zh-docs` | 6 documents | **2.37%** | 1.20% | 0.900 / 0.978 |
+| `en-context` | 2 packages | **6.31%** | 0.92% | 1.000 / 0.900 |
+| `ja-context` | 2 packages | **0.00%** | 0.00% | 1.000 / 1.000 |
+| `zh-context` | 1 package | **0.00%** | 0.53% | 0.889 / 1.000 |
 
 A third corpus of a thousand generated documents across twelve genres is not
 shipped -- it lives in the development repository, because the bundled sets are
 the regression floor and that one is for finding bugs. It found five in its
 first run, and four more in Chinese the run after that. See the 0.14.0 and
 0.15.0 entries in `CHANGELOG.md`.
+
+**The `-context` rows are assembled prompts** -- what a retrieval layer or an
+agent framework renders, rather than what a person typed. They leak more than
+documents do at the balanced stance (46.85% against 20.02% in English) for a
+reason worth stating: **selection strips anchors**. A passage chosen out of a
+note arrives without the salutation, the signature block and the form label
+that made its values detectable, because the anchor stayed behind in the part
+that was not selected. See [ADR 0029](docs/adr/0029-a-prompt-nobody-typed.md).
 
 **Read the document rows first.** The `-core` sets are sentence fragments with a
 median length of 28 to 44 characters; the `-docs` sets are business documents at
@@ -125,7 +136,10 @@ At `--stance balanced`, which runs only the anchored rules:
 | `zh-core` | 0.00% | 1.63% | 0.933 / 1.000 |
 | `en-docs` | **20.02%** | 0.03% | 1.000 / 0.700 |
 | `ja-docs` | 0.33% | 0.18% | 0.968 / 0.984 |
-| `zh-docs` | 2.37% | 0.88% | 0.978 / 0.978 |
+| `zh-docs` | 2.37% | 0.40% | 0.957 / 0.978 |
+| `en-context` | **46.85%** | 0.00% | 1.000 / 0.500 |
+| `ja-context` | 0.00% | 0.00% | 1.000 / 1.000 |
+| `zh-context` | 0.00% | 0.00% | 1.000 / 1.000 |
 
 That 20.02% is not a typo. A fifth of the sensitive characters in an English
 document have nothing anchored near them -- a name in an attendee list, a name

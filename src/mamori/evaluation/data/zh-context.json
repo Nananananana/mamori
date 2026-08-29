@@ -1,0 +1,14 @@
+{
+ "format_version": 1,
+ "name": "zh-context",
+ "locale": "zh",
+ "source": "synthetic",
+ "description": "组装出来的提示词。同一份文档里有三种东西：散文段落、带文件路径的条目头部（家目录点名了它的所有者），以及不能碰的结构——条目 ID、内容哈希、字符偏移量。结构是负例：那里出现任何替换都是缺陷，因为被涂掉的哈希意味着这份包的 ID 不再校验。",
+ "samples": [
+  {
+   "id": "zh-context-001",
+   "note": "组装出来的提示词。家目录点名了它的所有者；ID、哈希和偏移量是负例。",
+   "annotated": "# SYSTEM\n只使用下面提供的上下文回答问题。\n- 原样引用你所依据的文字。\n- 不要报告字符偏移量。\n\n# TASK\n[[PERSON:张伟]]的联系方式是什么?\n\n# CONTEXT\n\n[d11f18f0ff38] /Users/[[PERSON:zhang.wei]]/notes/客户记录.md (联系人)[200:297]\n更新了[[PERSON:张伟]]的联系方式：[[EMAIL:zhangwei@example.com]]，手机[[PHONE:13812345678]]。旧邮箱周五之后停用。\n\n[6708c779f7cb] /opt/notes/2026/会议纪要.md (会议)[464:562]\n周二的会议。[[COMPANY_NAME:云图科技有限公司]]的[[PERSON:李明]]要求重新提交报价，由[[PERSON:张伟]]负责跟进。\n\n# NOT INCLUDED\n3 relevant-looking passages were considered and left out of this context. Do not assume what you have been given is complete."
+  }
+ ]
+}

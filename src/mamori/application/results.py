@@ -66,6 +66,44 @@ class ProtectionResult:
     def anonymized_count(self) -> int:
         return sum(1 for e in self.entities if e.action is Action.ANONYMIZE)
 
+    @property
+    def reversible(self) -> bool:
+        """Whether every replacement in this text can be undone.
+
+        False when anything was masked: a mask is a fixed string with no
+        mapping behind it, so the value it replaced is gone from this process
+        and no restoration will bring it back. That is by design, and the
+        point of saying it here is that **the caller cannot see it from the
+        text**. `<PERSON_001>` and `[redacted]` look equally replaced.
+
+        It matters to anything downstream that checks the model's answer
+        against what was sent. A claim resting on a value that was anonymized
+        can be verified after restoration; a claim resting on a masked one can
+        never be, and the difference between "unsupported" and "unverifiable"
+        is the difference between accusing a model of making something up and
+        admitting you cannot tell. The sibling project `tsumugi` needs exactly
+        this distinction for its citation checking, which is where the property
+        came from.
+
+        A blocked entity does not reach here at all -- protection raises
+        instead, so there is no protected text to ask about.
+        """
+        return all(e.action is not Action.MASK for e in self.entities)
+
+    @property
+    def masked_types(self) -> tuple[str, ...]:
+        """Types whose values were masked, in first-seen order. Not the values.
+
+        What to tell somebody whose verification just came back unverifiable:
+        which kinds of thing they can no longer check, without handing them
+        back the values that were removed.
+        """
+        seen: dict[str, None] = {}
+        for entity in self.entities:
+            if entity.action is Action.MASK:
+                seen.setdefault(entity.entity_type, None)
+        return tuple(seen)
+
     def counts_by_type(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         for entity in self.entities:

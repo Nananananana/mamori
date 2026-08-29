@@ -81,7 +81,9 @@ class TestComparingTwoRuns:
     def _report(stance: str = "balanced"):  # type: ignore[no-untyped-def]
         from mamori.domain.stance import Stance
 
-        dataset = bundled_datasets("ja")[0]
+        # ja-core by name: two stances have to disagree somewhere for this to
+        # measure anything, and the two-sample context set is too small to.
+        dataset = next(d for d in bundled_datasets("ja") if d.name == "ja-core")
         return evaluate(dataset, detectors=list(MamoriConfig(stance=Stance(stance)).detectors()))
 
     def test_a_run_against_itself_shows_no_change(self) -> None:

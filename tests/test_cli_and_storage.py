@@ -280,9 +280,11 @@ class TestCliEval:
     def test_eval_json(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["eval", "--locale", "en", "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["dataset"] == "en-core"
-        assert 0.0 <= payload[0]["leak_rate"] <= 1.0
-        assert payload[0]["by_type"]
+        # By name, not by position: the bundled sets are discovered in sorted
+        # order and adding one has moved this index before.
+        core = next(entry for entry in payload if entry["dataset"] == "en-core")
+        assert 0.0 <= core["leak_rate"] <= 1.0
+        assert core["by_type"]
 
     def test_eval_exact_match_mode(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["eval", "--locale", "ja", "--match", "exact", "--json"]) == 0

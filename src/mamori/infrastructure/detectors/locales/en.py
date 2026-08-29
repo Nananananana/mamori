@@ -112,7 +112,7 @@ RULES: tuple[PatternRule, ...] = (
     ),
     compile_rule(
         t.DATE_OF_BIRTH,
-        r"(?i)(?:date\s+of\s+birth|birth\s*date|born\s+on|d\.?o\.?b\.?)\s*[:]?\s*"
+        r"(?i)(?:date\s+of\s+birth|birth\s*date|born(?:\s+on)?|d\.?o\.?b\.?)\s*[:]?\s*"
         r"([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,4}[/\-]\d{1,2}[/\-]\d{1,4})",
         HIGH,
         group=1,
@@ -245,7 +245,9 @@ WIDE_RULES: tuple[PatternRule, ...] = (
     # Nine bare digits that survive the SSA range check.
     compile_rule(
         t.SSN,
-        r"(?<!\d)\d{9}(?!\d)",
+        # Letters guard the edges as well as digits: a nine-digit run inside
+        # `5b469054284c` is part of a hash, not a number anybody was issued.
+        r"(?<![\dA-Za-z])\d{9}(?![\dA-Za-z])",
         LOW,
         validator=ssn_valid,
         tier=RuleTier.WIDE,

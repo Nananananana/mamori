@@ -168,9 +168,15 @@ RULES: tuple[PatternRule, ...] = (
         + r"(?:株式|有限|合同|合名|合資)会社)",
         HIGH,
     ),
+    # 社員番号は入社時にA-44881を付与予定です -- the label, a clause, then the
+    # value. Exactly the Chinese 工号预留为 fix from 0.15, in the other
+    # language, found the same way and missed thirty times in a thousand
+    # documents. The gap is capped and may not contain punctuation, so the
+    # label cannot reach across a sentence into an unrelated number.
     compile_rule(
         t.EMPLOYEE_ID,
-        r"(?:社員番号|従業員番号|社員ID)\s*(?:は|が)?\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
+        r"(?:社員番号|従業員番号|社員ID)\s*(?:は|が)?\s*"
+        r"(?:[ぁ-んァ-ヶ一-鿿]{0,6})?\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
         HIGH,
         group=1,
     ),
@@ -181,20 +187,46 @@ RULES: tuple[PatternRule, ...] = (
         group=1,
     ),
     # プロジェクトあおぞら -- the word "project" is the anchor whether or not a
-    # colon follows it, and in a heading it usually does not. The name must not
-    # start with a particle, or プロジェクトの進捗 becomes a codename called
-    # "の進捗".
+    # colon follows it, and in a heading it usually does not.
+    #
+    # The particles are excluded from the name's own characters, not only from
+    # its first one. Until 0.17 the guard was on the first character only and
+    # the body ran to the next space or punctuation, so プロジェクト鶴の残作業は?
+    # produced a codename called 鶴の残作業は? -- the whole question. Two costs,
+    # and the second is the worse one: the sentence disappears, and the same
+    # project in two sentences gets two different placeholders because the two
+    # spans differ, so the model cannot tell they are the same project and a
+    # quotation restores to a different string than the passage it came from.
+    #
+    # One character is enough after an anchor this strong: プロジェクト鶴 is a
+    # codename, and requiring two lost it entirely once the particles stopped
+    # padding the match out.
     compile_rule(
         t.PROJECT_NAME,
-        r"プロジェクト(?![名コード])(?![のはがをにでとやへも、。])([^\s,;。、:：]{2,20})",
+        r"プロジェクト(?![名コード])(?![のはがをにでとやへも、。])"
+        r"([^\s,;。、:：？?！!のはがをにでとやへも]{1,20})",
         LOW,
         group=1,
     ),
-    # 田中さん, 佐藤 花子様. The honorific is matched by lookahead so it stays in
-    # the output: <PERSON_001>さん reads far better to a model than a bare token.
+    # 田中さん, 佐藤 花子様, 西村さくら様. The honorific is matched by lookahead
+    # so it stays in the output: <PERSON_001>さん reads far better to a model
+    # than a bare token.
+    #
+    # The hiragana tail was added in 0.17. さくら, ゆき, あおい and ひかり are
+    # ordinary given names and every rule here wanted Han or katakana, so
+    # 西村さくら様 was invisible while 西村花子様 was found -- a gap nobody
+    # would have predicted from reading the rules, and one a corpus of Han-only
+    # given names could not show.
+    #
+    # It is offered here and at the label rule below, and nowhere else. After a
+    # bare surname a hiragana run is a particle far more often than a name --
+    # 田中はよく… -- so this needs the honorific as evidence. The engine
+    # backtracks out of the tail when it would swallow the honorific itself, so
+    # 田中さん is still 田中.
     compile_rule(
         t.PERSON,
-        r"(?<![一-鿿])([一-鿿]{1,4}(?:[ 　][一-鿿]{1,4})?)(?=" + _HONORIFIC_ALT + r")",
+        r"(?<![一-鿿])([一-鿿]{1,4}(?:[ 　][一-鿿]{1,4})?(?:[ 　]?[ぁ-ん]{2,4})?)"
+        r"(?=" + _HONORIFIC_ALT + r")",
         HIGH,
         group=1,
         validator=_not_stopword,
@@ -241,7 +273,7 @@ RULES: tuple[PatternRule, ...] = (
     compile_rule(
         t.PERSON,
         r"(?:氏名|名前|担当者?|宛先|差出人|報告者|申請者|作成者)\s*[:：]\s*"
-        r"([一-鿿]{1,4}(?:[ 　][一-鿿]{1,4})?)",
+        r"([一-鿿]{1,4}(?:[ 　][一-鿿]{1,4})?(?:[ 　]?[ぁ-ん]{2,4})?)",
         MEDIUM,
         group=1,
     ),
