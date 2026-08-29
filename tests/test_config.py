@@ -10,6 +10,7 @@ import pytest
 from mamori import MamoriConfig, PrivacySession, load_config_file
 from mamori.domain.entity_types import Category
 from mamori.domain.policy import Action
+from mamori.domain.stance import Stance
 from mamori.errors import ConfigurationError
 
 
@@ -212,7 +213,7 @@ class TestBuildingBlocks:
         assert settings.policy().action_for(t.EMAIL) is Action.ALLOW
 
     def test_the_detectors_honour_the_locale_choice(self) -> None:
-        pipeline = MamoriConfig(locales=("ja",)).detectors()[0]
+        pipeline = MamoriConfig(locales=("ja",), stance=Stance.BALANCED).detectors()[0]
         assert "PHONE" not in {e.entity_type.name for e in pipeline.detect("请拨打 13812345678")}
 
     def test_the_detectors_honour_the_co_occurrence_toggle(self) -> None:
@@ -247,7 +248,8 @@ class TestSessionIntegration:
         assert "PERSON" in types
 
     def test_the_locale_choice_reaches_detection(self) -> None:
-        with PrivacySession(config=MamoriConfig(locales=("ja",))) as session:
+        settings = MamoriConfig(locales=("ja",), stance=Stance.BALANCED)
+        with PrivacySession(config=settings) as session:
             protected = session.protect("请拨打 13812345678")
         assert "13812345678" in protected.protected_text
 

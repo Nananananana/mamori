@@ -264,8 +264,13 @@ class TestCoOccurrenceEndToEnd:
         assert with_pass >= without
 
     def test_the_report_says_which_mentions_came_from_propagation(self) -> None:
+        from mamori import MamoriConfig
+        from mamori.domain.stance import Stance
+
+        # Balanced, so the wide English rule does not reach the second mention
+        # on its own and the propagation is what is being observed.
         text = "Dear Priya Raman,\n\nPriya Raman is leading it."
-        with PrivacySession() as session:
+        with PrivacySession(config=MamoriConfig(stance=Stance.BALANCED)) as session:
             sources = {e.source for e in session.protect(text).entities}
         assert "co-occurrence" in sources
 

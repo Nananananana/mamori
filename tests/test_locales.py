@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from mamori import ConfigurationError, PrivacySession
+from mamori import ConfigurationError, MamoriConfig, PrivacySession
 from mamori.domain.script import Script, scripts_in
+from mamori.domain.stance import Stance
 from mamori.infrastructure.detectors import (
     CHINESE,
     ENGLISH,
@@ -89,7 +90,7 @@ class TestPackSelection:
 class TestCrossLanguageBehaviour:
     def test_japanese_text_is_not_scanned_with_chinese_rules(self) -> None:
         """13812345678 is a Chinese mobile number and nothing in Japanese."""
-        with PrivacySession() as session:
+        with PrivacySession(config=MamoriConfig(stance=Stance.BALANCED)) as session:
             protected = session.protect("受付番号は13812345678です。")
         assert protected.protected_text == "受付番号は13812345678です。"
 
