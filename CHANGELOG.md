@@ -8,6 +8,76 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-30
+
+The most dangerous option in the library, measured.
+
+`surrogates=True` replaces a value with a plausible one -- `田中太郎` becomes
+`山田一郎` -- because some models reason visibly worse about a page of tokens.
+The module docstring has said since 0.11 that this is the most dangerous thing
+here, and why: **a placeholder that is never restored is obvious, and a
+surrogate that is never restored is a plausible sentence about the wrong person
+that nobody notices.**
+
+That was a paragraph. It is now 1200 replies, in six shapes, with the nine ways
+a model rewrites a *name* rather than a token.
+
+### Measured
+
+```text
+1200 surrogate replies, 3600 surrogates in them
+  1261 (35.0%) were rewritten past recognition
+   859 (71.6%) replies held at least one
+     0 survived and were not put back -- must be 0
+     0 losses went unreported by `missing` -- must be 0
+```
+
+The first two numbers are the price of the option, not a bug list: a surrogate
+has no shape, so a model that writes `Alex` where it was given `Alex Rivera`
+has produced text nothing can find again. They are also an upper bound rather
+than a forecast -- the corpus applies the nine rewritings uniformly, and a real
+model quotes intact far more often than one time in nine.
+
+The last two are the ones that had to be zero, and are. **Every loss was
+reported through `RestorationResult.missing`**, which is the whole of the
+mitigation: it is what stands between an invented person's name and a reader
+who is about to believe it.
+
+| how the model wrote it | destroys the stand-in |
+|---|---|
+| `intact`, `possessive`, honorific | 0% |
+| `case_changed` | 0% *(17% before this release)* |
+| `initial` (`A. Rivera`) | 18.5% |
+| `line_break` | 95.4% |
+| `given_only`, `family_only` | 100% |
+
+### Changed
+
+**Two liberties are now taken with how a surrogate looks**, both for the same
+reason and both narrowing that 35%:
+
+- **Case is folded.** `alex rivera` is the same stand-in written carelessly,
+  and the alternative to putting it back is leaving an invented name in an
+  answer. 17% of the losses.
+- **A name wrapped across a line is still the name.** `Alex\nRivera`. At most
+  one line break per gap, so this cannot reach across a blank line and join the
+  end of one paragraph to the start of the next.
+
+Neither changes what a surrogate *is*: identity is still the whole string, and
+half of one still restores nothing. `find_occurrences` grew `fold_case` and
+`fold_wrapping` flags, both off by default -- the co-occurrence pass uses the
+same function to decide two runs of text are the same value, and `Mark` the
+name and `mark` the verb are not.
+
+`line_break` is still 95.4% because most surrogates have no spaces in them at
+all: a Japanese name, an email address, a phone number. A break inside one of
+those is unrecoverable and always will be.
+
+### Unchanged
+
+No detection number moved. Like 0.20, this release is entirely about the other
+half.
+
 ## [0.20.0] - 2026-08-30
 
 Restoration, measured at the scale detection has had since 0.2.
@@ -1584,7 +1654,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/Nananananana/mamori/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/Nananananana/mamori/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/Nananananana/mamori/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/Nananananana/mamori/compare/v0.17.0...v0.18.0

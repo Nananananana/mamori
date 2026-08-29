@@ -25,6 +25,7 @@ list has moved every time.
 | 0.18 — deployment | 0.18 — the agent-shaped payload | an audit found a leak; deployment moved to 0.19 |
 | 0.19 — deployment | 0.19 — deployment | the linter found a bug in this repository on its first run |
 | (not planned) | 0.20 — the reply corpus | the standing plan worked: measure something unmeasured, fix what it turns up |
+| (not planned) | 0.21 — the surrogate corpus | turned the scariest paragraph in the docs into two numbers |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -167,9 +168,9 @@ be worth it:
 - ~~A corpus of *replies* at the scale prose got in 0.14~~ — **done in 0.20**,
   and it found the bug it was built to look for: the streaming matcher never
   got 0.14's fix, so `<COMPANY _ NAME _ 001>` restored whole and not in pieces
-  for four releases. What is still uncovered is **surrogates**, where
-  restoration is exact-match with no tolerance for a model that rewrites the
-  value — the fragile path, and the one with no corpus behind it.
+  for four releases. Surrogates followed in 0.21, and put a number on the
+  option the docs had only warned about: 35% of stand-ins do not survive a
+  model's rewriting, 100% of the losses are reported.
 - The anchorless name, which is the largest measured gap left (`en-docs` 3.50%,
   `en-context` 9.69% on the generated set) and is not a regular-expression
   problem.

@@ -1041,7 +1041,8 @@ found that a tool call's arguments had never been protected at all. `v0.19` is
 the deployment release, and its linter found a bug in this repository on its
 first run. `v0.20` measured restoration the way detection has been measured
 since `v0.2`, and found that streamed and whole replies had disagreed for four
-releases.
+releases. `v0.21` did the same to surrogates and turned the scariest paragraph
+in the documentation into two numbers.
 
 | | |
 |---|---|
