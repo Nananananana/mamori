@@ -21,6 +21,24 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 `<PERSON_001>` から `田中太郎` に戻す対応表が手元の端末を出ることはない。
 
 
+| | |
+|---|---|
+| **[動かして見る](#動かして見る)** | シナリオ5本と、実モデルへの往復 |
+| [インストール](#インストール) · [使い方](#使い方) | ライブラリ、ストリーミング、コマンドライン |
+| **[アプリを書き換えずに使う](#アプリを書き換えずに使う)** | プロキシ。`base_url` だけ変える |
+| [対応言語](#対応言語) | 日本語・英語・中国語、1つの文書に混在しても |
+| [切り替えられる](#切り替えられる) | 設定と、再現率のダイヤル |
+| [検出が間違えたとき](#検出が間違えたとき) | 訂正 ― 最終判断は運用者にある |
+| [読める値を入れる](#トークンではなく読める値を入れる) | 代替値と、既定で無効な理由 |
+| [なぜ置換されたのか](#なぜ置換されたのかなぜされなかったのか) | そして、なぜ**されなかった**のか |
+| **[自分のデータはどう扱われるのか](#自分のデータが実際どう扱われているのか)** | 自分の設定から計算して答える |
+| [モデルを繋ぐ](#モデルを繋ぐ-同じpcでも社内サーバーでも) | 同じPCでも、社内サーバーでも |
+| [プロンプト](#プロンプト) · [難しいのは3か所](#難しいのは3か所) | モデルに何を伝えるか、なぜ難しいのか |
+| **[どれくらい効くのか](#どれくらい効くのか)** | 2つの規模で測った数字 |
+| [できないこと](#できないこと) · [設計](#設計) · [ロードマップ](#ロードマップ) | 限界と、これから |
+
+---
+
 ## 動かして見る
 
 インストール以外に何も要らない。
@@ -94,6 +112,8 @@ pip install mamori
 
 モデル不要、GPU不要、通信なし。既定の検出器はマイクロ秒で動くパターン規則。
 
+---
+
 ## 使い方
 
 ```python
@@ -147,7 +167,9 @@ mamori inspect -f draft.txt
 `mamori demo` は往復全体を実行する。プレースホルダが改変されて返ってきた
 応答も含むので、復旧の挙動をそのまま確認できる。
 
-### アプリを書き換えずに使う
+---
+
+## アプリを書き換えずに使う
 
 動いているアプリをライブラリのために書き直す人はいない。
 OpenAI互換APIを叩いているアプリなら、mamori を前に置いて文字列を1つ変えるだけでよい。
@@ -176,187 +198,6 @@ mamori proxy on http://127.0.0.1:8100/v1/
 転送されずに停止する。既定では**このPCからしか繋がらない**。
 そのポートに到達できる者は誰でも文書を通せてしまうからである。
 → [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md)
-
-
-### モデル層は実際どれだけ効くのか
-
-主張ではなく実測値。`llama3.1:8b` をローカルで動かし、balanced スタンスで
-同梱データセットに対して測定した。
-
-| | 漏洩率: 規則のみ → +モデル | 過剰検出 | precision |
-|---|---|---|---|
-| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
-| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
-| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
-
-**このサイズでは「英語の再現率を上げる道具」である。**
-手がかりの無い英文中の人名（`en-006`、このモデル層が想定していた当のケース）を
-埋める一方、日本語・中国語には測定可能な改善がなく、3言語すべてで過剰検出が増える。
-以前の README は「中国語の人名にも届く」と書いていたが、それは支持されなかった。
-中国語の規則はそのデータセットで既に recall 1.000 だった。
-
-**既定の recall_first では逆効果である。** wide 規則が既に届いているので漏洩率は動かず、
-過剰検出だけが 1.44% → 9.58% に増える。自分のデータで測るまでは切っておくのがよい。
-
-自分で測る。読む価値があるのは差分だけである。
-
-```bash
-mamori eval --compare --stance balanced -c mamori.json --cache answers.json
-```
-
-`--compare` は変化したサンプルを名前で挙げる。集計値は「何かが動いた」としか言わない。
-**自分の文書で測る**手順（ここにある数字よりはるかに強い証拠になる）は
-[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md) にある。
-そのファイルは自分の実データそのものになるので、注意点も併記した。
-`--cache` はモデルと**プロンプト**でキーを作るので、再実行は無料で、
-ガイダンスを1行書き換えるとそれに依存していた答えだけが無効になる。
-
-この測定から2つの修正がコードに戻った。モデルに文字オフセットを要求していたが
-**52件中0件しか正しくなかった**（値そのものは52件中51件が本当に文書内にあった）。
-そこで値だけを報告させ、位置は mamori 側で特定するようにした
-（[ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)）。
-また英語の誤検出は全て `OTHER_SENSITIVE` のゴミ箱的使用だった。
-この型が何のためのものかを述べたガイダンス1つで過剰検出は 8.80% → 4.43% に半減した。
-
-
-### トークンではなく読める値を入れる
-
-`<PERSON_001>` だらけのテキストではうまく推論できないモデルがある。
-読める値に置き換えたほうが良い答えが返ることが多い。
-
-```json
-{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
-```
-
-```text
-入力    田中太郎さんへ。tanaka@example.com か 090-1234-5678 まで。
-送信    山田一郎さんへ。a.person@example.com か 090-0000-0100 まで。
-復元    田中太郎さんへ。tanaka@example.com か 090-1234-5678 まで。
-```
-
-メールアドレスと電話番号は文書用に予約された範囲（RFC 2606、未割当の0000番）
-から取っている。**外に出ても、どこにも届かず何の意味も持たない。**
-一方**人名には予約された集合が存在しない。** そこが残るリスクである。
-
-**既定では無効**であり、有効にする前にその理由を理解しておく価値がある。
-復元されなかった `<PERSON_001>` は一目で分かる。
-復元されなかった `山田一郎` は**別人についての自然な文**であり、誰も気づかない。
-プレースホルダーは形で認識できるので、モデルが多少崩しても復元できる。
-代替値はただの名前なので、一致するかしないかのどちらかである。
-
-mamori にできるのは**知らせること**である。
-`RestorationResult.missing` に戻らなかったものが並ぶ（毎回確認すること）。
-`mamori privacy` は代替値が有効なとき必ず警告し、
-どのプールが予約済みでどれが単なる創作かを明示する。
-
-```bash
-mamori demo --scenario surrogates
-```
-
-→ [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md)
-
----
-
-## 検出が間違えたとき
-
-間違える。挨拶文の手がかりは間違うより当たるほうがはるかに多いが、
-`Dear Monday,` は外れる側である。そう言えばよい。
-
-```bash
-mamori correct Monday --never --note "a weekday, not a name"
-mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
-```
-
-後者は `v0.1` から記録されている既知の穴を塞ぐ ―
-法人格接尾辞の無い商号（`Acme`、`田中商事`）。
-一般には正規表現で届かないが、**自分のデータについてなら運用者が決着させられる。**
-
-ログは追記のみで、ある値について最後に下した判断が有効になる。
-取り消しは反対の判断を追記することであり、何も削除されない。
-規則もプロンプトも書き換えない。ログを外せば完全に元の挙動に戻る。
-
-```bash
-mamori corrections     # 何を判断したか、その代償は何か
-```
-
-**`--never` は mamori で唯一「保護を減らす」操作である。**だから狭く保つ。
-除外した値は `mamori privacy` が全て名指しし、警告として終了コードを 0 以外にする
-（デプロイ時のチェックで落とせる）。そして**認証情報は決して除外できない。**
-
-```text
-error: that value looks like a credential (API_KEY), and a credential cannot
-be ruled 'never'. Nothing was written -- recording it would have put the
-credential in a file on disk. Rotate it instead.
-```
-
-この拒否は**追記する前に**、独立した3箇所で行われる。
-→ [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md)
-
----
-
-## なぜ置換されたのか。なぜ**されなかった**のか
-
-```bash
-mamori trace "Dear Monday, the contract is with Globex Corporation."
-```
-
-```text
-where     type            rules         conf  outcome
-5:11      PERSON          en            0.90  kept
-34:53     COMPANY_NAME    en            0.70  kept
-59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
-```
-
-重要なのは2つ目の問いであり、`v0.12` 以前は答えられなかった。
-何も検出されなかったとき、`trace` はもう一方のスタンスを走らせ、
-**広い規則なら何を拾ったか**を（値ではなく形として）示す。
-どちらのスタンスでも届かないときは、そう言った上で
-訂正かモデル層のどちらを使うべきかを指す。
-
-```bash
-mamori audit --file inbox.txt   # 自分のテキストではどの規則が効くか
-mamori audit --dead             # 一度も発火していない規則はどれか
-```
-
-`audit` は `v0.10` で追加した認証情報の規則3本が
-**一度も標本で検査されていなかった**ことを初回実行で見つけた。
-→ [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md)
-
----
-
-## 自分のデータが実際どう扱われているのか
-
-聞けばよい。
-
-```bash
-mamori privacy
-```
-
-答えは README ではなく**あなたの設定から**計算される。
-どの型がブロックされ、どの型が置換されるか。検出用モデルがどこにあり、
-信頼境界がそれを許可するか。何がどこに保持されるか。
-露出を広げる設定は警告として出力され、終了コードが 0 でなくなる
-（デプロイ時のチェックで落とせる）。
-
-その下に、設定に関係なく成り立つ主張が並ぶ。
-**それぞれに「壊れたら落ちるテスト」の名前が付いている。**
-
-```text
-  - Pattern detection contacts nothing. No socket is opened to protect a
-    document with the default detectors.
-    checked by test_promises.py::TestNothingLeavesTheMachine
-```
-
-このテストは実在する。`tests/test_promises.py` は `socket.connect` を
-例外を投げる関数に差し替えた上で、既定の全経路（全言語パック、評価基盤、
-コマンドライン）を走らせる。将来どこかの依存が外に通信を始めたら、
-利用者の環境ではなく**ビルドで落ちる**。README の主張は説明ではなく仕様である。
-→ [ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md)、
-[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md)
-
-最後の節は mamori が**確認できないこと**を並べる。
-たとえば送信先サービスがプロンプトを保持するかどうかは、ここからは知り得ない。
-知っているふりをする報告は、黙っている報告より悪い。
 
 ---
 
@@ -502,60 +343,148 @@ wide 規則は LOW confidence なので、stance を変えずに `min_confidence
 
 ---
 
-## プロンプト
+## 検出が間違えたとき
 
-関わるモデルは2つあり、向きが逆である。どちらのプロンプトも読めて変更できる。
-
-**サービスLLM**にはプレースホルダをそのまま返すよう伝える。
-ローカルモデルは不要で、即座に元が取れる。
-
-```python
-system = session.external_system_prompt() + "
-
-" + your_own_system_prompt
-```
-
-無傷で返ってきたプレースホルダは、復元処理が改変から復旧しなくて済んだ分である。
-
-**ローカルLLM**にはパターンでは届かない対象を探させる。
-前置きの無い英語氏名、中国語の人名、普通名詞に見えるコードネーム。
-そのプロンプトには**正規表現の作業で得た知見をすべて載せてある**。
+間違える。挨拶文の手がかりは間違うより当たるほうがはるかに多いが、
+`Dear Monday,` は外れる側である。そう言えばよい。
 
 ```bash
-mamori prompt detection
+mamori correct Monday --never --note "a weekday, not a name"
+mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
+```
+
+後者は `v0.1` から記録されている既知の穴を塞ぐ ―
+法人格接尾辞の無い商号（`Acme`、`田中商事`）。
+一般には正規表現で届かないが、**自分のデータについてなら運用者が決着させられる。**
+
+ログは追記のみで、ある値について最後に下した判断が有効になる。
+取り消しは反対の判断を追記することであり、何も削除されない。
+規則もプロンプトも書き換えない。ログを外せば完全に元の挙動に戻る。
+
+```bash
+mamori corrections     # 何を判断したか、その代償は何か
+```
+
+**`--never` は mamori で唯一「保護を減らす」操作である。**だから狭く保つ。
+除外した値は `mamori privacy` が全て名指しし、警告として終了コードを 0 以外にする
+（デプロイ時のチェックで落とせる）。そして**認証情報は決して除外できない。**
+
+```text
+error: that value looks like a credential (API_KEY), and a credential cannot
+be ruled 'never'. Nothing was written -- recording it would have put the
+credential in a file on disk. Rotate it instead.
+```
+
+この拒否は**追記する前に**、独立した3箇所で行われる。
+→ [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md)
+
+---
+
+## トークンではなく読める値を入れる
+
+`<PERSON_001>` だらけのテキストではうまく推論できないモデルがある。
+読める値に置き換えたほうが良い答えが返ることが多い。
+
+```json
+{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
 ```
 
 ```text
-## What looks sensitive and is not
-
-- Many ordinary words begin with a character that is also a surname. 森林 is a
-  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
-- Two capitalised words are usually not a name. Headings, products, departments,
-  weekdays and sentence openers all look identical.
+入力    田中太郎さんへ。tanaka@example.com か 090-1234-5678 まで。
+送信    山田一郎さんへ。a.person@example.com か 090-0000-0100 まで。
+復元    田中太郎さんへ。tanaka@example.com か 090-1234-5678 まで。
 ```
 
-これらは**正規表現についての知識ではなく、言語についての知識**だからである。
+メールアドレスと電話番号は文書用に予約された範囲（RFC 2606、未割当の0000番）
+から取っている。**外に出ても、どこにも届かず何の意味も持たない。**
+一方**人名には予約された集合が存在しない。** そこが残るリスクである。
 
-### 社内ルールを足す・既存ルールを削る
+**既定では無効**であり、有効にする前にその理由を理解しておく価値がある。
+復元されなかった `<PERSON_001>` は一目で分かる。
+復元されなかった `山田一郎` は**別人についての自然な文**であり、誰も気づかない。
+プレースホルダーは形で認識できるので、モデルが多少崩しても復元できる。
+代替値はただの名前なので、一致するかしないかのどちらかである。
 
-guidance は1件ずつ ID を持つ。ライブラリが知りようのないことを足し、
-合わないものを外せる。**フォーク不要**。
-
-```json
-{"prompts": {"detection": {
-  "disable": ["en.person.unanchored"],
-  "add": [{"id": "acme.case", "text": "案件番号は ACME-12345 の形式である。"}]
-}}}
-```
+mamori にできるのは**知らせること**である。
+`RestorationResult.missing` に戻らなかったものが並ぶ（毎回確認すること）。
+`mamori privacy` は代替値が有効なとき必ず警告し、
+どのプールが予約済みでどれが単なる創作かを明示する。
 
 ```bash
-mamori prompt detection --guidance   # ID一覧。ここから disable できる
+mamori demo --scenario surrogates
 ```
 
-**存在しない ID の disable は拒否する。** しかも設定を読み込んだ時点で拒否する
-（何ヶ月も後ではなく）。外したつもりで外れていない状態を作らないためである。
+→ [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md)
 
-### モデルを繋ぐ ― 同じPCでも、社内サーバーでも
+---
+
+## なぜ置換されたのか。なぜ**されなかった**のか
+
+```bash
+mamori trace "Dear Monday, the contract is with Globex Corporation."
+```
+
+```text
+where     type            rules         conf  outcome
+5:11      PERSON          en            0.90  kept
+34:53     COMPANY_NAME    en            0.70  kept
+59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
+```
+
+重要なのは2つ目の問いであり、`v0.12` 以前は答えられなかった。
+何も検出されなかったとき、`trace` はもう一方のスタンスを走らせ、
+**広い規則なら何を拾ったか**を（値ではなく形として）示す。
+どちらのスタンスでも届かないときは、そう言った上で
+訂正かモデル層のどちらを使うべきかを指す。
+
+```bash
+mamori audit --file inbox.txt   # 自分のテキストではどの規則が効くか
+mamori audit --dead             # 一度も発火していない規則はどれか
+```
+
+`audit` は `v0.10` で追加した認証情報の規則3本が
+**一度も標本で検査されていなかった**ことを初回実行で見つけた。
+→ [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md)
+
+---
+
+## 自分のデータが実際どう扱われているのか
+
+聞けばよい。
+
+```bash
+mamori privacy
+```
+
+答えは README ではなく**あなたの設定から**計算される。
+どの型がブロックされ、どの型が置換されるか。検出用モデルがどこにあり、
+信頼境界がそれを許可するか。何がどこに保持されるか。
+露出を広げる設定は警告として出力され、終了コードが 0 でなくなる
+（デプロイ時のチェックで落とせる）。
+
+その下に、設定に関係なく成り立つ主張が並ぶ。
+**それぞれに「壊れたら落ちるテスト」の名前が付いている。**
+
+```text
+  - Pattern detection contacts nothing. No socket is opened to protect a
+    document with the default detectors.
+    checked by test_promises.py::TestNothingLeavesTheMachine
+```
+
+このテストは実在する。`tests/test_promises.py` は `socket.connect` を
+例外を投げる関数に差し替えた上で、既定の全経路（全言語パック、評価基盤、
+コマンドライン）を走らせる。将来どこかの依存が外に通信を始めたら、
+利用者の環境ではなく**ビルドで落ちる**。README の主張は説明ではなく仕様である。
+→ [ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md)、
+[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md)
+
+最後の節は mamori が**確認できないこと**を並べる。
+たとえば送信先サービスがプロンプトを保持するかどうかは、ここからは知り得ない。
+知っているふりをする報告は、黙っている報告より悪い。
+
+---
+
+## モデルを繋ぐ ― 同じPCでも、社内サーバーでも
 
 現実的な構成はノートPCではない。チームで共有する1台のGPUマシンである。
 
@@ -634,6 +563,61 @@ APIキーは設定ファイルには書かない。環境変数名を指定す�
 
 ---
 
+## プロンプト
+
+関わるモデルは2つあり、向きが逆である。どちらのプロンプトも読めて変更できる。
+
+**サービスLLM**にはプレースホルダをそのまま返すよう伝える。
+ローカルモデルは不要で、即座に元が取れる。
+
+```python
+system = session.external_system_prompt() + "
+
+" + your_own_system_prompt
+```
+
+無傷で返ってきたプレースホルダは、復元処理が改変から復旧しなくて済んだ分である。
+
+**ローカルLLM**にはパターンでは届かない対象を探させる。
+前置きの無い英語氏名、中国語の人名、普通名詞に見えるコードネーム。
+そのプロンプトには**正規表現の作業で得た知見をすべて載せてある**。
+
+```bash
+mamori prompt detection
+```
+
+```text
+## What looks sensitive and is not
+
+- Many ordinary words begin with a character that is also a surname. 森林 is a
+  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
+- Two capitalised words are usually not a name. Headings, products, departments,
+  weekdays and sentence openers all look identical.
+```
+
+これらは**正規表現についての知識ではなく、言語についての知識**だからである。
+
+### 社内ルールを足す・既存ルールを削る
+
+guidance は1件ずつ ID を持つ。ライブラリが知りようのないことを足し、
+合わないものを外せる。**フォーク不要**。
+
+```json
+{"prompts": {"detection": {
+  "disable": ["en.person.unanchored"],
+  "add": [{"id": "acme.case", "text": "案件番号は ACME-12345 の形式である。"}]
+}}}
+```
+
+```bash
+mamori prompt detection --guidance   # ID一覧。ここから disable できる
+```
+
+**存在しない ID の disable は拒否する。** しかも設定を読み込んだ時点で拒否する
+（何ヶ月も後ではなく）。外したつもりで外れていない状態を作らないためである。
+
+---
+
 ## 難しいのは3か所
 
 `mamori` の実装量の大半は、素朴に作ると必ず間違える部分に費やされている。
@@ -708,6 +692,48 @@ recall_first は over-redaction を約5倍にする代わりに残りを詰め�
 なお**この数値は退行を止めるための下限であって、実データに対する主張ではない**。
 評価セットは小さく、すべて合成である。49件の作り物の文で leak rate がほぼ 0 でも、
 実際の受信箱について何も保証しない。
+
+---
+
+### モデル層は実際どれだけ効くのか
+
+主張ではなく実測値。`llama3.1:8b` をローカルで動かし、balanced スタンスで
+同梱データセットに対して測定した。
+
+| | 漏洩率: 規則のみ → +モデル | 過剰検出 | precision |
+|---|---|---|---|
+| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
+| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
+| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
+
+**このサイズでは「英語の再現率を上げる道具」である。**
+手がかりの無い英文中の人名（`en-006`、このモデル層が想定していた当のケース）を
+埋める一方、日本語・中国語には測定可能な改善がなく、3言語すべてで過剰検出が増える。
+以前の README は「中国語の人名にも届く」と書いていたが、それは支持されなかった。
+中国語の規則はそのデータセットで既に recall 1.000 だった。
+
+**既定の recall_first では逆効果である。** wide 規則が既に届いているので漏洩率は動かず、
+過剰検出だけが 1.44% → 9.58% に増える。自分のデータで測るまでは切っておくのがよい。
+
+自分で測る。読む価値があるのは差分だけである。
+
+```bash
+mamori eval --compare --stance balanced -c mamori.json --cache answers.json
+```
+
+`--compare` は変化したサンプルを名前で挙げる。集計値は「何かが動いた」としか言わない。
+**自分の文書で測る**手順（ここにある数字よりはるかに強い証拠になる）は
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md) にある。
+そのファイルは自分の実データそのものになるので、注意点も併記した。
+`--cache` はモデルと**プロンプト**でキーを作るので、再実行は無料で、
+ガイダンスを1行書き換えるとそれに依存していた答えだけが無効になる。
+
+この測定から2つの修正がコードに戻った。モデルに文字オフセットを要求していたが
+**52件中0件しか正しくなかった**（値そのものは52件中51件が本当に文書内にあった）。
+そこで値だけを報告させ、位置は mamori 側で特定するようにした
+（[ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)）。
+また英語の誤検出は全て `OTHER_SENSITIVE` のゴミ箱的使用だった。
+この型が何のためのものかを述べたガイダンス1つで過剰検出は 8.80% → 4.43% に半減した。
 
 ---
 
@@ -817,6 +843,10 @@ Pythonからもシェルからも。
 
 脆弱性の報告は [SECURITY.md](SECURITY.md) を参照。公開Issueには書かないこと。
 
+---
+
 ## ライセンス
 
 Apache-2.0。[LICENSE](LICENSE) を参照。
+
+---

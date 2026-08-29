@@ -20,6 +20,24 @@ English: [README.md](README.md) ／ 日本語: [README.ja.md](README.ja.md)
 `<PERSON_001>` 与 `张伟` 之间的对应表，始终留在你自己的机器上。
 
 
+| | |
+|---|---|
+| **[先跑起来看看](#先跑起来看看)** | 五个场景，外加一次对真实模型的往返 |
+| [安装](#安装) · [使用](#使用) | 库、流式还原、命令行 |
+| **[不改动你的应用](#不改动你的应用)** | 代理：只改 `base_url`，其余不动 |
+| [语言支持](#语言支持) | 中文、日文、英文，同一份文档里混排也行 |
+| [可切换](#可切换) | 配置，以及召回率旋钮 |
+| [当它判断错的时候](#当它判断错的时候) | 订正——最终决定权在你 |
+| [用可读的值](#用可读的值代替占位符) | 替身值，以及它默认关闭的原因 |
+| [为什么这个被替换了？](#为什么这个被替换了那个为什么没有) | 以及那个为什么**没有** |
+| **[我的数据被怎么处理了？](#我的数据到底被怎么处理了)** | 从你自己的配置算出答案 |
+| [接入模型](#接入模型同一台机器或内网服务器) | 同一台机器，或内网服务器 |
+| [提示词](#提示词) · [三处难点](#三处真正的难点) | 告诉模型什么，以及难在哪里 |
+| **[效果如何](#效果如何)** | 两种尺度下的实测数字 |
+| [做不到的事](#做不到的事) · [设计](#设计) · [路线图](#路线图) | 边界，以及接下来 |
+
+---
+
 ## 先跑起来看看
 
 除了安装之外什么都不需要：
@@ -90,6 +108,8 @@ pip install mamori
 
 不需要模型，不需要 GPU，不联网。默认检测器是微秒级的模式规则。
 
+---
+
 ## 使用
 
 ```python
@@ -140,7 +160,9 @@ mamori inspect -f draft.txt
 `mamori demo` 会跑完整的一次往返，其中包含占位符被改动过的回复，
 可以直接看到恢复的效果。
 
-### 不改动你的应用
+---
+
+## 不改动你的应用
 
 没有人会为了采用一个库去重写一个正在运行的应用。
 只要你的应用已经在调用 OpenAI 兼容 API，把 mamori 放在前面，改一个字符串即可。
@@ -168,180 +190,6 @@ mamori proxy on http://127.0.0.1:8100/v1/
 如果消息里有凭据，请求会被拦下而不是转发出去。
 默认只监听本机——任何能连到这个端口的人都能把文档送进去。
 参见 [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md)。
-
-
-### 模型层实际值多少
-
-是实测，不是主张。本地跑 `llama3.1:8b`，balanced 立场，对内置数据集测量：
-
-| | 泄漏率：仅规则 → +模型 | 过度打码 | precision |
-|---|---|---|---|
-| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
-| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
-| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
-
-**在这个规模上，它是一个「提升英文召回」的工具。**
-它补上了 `en-006`——没有任何前置标记的英文行文人名，正是这一层被设计出来要解决的情况——
-但对日文和中文没有可测量的改善，同时在三种语言上都增加了过度打码。
-本 README 早先声称它能覆盖中文人名，这一点没有得到支持：
-中文规则在那套数据上的 recall 本来就是 1.000。
-
-**在默认的 recall_first 立场下它是负收益：** wide 规则已经够到了那些值，
-泄漏率不动，过度打码却从 1.44% 涨到 9.58%。在你用自己的数据测过之前，先关着。
-
-自己测。值得看的只有差值：
-
-```bash
-mamori eval --compare --stance balanced -c mamori.json --cache answers.json
-```
-
-`--compare` 会点名列出发生变化的样本——聚合数字只会告诉你「有东西动了」，不会告诉你动了什么。
-用**你自己的文档**来测量（这比这里的任何数字都更有说服力）的做法，见
-[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md)，
-那里也写了要注意什么——那个文件装的就是你的真实数据。
-`--cache` 用模型**和提示词**共同做键，所以重跑是免费的，
-而改动一行指引只会让依赖旧措辞的那些答案失效。
-
-这次测量把两个修正带回了代码。之前要求模型给出字符偏移量，结果 **52 个里对了 0 个**，
-而这些值本身有 51 个确实在文档里。现在改为只报告值，位置由 mamori 自己定位
-（[ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)）。
-另外英文的误报全部是把 `OTHER_SENSITIVE` 当垃圾桶用；
-只加了一条说明该类型用途的指引，过度打码就从 8.80% 减半到 4.43%。
-
-
-### 用可读的值代替占位符
-
-有些模型面对满页的 `<PERSON_001>` 会明显推理不好。换成可读的值，
-通常能得到更好的回答：
-
-```json
-{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
-```
-
-```text
-你写的    尊敬的张伟先生，请拨打 13812345678 与我们联系。
-发出的    尊敬的林小舟先生，请拨打 138-0013-8000 与我们联系。
-还原后    尊敬的张伟先生，请拨打 13812345678 与我们联系。
-```
-
-邮箱和号码取自专门保留给文档用途的范围（RFC 2606、未分配号段），
-所以就算漏出去，它在任何地方都没有意义。
-**但没有任何标准为人名保留过一组名字**，这是留下来的风险。
-
-它**默认关闭**，开启之前值得先理解原因：
-没被还原的 `<PERSON_001>` 一眼就能看出来；
-没被还原的 `林小舟` 是一句关于另一个人的通顺句子，没人会发现。
-占位符可以靠形状识别，所以模型把它写歪了还能还原；
-替身值只是一个名字，要么对上，要么对不上。
-
-mamori 能做的是**告诉你**。`RestorationResult.missing` 会列出没能还原的东西
-（每次回答都应该检查），而 `mamori privacy` 在替身值开启时一定会告警，
-并说明哪些池是保留范围、哪些只是编出来的。
-
-```bash
-mamori demo --scenario surrogates
-```
-
-参见 [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md)。
-
----
-
-## 当它判断错的时候
-
-它会错。称呼语这个锚点对的次数远多于错的次数，而 `Dear Monday,` 就是错的那次。
-说出来就行：
-
-```bash
-mamori correct Monday --never --note "a weekday, not a name"
-mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
-```
-
-后者补上了从 `v0.1` 起就记录在案的一个缺口——没有法人后缀的商号。
-正则通用地够不到它，但**对你自己的数据，运维人员可以直接拍板。**
-
-日志只追加，对某个值最后一次的判断生效；撤销就是再追加一条相反的判断，
-什么都不会被删除。规则不会被改写，提示词也不会被改动；
-把日志去掉，行为就完全回到从前。
-
-```bash
-mamori corrections     # 判断过什么，以及代价是什么
-```
-
-**`--never` 是 mamori 里唯一会「减少保护」的操作**，所以把它限制得很窄。
-每一条排除都会被 `mamori privacy` 点名，并作为警告让退出码非零，
-方便在部署检查里直接失败。而且**凭据永远不能被排除**：
-
-```text
-error: that value looks like a credential (API_KEY), and a credential cannot
-be ruled 'never'. Nothing was written -- recording it would have put the
-credential in a file on disk. Rotate it instead.
-```
-
-这个拒绝发生在**写入之前**，由三处独立的检查把守。
-参见 [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md)。
-
----
-
-## 为什么这个被替换了？那个为什么没有？
-
-```bash
-mamori trace "Dear Monday, the contract is with Globex Corporation."
-```
-
-```text
-where     type            rules         conf  outcome
-5:11      PERSON          en            0.90  kept
-34:53     COMPANY_NAME    en            0.70  kept
-59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
-```
-
-第二个问题才是关键，而在 `v0.12` 之前根本无法回答。
-当什么都没命中时，`trace` 会跑另一个立场，
-告诉你更宽的规则**本来会**抓到什么——只给形状，不给值；
-如果两个立场都够不到，它会直说，并指向订正或模型层。
-
-```bash
-mamori audit --file inbox.txt   # 对你的文本来说哪些规则有用
-mamori audit --dead             # 哪些规则从来没命中过
-```
-
-`audit` 第一次运行就发现：`v0.10` 加的三条凭据规则
-**从来没有任何样本检验过**。
-参见 [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md)。
-
----
-
-## 我的数据到底被怎么处理了
-
-问它就好：
-
-```bash
-mamori privacy
-```
-
-答案是从**你的配置**算出来的，不是从这份 README 抄的：
-哪些类型被阻断、哪些被替换，检测模型在哪里、信任边界是否允许它，
-什么被保留、保留在哪里。任何扩大暴露面的设置都会作为警告输出，
-并让退出码非零，方便在部署检查里直接失败。
-
-下面是无论怎么配置都成立的主张，**每一条都带着「一旦不成立就会失败的测试」的名字**：
-
-```text
-  - Pattern detection contacts nothing. No socket is opened to protect a
-    document with the default detectors.
-    checked by test_promises.py::TestNothingLeavesTheMachine
-```
-
-这些测试是真的。`tests/test_promises.py` 把 `socket.connect` 换成会抛异常的函数，
-然后跑完整条默认路径：所有语言包、评测框架、命令行。
-将来如果某个依赖开始往外发请求，它会**在构建时失败**，而不是在你的部署里。
-README 里的主张是规格，不是描述。
-参见 [ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md)、
-[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md)。
-
-最后一节写的是 mamori **无法替你确认**的事情，
-比如你选的那家服务会不会留存你的提示词。
-装作知道的报告，比闭嘴的报告更糟。
 
 ---
 
@@ -474,58 +322,143 @@ wide 规则是 LOW 置信度，因此也可以不改 stance、直接用 `min_con
 
 ---
 
-## 提示词
+## 当它判断错的时候
 
-涉及两个模型，方向相反；两者的提示词都可读、可改。
-
-**服务端模型**被告知原样保留占位符。这不需要本地模型，立刻就能回本：
-
-```python
-system = session.external_system_prompt() + "
-
-" + your_own_system_prompt
-```
-
-每一个完好返回的占位符，都是还原过程不必再从改写形式中恢复的一个。
-
-**本地模型**用来找模式覆盖不到的东西：没有任何前置标记的英文人名、中文人名、
-看起来像普通词的内部代号。它的提示词里写满了**写正则时积累的知识**。
+它会错。称呼语这个锚点对的次数远多于错的次数，而 `Dear Monday,` 就是错的那次。
+说出来就行：
 
 ```bash
-mamori prompt detection
+mamori correct Monday --never --note "a weekday, not a name"
+mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
+```
+
+后者补上了从 `v0.1` 起就记录在案的一个缺口——没有法人后缀的商号。
+正则通用地够不到它，但**对你自己的数据，运维人员可以直接拍板。**
+
+日志只追加，对某个值最后一次的判断生效；撤销就是再追加一条相反的判断，
+什么都不会被删除。规则不会被改写，提示词也不会被改动；
+把日志去掉，行为就完全回到从前。
+
+```bash
+mamori corrections     # 判断过什么，以及代价是什么
+```
+
+**`--never` 是 mamori 里唯一会「减少保护」的操作**，所以把它限制得很窄。
+每一条排除都会被 `mamori privacy` 点名，并作为警告让退出码非零，
+方便在部署检查里直接失败。而且**凭据永远不能被排除**：
+
+```text
+error: that value looks like a credential (API_KEY), and a credential cannot
+be ruled 'never'. Nothing was written -- recording it would have put the
+credential in a file on disk. Rotate it instead.
+```
+
+这个拒绝发生在**写入之前**，由三处独立的检查把守。
+参见 [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md)。
+
+---
+
+## 用可读的值代替占位符
+
+有些模型面对满页的 `<PERSON_001>` 会明显推理不好。换成可读的值，
+通常能得到更好的回答：
+
+```json
+{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
 ```
 
 ```text
-## What looks sensitive and is not
-
-- Many ordinary words begin with a character that is also a surname. 森林 is a
-  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
-- This shape is also the shape of ordinary words... 高兴 is 'happy',
-  方便 is 'convenient'. Judge from the sentence.
+你写的    尊敬的张伟先生，请拨打 13812345678 与我们联系。
+发出的    尊敬的林小舟先生，请拨打 138-0013-8000 与我们联系。
+还原后    尊敬的张伟先生，请拨打 13812345678 与我们联系。
 ```
 
-因为这些是**关于语言的知识，不是关于正则表达式的知识**。
+邮箱和号码取自专门保留给文档用途的范围（RFC 2606、未分配号段），
+所以就算漏出去，它在任何地方都没有意义。
+**但没有任何标准为人名保留过一组名字**，这是留下来的风险。
 
-### 加入公司规则、删掉不合用的
+它**默认关闭**，开启之前值得先理解原因：
+没被还原的 `<PERSON_001>` 一眼就能看出来；
+没被还原的 `林小舟` 是一句关于另一个人的通顺句子，没人会发现。
+占位符可以靠形状识别，所以模型把它写歪了还能还原；
+替身值只是一个名字，要么对上，要么对不上。
 
-每条 guidance 都有 ID。可以补充库无从知晓的内容，也可以移除不适用的，
-**无需 fork**。
-
-```json
-{"prompts": {"detection": {
-  "disable": ["en.person.unanchored"],
-  "add": [{"id": "acme.case", "text": "案件编号形如 ACME-12345。"}]
-}}}
-```
+mamori 能做的是**告诉你**。`RestorationResult.missing` 会列出没能还原的东西
+（每次回答都应该检查），而 `mamori privacy` 在替身值开启时一定会告警，
+并说明哪些池是保留范围、哪些只是编出来的。
 
 ```bash
-mamori prompt detection --guidance   # 列出 ID，可据此 disable
+mamori demo --scenario surrogates
 ```
 
-**disable 一个不存在的 ID 会被拒绝**，而且是在加载配置时就拒绝，
-不会拖到几个月后。
+参见 [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md)。
 
-### 接入模型：同一台机器，或内网服务器
+---
+
+## 为什么这个被替换了？那个为什么没有？
+
+```bash
+mamori trace "Dear Monday, the contract is with Globex Corporation."
+```
+
+```text
+where     type            rules         conf  outcome
+5:11      PERSON          en            0.90  kept
+34:53     COMPANY_NAME    en            0.70  kept
+59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
+```
+
+第二个问题才是关键，而在 `v0.12` 之前根本无法回答。
+当什么都没命中时，`trace` 会跑另一个立场，
+告诉你更宽的规则**本来会**抓到什么——只给形状，不给值；
+如果两个立场都够不到，它会直说，并指向订正或模型层。
+
+```bash
+mamori audit --file inbox.txt   # 对你的文本来说哪些规则有用
+mamori audit --dead             # 哪些规则从来没命中过
+```
+
+`audit` 第一次运行就发现：`v0.10` 加的三条凭据规则
+**从来没有任何样本检验过**。
+参见 [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md)。
+
+---
+
+## 我的数据到底被怎么处理了
+
+问它就好：
+
+```bash
+mamori privacy
+```
+
+答案是从**你的配置**算出来的，不是从这份 README 抄的：
+哪些类型被阻断、哪些被替换，检测模型在哪里、信任边界是否允许它，
+什么被保留、保留在哪里。任何扩大暴露面的设置都会作为警告输出，
+并让退出码非零，方便在部署检查里直接失败。
+
+下面是无论怎么配置都成立的主张，**每一条都带着「一旦不成立就会失败的测试」的名字**：
+
+```text
+  - Pattern detection contacts nothing. No socket is opened to protect a
+    document with the default detectors.
+    checked by test_promises.py::TestNothingLeavesTheMachine
+```
+
+这些测试是真的。`tests/test_promises.py` 把 `socket.connect` 换成会抛异常的函数，
+然后跑完整条默认路径：所有语言包、评测框架、命令行。
+将来如果某个依赖开始往外发请求，它会**在构建时失败**，而不是在你的部署里。
+README 里的主张是规格，不是描述。
+参见 [ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md)、
+[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md)。
+
+最后一节写的是 mamori **无法替你确认**的事情，
+比如你选的那家服务会不会留存你的提示词。
+装作知道的报告，比闭嘴的报告更糟。
+
+---
+
+## 接入模型：同一台机器，或内网服务器
 
 现实的部署形态不是笔记本，而是团队共用的一台 GPU 机器：
 
@@ -599,6 +532,59 @@ API key 不写进配置文件，只写环境变量名（`{"api_key_env": "LLM_AP
 
 ---
 
+## 提示词
+
+涉及两个模型，方向相反；两者的提示词都可读、可改。
+
+**服务端模型**被告知原样保留占位符。这不需要本地模型，立刻就能回本：
+
+```python
+system = session.external_system_prompt() + "
+
+" + your_own_system_prompt
+```
+
+每一个完好返回的占位符，都是还原过程不必再从改写形式中恢复的一个。
+
+**本地模型**用来找模式覆盖不到的东西：没有任何前置标记的英文人名、中文人名、
+看起来像普通词的内部代号。它的提示词里写满了**写正则时积累的知识**。
+
+```bash
+mamori prompt detection
+```
+
+```text
+## What looks sensitive and is not
+
+- Many ordinary words begin with a character that is also a surname. 森林 is a
+  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
+- This shape is also the shape of ordinary words... 高兴 is 'happy',
+  方便 is 'convenient'. Judge from the sentence.
+```
+
+因为这些是**关于语言的知识，不是关于正则表达式的知识**。
+
+### 加入公司规则、删掉不合用的
+
+每条 guidance 都有 ID。可以补充库无从知晓的内容，也可以移除不适用的，
+**无需 fork**。
+
+```json
+{"prompts": {"detection": {
+  "disable": ["en.person.unanchored"],
+  "add": [{"id": "acme.case", "text": "案件编号形如 ACME-12345。"}]
+}}}
+```
+
+```bash
+mamori prompt detection --guidance   # 列出 ID，可据此 disable
+```
+
+**disable 一个不存在的 ID 会被拒绝**，而且是在加载配置时就拒绝，
+不会拖到几个月后。
+
+---
+
 ## 三处真正的难点
 
 `mamori` 的大部分工作量，都花在初版实现必然做错的地方。
@@ -666,6 +652,46 @@ recall_first 以约五倍的 over-redaction 换来剩下的部分。**两张表�
 请把这些数字当作**防止退化的下限，而不是对你的数据的承诺**。
 评测集规模小且全为合成数据。25 条编造的句子上 leak rate 为 0，
 并不能说明真实文档里的情况。
+
+---
+
+### 模型层实际值多少
+
+是实测，不是主张。本地跑 `llama3.1:8b`，balanced 立场，对内置数据集测量：
+
+| | 泄漏率：仅规则 → +模型 | 过度打码 | precision |
+|---|---|---|---|
+| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
+| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
+| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
+
+**在这个规模上，它是一个「提升英文召回」的工具。**
+它补上了 `en-006`——没有任何前置标记的英文行文人名，正是这一层被设计出来要解决的情况——
+但对日文和中文没有可测量的改善，同时在三种语言上都增加了过度打码。
+本 README 早先声称它能覆盖中文人名，这一点没有得到支持：
+中文规则在那套数据上的 recall 本来就是 1.000。
+
+**在默认的 recall_first 立场下它是负收益：** wide 规则已经够到了那些值，
+泄漏率不动，过度打码却从 1.44% 涨到 9.58%。在你用自己的数据测过之前，先关着。
+
+自己测。值得看的只有差值：
+
+```bash
+mamori eval --compare --stance balanced -c mamori.json --cache answers.json
+```
+
+`--compare` 会点名列出发生变化的样本——聚合数字只会告诉你「有东西动了」，不会告诉你动了什么。
+用**你自己的文档**来测量（这比这里的任何数字都更有说服力）的做法，见
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md)，
+那里也写了要注意什么——那个文件装的就是你的真实数据。
+`--cache` 用模型**和提示词**共同做键，所以重跑是免费的，
+而改动一行指引只会让依赖旧措辞的那些答案失效。
+
+这次测量把两个修正带回了代码。之前要求模型给出字符偏移量，结果 **52 个里对了 0 个**，
+而这些值本身有 51 个确实在文档里。现在改为只报告值，位置由 mamori 自己定位
+（[ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)）。
+另外英文的误报全部是把 `OTHER_SENSITIVE` 当垃圾桶用；
+只加了一条说明该类型用途的指引，过度打码就从 8.80% 减半到 4.43%。
 
 ---
 
@@ -766,6 +792,10 @@ infrastructure ──> ports
 
 安全问题请参见 [SECURITY.md](SECURITY.md)，不要提交公开 issue。
 
+---
+
 ## 许可证
 
 Apache-2.0，见 [LICENSE](LICENSE)。
+
+---

@@ -22,6 +22,24 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 The mapping from `<PERSON_001>` back to `田中太郎` never leaves your machine.
 
 
+| | |
+|---|---|
+| **[See it work](#see-it-work)** | five scenarios, and one against a real model |
+| [Install](#install) · [Use](#use) | the library, streaming, the shell |
+| **[Without changing your application](#without-changing-your-application)** | the proxy: change `base_url`, change nothing else |
+| [Languages](#languages) | Japanese, English and Chinese, in one document |
+| [Switching things](#switching-things) | settings, and the recall dial |
+| [When it gets something wrong](#when-it-gets-something-wrong) | corrections: your last word |
+| [Readable values](#readable-values-instead-of-tokens) | surrogates, and why they are off by default |
+| [Why was this replaced?](#why-was-this-replaced-why-was-that-not) | and why was that **not** |
+| **[What is this doing with my data?](#what-is-this-actually-doing-with-my-data)** | answered from your own configuration |
+| [Wiring up a model](#wiring-up-a-model-wherever-it-runs) | on this machine or on your network |
+| [Prompts](#prompts) · [The hard parts](#the-three-things-that-make-this-hard) | what the model is told, and why this is difficult |
+| **[How well does it work?](#how-well-does-it-work)** | the numbers, at two scales |
+| [What this does not do](#what-this-does-not-do) · [Design](#design) · [Roadmap](#roadmap) | the limits, and the plan |
+
+---
+
 ## See it work
 
 Nothing to install, nothing to configure:
@@ -96,6 +114,8 @@ pip install mamori
 No model, no GPU, no network. The default detectors are pattern rules that run
 in microseconds.
 
+---
+
 ## Use
 
 ```python
@@ -151,7 +171,9 @@ pack found what.
 `mamori demo` runs a whole round trip, including a reply whose placeholders
 have been mangled, so you can see what recovery looks like.
 
-### Without changing your application
+---
+
+## Without changing your application
 
 Nobody rewrites a working application to adopt a library. If yours already
 talks to an OpenAI-compatible API, put mamori in front of it and change one
@@ -181,189 +203,6 @@ restored as it passes. A blocked credential stops the request instead of
 forwarding it. It binds to this machine only unless you say otherwise, because
 anything that can reach the port can send documents through it. See
 [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md).
-
-
-### What the model tier is actually worth
-
-Measured, not asserted. `llama3.1:8b` running locally, balanced stance, against
-the bundled sets:
-
-| | leak: rules → +model | over-redaction | precision |
-|---|---|---|---|
-| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
-| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
-| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
-
-**At this size it is an English-recall tool.** It closes `en-006` — a name in
-running prose with nothing to anchor on, the gap it was built for — and does
-nothing measurable for Japanese or Chinese while costing over-redaction in all
-three. Earlier versions of this README claimed it reached Chinese given names.
-It does not; the Chinese rules were already at 1.000 recall on that set.
-
-At the **recall-first default** it is worse than useless: the wide rules already
-reach those values, so the leak rate does not move and over-redaction goes from
-1.44% to 9.58%. Leave it off until you have measured it on your own data.
-
-Measure it yourself — the delta is the only thing worth reading:
-
-```bash
-mamori eval --compare --stance balanced -c mamori.json --cache answers.json
-```
-
-`--compare` names the individual samples that changed, because an aggregate
-tells you something moved and not what. To measure mamori on **your own**
-documents -- which is much better evidence than anything here -- see
-[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md), which also
-says what to be careful about, since such a file is full of your real data. `--cache` keys on the model *and the
-prompt*, so re-running is free and rewriting one line of guidance invalidates
-exactly the answers that depended on it.
-
-Two findings from doing this came back into the code. The model was being asked
-for character offsets and got **0 of 52** right while 51 of those values were
-really in the document — so it now reports values and mamori locates them
-([ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)). And every
-English false positive was `OTHER_SENSITIVE` used as a dustbin; one guidance
-rule about what that type is for halved over-redaction from 8.80% to 4.43%.
-
-
-### Readable values instead of tokens
-
-Some models reason badly about a page of `<PERSON_001>`. Substituting a
-readable value usually gets a better answer:
-
-```json
-{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
-```
-
-```text
-you wrote   Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
-sent        Dear Alex Rivera, reach me at a.person@example.com or 415-555-0142.
-restored    Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
-```
-
-The address and the number come from ranges reserved for documentation
-(RFC 2606, the 555-01xx block), so one that escapes means nothing anywhere.
-**Nothing is reserved for personal names**, and that is the risk that stays.
-
-It is **off by default**, and the reason is worth understanding before turning
-it on. An unrestored `<PERSON_001>` is obvious. An unrestored `Alex Rivera` is
-a sentence about the wrong person, and nobody notices. A placeholder can be
-recognised by its shape, so restoration copes with a model that mangles one; a
-surrogate is just a name, so it either matches or it does not.
-
-What mamori can do is tell you. `RestorationResult.missing` lists everything
-that did not come back — check it on every answer — and `mamori privacy` warns
-whenever surrogates are on, naming which pools are reserved and which are
-merely invented.
-
-```bash
-mamori demo --scenario surrogates
-```
-
-See [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md).
-
----
-
-## When it gets something wrong
-
-It will. A salutation anchor is right far more often than it is wrong, and
-`Dear Monday,` is when it is wrong. Say so:
-
-```bash
-mamori correct Monday --never --note "a weekday, not a name"
-mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
-```
-
-The second closes a gap documented since `v0.1` — a trading name with no legal
-suffix, which no pattern can reach in general and any operator can settle for
-their own data.
-
-The log is append-only and the latest word about a value wins, so undo is
-another correction and nothing is deleted. Rules are not rewritten and prompts
-are not edited; remove the log and you are exactly back where you were.
-
-```bash
-mamori corrections     # what has been ruled on, and what it costs
-```
-
-**`--never` is the only thing in mamori that reduces what it protects**, so it
-is kept narrow. Every exclusion is named by `mamori privacy` and reported as a
-warning with a non-zero exit status, so a deployment check can fail on one
-nobody meant to ship. And a credential can never be ruled away:
-
-```text
-error: that value looks like a credential (API_KEY), and a credential cannot
-be ruled 'never'. Nothing was written -- recording it would have put the
-credential in a file on disk. Rotate it instead.
-```
-
-That refusal happens *before* anything is appended, in three independent
-places. See [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md).
-
----
-
-## Why was this replaced? Why was that not?
-
-```bash
-mamori trace "Dear Monday, the contract is with Globex Corporation."
-```
-
-```text
-where     type            rules         conf  outcome
-5:11      PERSON          en            0.90  kept
-34:53     COMPANY_NAME    en            0.70  kept
-59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
-```
-
-The second question is the one that matters, and it was not answerable before
-`v0.12`. When nothing fired, `trace` runs the other stance and tells you what
-the wider rules *would* have caught — as a shape, never a value — and when
-neither stance helps, it says so and points at a correction or the model tier.
-
-```bash
-mamori audit --file inbox.txt   # which rules matter to your text
-mamori audit --dead             # which have never fired at all
-```
-
-`audit` found three credential rules shipped in `v0.10` that no sample had ever
-exercised. See [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md).
-
----
-
-## What is this actually doing with my data?
-
-Ask it:
-
-```bash
-mamori privacy
-```
-
-The answer is computed from **your** configuration, not from this README: which
-types are blocked and which are pseudonymized, where a detection model is and
-whether the trust boundary admits it, what is kept and where. Anything that
-widens exposure is a warning and a non-zero exit status, so a deployment check
-can fail on it.
-
-Under that, the claims that hold however you configure it — each printed with
-the name of the test that fails if it stops being true:
-
-```text
-  - Pattern detection contacts nothing. No socket is opened to protect a
-    document with the default detectors.
-    checked by test_promises.py::TestNothingLeavesTheMachine
-```
-
-Those tests are real. `tests/test_promises.py` replaces `socket.connect` with a
-function that raises and then runs the whole default path — every language
-pack, the evaluation harness, the command line — so a future dependency that
-dials out fails in a build rather than in your deployment. The README claims
-are a specification, not a description. See
-[ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md) and
-[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md).
-
-And the last section says what mamori *cannot* check for you — whether the
-service you chose retains your prompts, for one — because a report that implied
-otherwise would be worse than one that stayed quiet.
 
 ---
 
@@ -504,64 +343,148 @@ balanced" is a test rather than a hope.
 
 ---
 
-## Prompts
+## When it gets something wrong
 
-Two models are involved, facing opposite directions, and both get a prompt you
-can read and change.
-
-**The service model** is told to leave the placeholders alone. This needs no
-local model and pays for itself immediately:
-
-```python
-system = session.external_system_prompt() + "
-
-" + your_own_system_prompt
-```
-
-Every placeholder that comes back intact is one restoration does not have to
-recover from a mangled form.
-
-**A local model** is asked to find what patterns cannot reach. As of `v0.7`
-that claim comes with numbers instead of an intention — see
-[what the model tier is actually worth](#what-the-model-tier-is-actually-worth)
-below, which is less than this README used to imply. Its prompt carries
-everything the regex work taught —
+It will. A salutation anchor is right far more often than it is wrong, and
+`Dear Monday,` is when it is wrong. Say so:
 
 ```bash
-mamori prompt detection
+mamori correct Monday --never --note "a weekday, not a name"
+mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
+```
+
+The second closes a gap documented since `v0.1` — a trading name with no legal
+suffix, which no pattern can reach in general and any operator can settle for
+their own data.
+
+The log is append-only and the latest word about a value wins, so undo is
+another correction and nothing is deleted. Rules are not rewritten and prompts
+are not edited; remove the log and you are exactly back where you were.
+
+```bash
+mamori corrections     # what has been ruled on, and what it costs
+```
+
+**`--never` is the only thing in mamori that reduces what it protects**, so it
+is kept narrow. Every exclusion is named by `mamori privacy` and reported as a
+warning with a non-zero exit status, so a deployment check can fail on one
+nobody meant to ship. And a credential can never be ruled away:
+
+```text
+error: that value looks like a credential (API_KEY), and a credential cannot
+be ruled 'never'. Nothing was written -- recording it would have put the
+credential in a file on disk. Rotate it instead.
+```
+
+That refusal happens *before* anything is appended, in three independent
+places. See [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md).
+
+---
+
+## Readable values instead of tokens
+
+Some models reason badly about a page of `<PERSON_001>`. Substituting a
+readable value usually gets a better answer:
+
+```json
+{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
 ```
 
 ```text
-## What looks sensitive and is not
-
-- Many ordinary words begin with a character that is also a surname. 森林 is a
-  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
-- Two capitalised words are usually not a name. Headings, products, departments,
-  weekdays and sentence openers all look identical.
+you wrote   Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
+sent        Dear Alex Rivera, reach me at a.person@example.com or 415-555-0142.
+restored    Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
 ```
 
-— because that knowledge is about *languages*, not about regular expressions.
+The address and the number come from ranges reserved for documentation
+(RFC 2606, the 555-01xx block), so one that escapes means nothing anywhere.
+**Nothing is reserved for personal names**, and that is the risk that stays.
 
-### Your rules, not ours
+It is **off by default**, and the reason is worth understanding before turning
+it on. An unrestored `<PERSON_001>` is obvious. An unrestored `Alex Rivera` is
+a sentence about the wrong person, and nobody notices. A placeholder can be
+recognised by its shape, so restoration copes with a model that mangles one; a
+surrogate is just a name, so it either matches or it does not.
 
-Guidance is addressable, so an organisation adds what the library cannot know
-and drops what does not fit, without forking anything:
-
-```json
-{"prompts": {"detection": {
-  "disable": ["en.person.unanchored"],
-  "add": [{"id": "acme.case", "text": "Case numbers look like ACME-12345."}]
-}}}
-```
+What mamori can do is tell you. `RestorationResult.missing` lists everything
+that did not come back — check it on every answer — and `mamori privacy` warns
+whenever surrogates are on, naming which pools are reserved and which are
+merely invented.
 
 ```bash
-mamori prompt detection --guidance   # list the ids, so they can be disabled
+mamori demo --scenario surrogates
 ```
 
-A disable that matches nothing is refused, when the config is loaded rather than
-months later.
+See [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md).
 
-### Wiring up a model, wherever it runs
+---
+
+## Why was this replaced? Why was that not?
+
+```bash
+mamori trace "Dear Monday, the contract is with Globex Corporation."
+```
+
+```text
+where     type            rules         conf  outcome
+5:11      PERSON          en            0.90  kept
+34:53     COMPANY_NAME    en            0.70  kept
+59:69     IDENTIFIER      universal     0.50  displaced -- lost to PHONE (higher severity)
+```
+
+The second question is the one that matters, and it was not answerable before
+`v0.12`. When nothing fired, `trace` runs the other stance and tells you what
+the wider rules *would* have caught — as a shape, never a value — and when
+neither stance helps, it says so and points at a correction or the model tier.
+
+```bash
+mamori audit --file inbox.txt   # which rules matter to your text
+mamori audit --dead             # which have never fired at all
+```
+
+`audit` found three credential rules shipped in `v0.10` that no sample had ever
+exercised. See [ADR 0027](docs/adr/0027-say-why-and-say-why-not.md).
+
+---
+
+## What is this actually doing with my data?
+
+Ask it:
+
+```bash
+mamori privacy
+```
+
+The answer is computed from **your** configuration, not from this README: which
+types are blocked and which are pseudonymized, where a detection model is and
+whether the trust boundary admits it, what is kept and where. Anything that
+widens exposure is a warning and a non-zero exit status, so a deployment check
+can fail on it.
+
+Under that, the claims that hold however you configure it — each printed with
+the name of the test that fails if it stops being true:
+
+```text
+  - Pattern detection contacts nothing. No socket is opened to protect a
+    document with the default detectors.
+    checked by test_promises.py::TestNothingLeavesTheMachine
+```
+
+Those tests are real. `tests/test_promises.py` replaces `socket.connect` with a
+function that raises and then runs the whole default path — every language
+pack, the evaluation harness, the command line — so a future dependency that
+dials out fails in a build rather than in your deployment. The README claims
+are a specification, not a description. See
+[ADR 0019](docs/adr/0019-privacy-is-a-report-not-a-promise.md) and
+[ADR 0020](docs/adr/0020-the-promises-are-checked-by-machine.md).
+
+And the last section says what mamori *cannot* check for you — whether the
+service you chose retains your prompts, for one — because a report that implied
+otherwise would be worse than one that stayed quiet.
+
+---
+
+## Wiring up a model, wherever it runs
 
 The realistic deployment is not a laptop. It is one GPU machine the team shares:
 
@@ -636,6 +559,65 @@ Three properties hold whatever the model does:
 
 Keys are read from an environment variable you name, never from the config file:
 `{"api_key_env": "LLM_API_KEY"}`. A literal `api_key` is refused.
+
+---
+
+## Prompts
+
+Two models are involved, facing opposite directions, and both get a prompt you
+can read and change.
+
+**The service model** is told to leave the placeholders alone. This needs no
+local model and pays for itself immediately:
+
+```python
+system = session.external_system_prompt() + "
+
+" + your_own_system_prompt
+```
+
+Every placeholder that comes back intact is one restoration does not have to
+recover from a mangled form.
+
+**A local model** is asked to find what patterns cannot reach. As of `v0.7`
+that claim comes with numbers instead of an intention — see
+[what the model tier is actually worth](#what-the-model-tier-is-actually-worth)
+below, which is less than this README used to imply. Its prompt carries
+everything the regex work taught —
+
+```bash
+mamori prompt detection
+```
+
+```text
+## What looks sensitive and is not
+
+- Many ordinary words begin with a character that is also a surname. 森林 is a
+  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
+- Two capitalised words are usually not a name. Headings, products, departments,
+  weekdays and sentence openers all look identical.
+```
+
+— because that knowledge is about *languages*, not about regular expressions.
+
+### Your rules, not ours
+
+Guidance is addressable, so an organisation adds what the library cannot know
+and drops what does not fit, without forking anything:
+
+```json
+{"prompts": {"detection": {
+  "disable": ["en.person.unanchored"],
+  "add": [{"id": "acme.case", "text": "Case numbers look like ACME-12345."}]
+}}}
+```
+
+```bash
+mamori prompt detection --guidance   # list the ids, so they can be disabled
+```
+
+A disable that matches nothing is refused, when the config is loaded rather than
+months later.
 
 ---
 
@@ -714,6 +696,50 @@ opinion about it:
 Treat the numbers as regression floors, not as a claim about your data: the
 datasets are small and synthetic, and a leak rate near zero on fifty invented
 sentences says nothing about a real inbox.
+
+---
+
+### What the model tier is actually worth
+
+Measured, not asserted. `llama3.1:8b` running locally, balanced stance, against
+the bundled sets:
+
+| | leak: rules → +model | over-redaction | precision |
+|---|---|---|---|
+| `en-core` | 2.01% → **0.67%** | 0.00% → 3.77% | 1.000 → 0.855 |
+| `ja-core` | 0.71% → 0.71% | 0.00% → 5.41% | 1.000 → 0.868 |
+| `zh-core` | 0.00% → 0.00% | 2.55% → 10.18% | 0.964 → 0.871 |
+
+**At this size it is an English-recall tool.** It closes `en-006` — a name in
+running prose with nothing to anchor on, the gap it was built for — and does
+nothing measurable for Japanese or Chinese while costing over-redaction in all
+three. Earlier versions of this README claimed it reached Chinese given names.
+It does not; the Chinese rules were already at 1.000 recall on that set.
+
+At the **recall-first default** it is worse than useless: the wide rules already
+reach those values, so the leak rate does not move and over-redaction goes from
+1.44% to 9.58%. Leave it off until you have measured it on your own data.
+
+Measure it yourself — the delta is the only thing worth reading:
+
+```bash
+mamori eval --compare --stance balanced -c mamori.json --cache answers.json
+```
+
+`--compare` names the individual samples that changed, because an aggregate
+tells you something moved and not what. To measure mamori on **your own**
+documents -- which is much better evidence than anything here -- see
+[docs/measuring-your-own-data.md](docs/measuring-your-own-data.md), which also
+says what to be careful about, since such a file is full of your real data. `--cache` keys on the model *and the
+prompt*, so re-running is free and rewriting one line of guidance invalidates
+exactly the answers that depended on it.
+
+Two findings from doing this came back into the code. The model was being asked
+for character offsets and got **0 of 52** right while 51 of those values were
+really in the document — so it now reports values and mamori locates them
+([ADR 0022](docs/adr/0022-a-model-reports-values-not-offsets.md)). And every
+English false positive was `OTHER_SENSITIVE` used as a dustbin; one guidance
+rule about what that type is for halved over-redaction from 8.80% to 4.43%.
 
 ---
 
@@ -829,6 +855,10 @@ which way they lean and why.
 
 Security issues: [SECURITY.md](SECURITY.md). Please do not open a public issue.
 
+---
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+---
