@@ -89,10 +89,17 @@ class TestPackSelection:
 
 class TestCrossLanguageBehaviour:
     def test_japanese_text_is_not_scanned_with_chinese_rules(self) -> None:
-        """13812345678 is a Chinese mobile number and nothing in Japanese."""
+        """13812345678 is a Chinese mobile number and nothing in Japanese.
+
+        The framing carries no label on purpose. It used to say 受付番号は,
+        which stopped being neutral in 0.14 when that became an identifier
+        label -- and the number then *was* detected, correctly, as a reference
+        number rather than as a phone. A probe for one behaviour has to avoid
+        triggering another.
+        """
         with MamoriConfig(stance=Stance.BALANCED).session() as session:
-            protected = session.protect("受付番号は13812345678です。")
-        assert protected.protected_text == "受付番号は13812345678です。"
+            protected = session.protect("メモに13812345678と書いてありました。")
+        assert protected.protected_text == "メモに13812345678と書いてありました。"
 
     def test_a_japanese_document_still_protects_an_english_name(self) -> None:
         with PrivacySession() as session:

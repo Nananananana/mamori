@@ -8,6 +8,84 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-30
+
+A thousand generated documents and a thousand generated replies, in the
+development repository rather than the package. They found five bugs in about
+an hour, and one of them had been there since 0.2.
+
+### The corpus
+
+Twelve genres -- email, support ticket, minutes, medical referral, contract,
+HR, invoice, chat, technical note, credentials in prose, and two that are
+almost entirely negative -- across all three languages. **Labels are correct by
+construction**: a template names a slot, the slot is filled from a pool, and
+the filler is wrapped in `[[TYPE:value]]` as it goes in, so there is no step at
+which a human could mislabel something.
+
+Decoys are inserted deliberately and left unlabelled -- version strings, part
+numbers, percentages, public IP addresses, error codes, weekday names -- because
+a corpus without them measures only how much a detector finds and never how
+much it wrecks.
+
+The second corpus did not exist before. Detection has had hundreds of labelled
+samples since 0.2 and **restoration has had a handful**, which is an odd split
+for something that is half the product. Each reply fixture states the mapping a
+session would have held, a reply containing the placeholders as a model would
+actually mangle them, and the text that should come out.
+
+Both live in `mamori-work/testdata/` and are not shipped: the bundled datasets
+are the regression floor and are meant to stay small and readable.
+
+### Fixed
+
+- **Restoration failed on `<COMPANY _ NAME _ 001>`.** Spaces inside the token.
+  195 of 1002 replies came back wrong, and it accounted for **every single
+  failure** -- brackets dropped, case changed, full-width brackets and lost
+  zero-padding all restored correctly, exactly as
+  [ADR 0003](docs/adr/0003-readable-placeholders.md) claims. No hand-written
+  test had thought to try a space. 1002 of 1002 now.
+
+  The scanner is meant to be permissive about surface form and strict about
+  identity; a space was a surface form it did not know about. Types now
+  canonicalise `[\s_-]+` to a single underscore, and the pattern refuses to
+  cross a line break so a type cannot swallow a paragraph looking for its
+  index.
+
+- **English had no `Project X` rule.** Japanese got one in 0.9 and Chinese in
+  0.13; English went without until a thousand documents missed it thirty times.
+  The same asymmetry, a third time, which is itself an argument for generating
+  a corpus rather than writing one.
+
+- **`社員番号は X` was not read as an identifier.** The rule wanted a colon, and
+  a particle is the commoner form. `ja-docs` leak fell from 1.50% to **0.33%**.
+
+- **The Chinese company rule swallowed the clause in front of it.**
+  `甲方联系人为新程科技有限公司` came back as one company name, because the
+  function-word list the rule already had was missing `为`. Same class as the
+  English "Where Umbrella Ltd" bug of 0.9. That list is a stoplist and is
+  defensible where the katakana one was not: function words are a closed set
+  that nobody coins.
+
+- **`en-doc-002` never labelled its own codename.** A hole in a hand-written
+  document set, invisible until a rule existed that could notice.
+
+### Changed
+
+| default stance | leak before → after |
+|---|---|
+| `ja-docs` | 1.50% → **0.33%** |
+| `en-docs` | 3.55% → 3.50% |
+| `zh-core` over-redaction | 3.59% → **2.29%** |
+
+On the generated corpus, which is where the work was done: Japanese leak 3.83%
+→ **2.64%** with recall 0.960 → 0.977, English 2.37% → **1.47%** with recall
+0.939 → 0.956.
+
+The quality floors are tightened to match, and a regression test for the spaced
+placeholder now lives in the package so the finding does not depend on the
+development repository being present.
+
 ## [0.13.0] - 2026-08-30
 
 Japanese and Chinese, which the document sets have said are the weakest since
@@ -1011,7 +1089,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Nananananana/mamori/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nananananana/mamori/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nananananana/mamori/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Nananananana/mamori/compare/v0.10.0...v0.11.0

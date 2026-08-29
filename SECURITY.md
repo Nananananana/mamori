@@ -98,10 +98,15 @@ Detection is measured against bundled labelled datasets, at two scales. Run
 |---|---|---|---|---|
 | `en-core` | 52 fragments | 0.64% | 0.72% | 0.980 / 0.980 |
 | `ja-core` | 53 fragments | 0.00% | 2.78% | 0.925 / 0.984 |
-| `zh-core` | 27 fragments | 0.00% | 3.59% | 0.903 / 1.000 |
-| `en-docs` | 8 documents | **3.55%** | 0.90% | 0.945 / 0.881 |
-| `ja-docs` | 8 documents | **1.50%** | 1.06% | 0.937 / 0.967 |
+| `zh-core` | 27 fragments | 0.00% | 2.29% | 0.903 / 1.000 |
+| `en-docs` | 8 documents | **3.50%** | 0.90% | 0.946 / 0.883 |
+| `ja-docs` | 8 documents | **0.33%** | 1.06% | 0.938 / 0.984 |
 | `zh-docs` | 6 documents | **4.41%** | 1.84% | 0.894 / 0.913 |
+
+A third corpus of a thousand generated documents across twelve genres is not
+shipped -- it lives in the development repository, because the bundled sets are
+the regression floor and that one is for finding bugs. It found five in its
+first run. See the 0.14.0 entry in `CHANGELOG.md`.
 
 **Read the document rows first.** The `-core` sets are sentence fragments with a
 median length of 28 to 44 characters; the `-docs` sets are business documents at
@@ -116,12 +121,12 @@ At `--stance balanced`, which runs only the anchored rules:
 |---|---|---|---|
 | `en-core` | 1.93% | 0.00% | 1.000 / 0.960 |
 | `ja-core` | 0.68% | 0.62% | 0.984 / 0.984 |
-| `zh-core` | 0.00% | 2.29% | 0.966 / 1.000 |
-| `en-docs` | **20.29%** | 0.03% | 1.000 / 0.695 |
-| `ja-docs` | 1.50% | 0.18% | 0.967 / 0.967 |
+| `zh-core` | 0.00% | 0.98% | 0.966 / 1.000 |
+| `en-docs` | **20.02%** | 0.03% | 1.000 / 0.700 |
+| `ja-docs` | 0.33% | 0.18% | 0.968 / 0.984 |
 | `zh-docs` | 4.41% | 1.20% | 0.933 / 0.913 |
 
-That 20.29% is not a typo. A fifth of the sensitive characters in an English
+That 20.02% is not a typo. A fifth of the sensitive characters in an English
 document have nothing anchored near them -- a name in an attendee list, a name
 under a sign-off, a name after "Reported by:". It is the clearest reason the
 recall-first stance is the default, and the clearest argument against turning it

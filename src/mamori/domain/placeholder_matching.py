@@ -8,6 +8,7 @@ mutations include::
     <PERSON_001>  ->  <person_001>    (case changed)
     <PERSON_001>  ->  ＜PERSON_001＞  (full-width brackets)
     <PERSON_001>  ->  [PERSON_001]    (bracket style changed)
+    <PERSON_001>  ->  <PERSON _ 001>  (spaces around the underscores)
 
 Silently failing to restore these leaves the user with a broken answer;
 silently restoring *anything* that looks vaguely like a placeholder would let a
@@ -30,16 +31,31 @@ __all__ = ["PlaceholderOccurrence", "scan_placeholders"]
 
 _LENIENT_RE = re.compile(
     r"""
-    (?:(?P<open>[<\[\{])\s*)?
-    (?P<type>[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*?)
-    [\s_\-]+
+    (?:(?P<open>[<\[\{])[^\S
+
+]*)?
+    (?P<type>[A-Za-z][A-Za-z0-9]*(?:[^\S
+
+_\-]*[_\-][^\S
+
+]*[A-Za-z0-9]+)*?)
+    [^\S
+
+_\-]*[\s_\-][^\S
+
+]*
     (?P<index>\d{1,6})
-    (?:\s*(?P<close>[>\]\}]))?
+    (?:[^\S
+
+]*(?P<close>[>\]\}]))?
     """,
     re.VERBOSE,
 )
 
 _BRACKET_PAIRS = {"<": ">", "[": "]", "{": "}"}
+
+#: Whatever separated the parts of a type, canonicalised to one underscore.
+_WHITESPACE_RUN = re.compile(r"[\s_\-]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +100,11 @@ def scan_placeholders(text: str, known: AbstractSet[Placeholder]) -> list[Placeh
         closing = match.group("close")
         bracketed = opening is not None and closing == _BRACKET_PAIRS.get(opening)
 
-        type_name = match.group("type").upper()
+        # Spaces inside the token collapse back to underscores, so
+        # <COMPANY _ NAME _ 001> and <COMPANY_NAME_001> are the same identity.
+        # A thousand generated replies said this was the one mutation the
+        # scanner did not survive, and it accounted for every failure.
+        type_name = _WHITESPACE_RUN.sub("_", match.group("type")).upper()
         index = int(match.group("index"))
         if index < 1:
             continue

@@ -115,3 +115,42 @@ class TestPrecision:
 
     def test_empty_text(self) -> None:
         assert scan_placeholders("", KNOWN) == []
+
+
+class TestSpacesInsideTheToken:
+    """`<COMPANY _ NAME _ 001>` -- the one mutation the scanner did not survive.
+
+    A thousand generated replies found it in 0.14: every other mangling
+    (brackets dropped, case changed, full-width, zero padding lost) restored
+    correctly, and this one accounted for every single failure. 195 of 1002
+    replies came back wrong because of it.
+    """
+
+    KNOWN = frozenset({Placeholder("COMPANY_NAME", 1), Placeholder("PERSON", 1)})
+
+    def test_spaces_around_the_underscores_still_resolve(self) -> None:
+        found = scan_placeholders("about <COMPANY _ NAME _ 001> today", self.KNOWN)
+        assert [o.placeholder for o in found] == [Placeholder("COMPANY_NAME", 1)]
+        assert found[0].known
+
+    def test_a_single_part_type_with_spaces(self) -> None:
+        found = scan_placeholders("<PERSON _ 001>", self.KNOWN)
+        assert found and found[0].placeholder == Placeholder("PERSON", 1)
+
+    def test_the_whole_run_is_replaced_not_part_of_it(self) -> None:
+        found = scan_placeholders("x <COMPANY _ NAME _ 001> y", self.KNOWN)
+        assert found[0].surface == "<COMPANY _ NAME _ 001>"
+
+    def test_it_does_not_span_a_line_break(self) -> None:
+        """Otherwise a type could swallow a paragraph looking for its index."""
+        found = scan_placeholders("Dear PERSON\n\n001 units shipped", self.KNOWN)
+        assert not [o for o in found if o.known]
+
+    def test_ordinary_prose_is_still_not_a_placeholder(self) -> None:
+        """The precision guard has to survive the wider pattern."""
+        for text in ("error_404 on line 17", "step 2 of 3", "Retry after 30 seconds"):
+            assert not [o for o in scan_placeholders(text, self.KNOWN) if o.known]
+
+    def test_an_unallocated_identity_is_reported_not_substituted(self) -> None:
+        found = scan_placeholders("<SOME _ THING _ 001>", self.KNOWN)
+        assert all(not o.known for o in found)

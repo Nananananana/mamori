@@ -139,6 +139,17 @@ RULES: tuple[PatternRule, ...] = (
         HIGH,
         group=1,
     ),
+    # Project Nightingale, in a heading, with no colon. The Japanese rule for
+    # this landed in 0.9 and the Chinese one in 0.13; English went without
+    # until a thousand generated documents missed it thirty times. The same
+    # asymmetry, a third time, which is an argument for generating rather than
+    # hand-writing a corpus.
+    compile_rule(
+        t.PROJECT_NAME,
+        r"(?:[Pp]roject|[Cc]odename)\s+(?!name\b|code\b)([A-Z][A-Za-z0-9\-]{2,30})",
+        LOW,
+        group=1,
+    ),
     compile_rule(
         t.PROJECT_NAME,
         r"(?i)(?:project|codename|code\s*name)\s*[:#]\s*([^\s,;.]{2,40})",

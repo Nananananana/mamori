@@ -170,7 +170,7 @@ RULES: tuple[PatternRule, ...] = (
     ),
     compile_rule(
         t.EMPLOYEE_ID,
-        r"(?:社員番号|従業員番号|社員ID)\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
+        r"(?:社員番号|従業員番号|社員ID)\s*(?:は|が)?\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
         HIGH,
         group=1,
     ),
@@ -249,7 +249,7 @@ RULES: tuple[PatternRule, ...] = (
     # not the customer-facing ones, so `ja-doc-006` leaked that too.
     compile_rule(
         t.EMPLOYEE_ID,
-        r"(?:お客様番号|顧客番号|会員番号|受付番号|整理番号)\s*[:：]?\s*"
+        r"(?:お客様番号|顧客番号|会員番号|受付番号|整理番号)\s*(?:は|が)?\s*[:：]?\s*"
         r"([A-Za-z0-9\-]{3,24})",
         HIGH,
         group=1,

@@ -114,7 +114,14 @@ def _plausible_name(value: str) -> bool:
 # Tempered like the Japanese company rule, for the same reason: a greedy run of
 # Han characters has no word boundary to stop it and would swallow the rest of
 # the sentence. 的 and 和 are the particles that matter most here.
-_COMPANY_BODY = r"(?:(?![的和与及或在这那是给从到由向对把被让])[一-鿿A-Za-z0-9]){2,20}"
+#: A company name may not begin at a function character. The list is a
+#: stoplist and is defensible where the katakana one was not: function
+#: words are a closed set that nobody coins. Extended in 0.14 after a
+#: thousand generated documents produced 甲方联系人为新程科技有限公司 as a
+#: single company name -- 为 was missing, so the body ate the clause in
+#: front of it. Same class as the English 'Where Umbrella Ltd' bug of 0.9.
+_STOP = "的和与及或在这那是给从到由向对把被让为称系即作也都就还已请于至如若先后当该"
+_COMPANY_BODY = r"(?:(?![" + _STOP + r"])[一-鿿A-Za-z0-9]){2,20}"
 
 RULES: tuple[PatternRule, ...] = (
     # Mainland mobile numbers are unambiguous: 11 digits starting 1[3-9].
