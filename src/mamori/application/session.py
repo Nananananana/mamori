@@ -6,6 +6,7 @@ import uuid
 from collections.abc import Sequence
 from types import TracebackType
 
+from ..domain.corrections import CorrectionLog
 from ..domain.policy import PrivacyPolicy
 from ..ports.detector import Detector
 from ..ports.mapping_store import MappingStore
@@ -46,6 +47,7 @@ class PrivacySession:
         scope: str | None = None,
         locales: Sequence[str] | str | None = None,
         prompts: PromptLibrary | None = None,
+        corrections: CorrectionLog | None = None,
     ) -> None:
         """
         Args:
@@ -58,6 +60,9 @@ class PrivacySession:
                 unexpected language in a document is exactly the case nobody
                 redacted by hand. Ignored when ``detectors`` is given.
             prompts: Where :meth:`external_system_prompt` comes from.
+            corrections: Values the operator has ruled on. The only input
+                that can reduce what is detected, and the one place a
+                credential cannot be ruled away.
 
         To build one from a :class:`~mamori.config.MamoriConfig`, call
         :meth:`~mamori.config.MamoriConfig.session`. Settings assemble a
@@ -74,7 +79,10 @@ class PrivacySession:
         )
         self._prompts = prompts if prompts is not None else default_library()
         self._scope = scope or f"session-{uuid.uuid4().hex[:12]}"
-        self._protection = ProtectionService(self._detectors, self._policy, self._store)
+        self._corrections = corrections if corrections is not None else CorrectionLog()
+        self._protection = ProtectionService(
+            self._detectors, self._policy, self._store, self._corrections
+        )
         self._restoration = RestorationService(self._store)
 
     @property

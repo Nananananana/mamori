@@ -144,6 +144,41 @@ mamori eval --compare --stance balanced -c mamori.json --cache answers.json
 另外英文的误报全部是把 `OTHER_SENSITIVE` 当垃圾桶用；
 只加了一条说明该类型用途的指引，过度打码就从 8.80% 减半到 4.43%。
 
+
+## 当它判断错的时候
+
+它会错。称呼语这个锚点对的次数远多于错的次数，而 `Dear Monday,` 就是错的那次。
+说出来就行：
+
+```bash
+mamori correct Monday --never --note "a weekday, not a name"
+mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
+```
+
+后者补上了从 `v0.1` 起就记录在案的一个缺口——没有法人后缀的商号。
+正则通用地够不到它，但**对你自己的数据，运维人员可以直接拍板。**
+
+日志只追加，对某个值最后一次的判断生效；撤销就是再追加一条相反的判断，
+什么都不会被删除。规则不会被改写，提示词也不会被改动；
+把日志去掉，行为就完全回到从前。
+
+```bash
+mamori corrections     # 判断过什么，以及代价是什么
+```
+
+**`--never` 是 mamori 里唯一会「减少保护」的操作**，所以把它限制得很窄。
+每一条排除都会被 `mamori privacy` 点名，并作为警告让退出码非零，
+方便在部署检查里直接失败。而且**凭据永远不能被排除**：
+
+```text
+error: that value looks like a credential (API_KEY), and a credential cannot
+be ruled 'never'. Nothing was written -- recording it would have put the
+credential in a file on disk. Rotate it instead.
+```
+
+这个拒绝发生在**写入之前**，由三处独立的检查把守。
+参见 [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md)。
+
 ---
 
 ## 我的数据到底被怎么处理了
@@ -554,11 +589,17 @@ infrastructure ──> ports
 并把分层从一张图变成一个测试。
 `v0.6` 交付了代理，并把隐私主张变成可以查询、且由机器检查的东西。
 `v0.7` 第一次测量了模型层，发现它一直在把模型答对的东西几乎全部丢掉，并修好了它。
+`v0.8` 把最终决定权交给了运维人员。
 
 | | |
 |---|---|
-| **v0.8** | Presidio 适配器、可选启用的加密持久化存储。 |
-| **v0.9** | 替身值（`张伟` → `王强`）作为策略选项。 |
+| **v0.9** | 把数字底下的证据补上：更大更难的数据集、用你自己的标注数据测量 mamori 的正式做法，以及回答 `v0.7` 留下的问题——比 8B 更大的模型会改变那张表吗。 |
+| **v0.10** | 替身值（`张伟` → `王强`）作为策略选项。 |
+| **v0.11** | 可选启用的加密持久化存储（保留期是「明示的规则」而不是「后台机器」），以及 Presidio 适配器。 |
+| **v1.0** | 不是功能：稳定的 API、把承诺测试套件当作规格，以及配得上「实测」二字的数字。 |
+
+这张表背后的理由，以及**刻意不做的事**，写在
+[docs/proposals/0001](docs/proposals/0001-the-road-to-1-0.md)。
 
 下一步是测量模型层。这是本库唯一一处质量靠「主张」而非「测量」支撑的地方，
 而能把它定下来的评测框架，从 `v0.2` 起就已经在那里了。

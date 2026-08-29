@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ..domain.confidence import CERTAIN
+from ..domain.corrections import CorrectionLog
 from ..domain.entity_types import PLACEHOLDER_LITERAL
 from ..domain.mapping import Mapping
 from ..domain.normalization import NormalizedText
@@ -34,7 +35,9 @@ class ProtectionService:
         detectors: Sequence[Detector],
         policy: PrivacyPolicy,
         store: MappingStore,
+        corrections: CorrectionLog | None = None,
     ) -> None:
+        self._corrections = corrections if corrections is not None else CorrectionLog()
         self._detectors = tuple(detectors)
         self._policy = policy
         self._store = store
@@ -54,9 +57,15 @@ class ProtectionService:
         detections.extend(self._detect_placeholder_literals(text))
 
         # Filter before resolution, not after: a detection the policy will not
-        # consider must not be able to win a span from one it would have.
+        # consider must not be able to win a span from one it would have. The
+        # same reasoning applies to a corrected-away value -- if it could win a
+        # span and then be dropped, ruling out a false positive would open a
+        # hole where a real detection used to be.
         confident = [
-            entity for entity in detections if self._policy.accepts(entity.confidence.value)
+            entity
+            for entity in detections
+            if self._policy.accepts(entity.confidence.value)
+            and not self._corrections.excludes(entity)
         ]
 
         resolved = resolve_overlaps(confident)

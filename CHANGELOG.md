@@ -8,6 +8,83 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-29
+
+The operator gets the last word. Until now everything mamori did was decided by
+mamori, and somebody watching `Dear Monday,` become a `<PERSON_001>` had no
+recourse short of forking the rule set.
+
+Borrowed, with thanks, from the sibling
+[kiseki](https://github.com/Nananananana/kiseki) project's ADR-0044.
+
+### Added
+
+- **Corrections: an append-only log of values you have ruled on.**
+
+  ```bash
+  mamori correct Monday --never --note "a weekday, not a name"
+  mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
+  mamori corrections
+  ```
+
+  The latest word about a value wins, so undo is another correction and nothing
+  is ever deleted. Applied at read time: nothing rewrites a rule, nothing edits
+  a prompt, and removing the log restores exactly the previous behaviour. See
+  [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md).
+
+  `--always` closes, for one organisation's data, a gap no pattern can close in
+  general: a trading name with no legal suffix (`Acme`, `田中商事`), documented
+  since 0.1.0. It carries `CERTAIN` confidence -- a rule is a guess about a
+  shape and a model is a guess about a sentence, and an operator typing a value
+  into a log is neither -- and adds only what nothing else already covers.
+
+- **`--never` is the only thing in mamori that reduces what it protects**, so
+  the exception is kept narrow. Every exclusion is named by `mamori privacy`
+  and reported as a warning with a non-zero exit status, so a deployment check
+  can fail on one nobody meant to ship.
+
+- **A credential can never be ruled away.** Enforced in three independent
+  places, because one is not enough: the domain refuses an exclusion naming a
+  credential type; `CorrectionLog.excludes` refuses to apply one at read time
+  whatever a hand-edited file says; and `mamori correct` runs the value through
+  the detectors **before writing anything**. That last one exists because a
+  `never` ruling names no type at all, and because appending first would leave
+  the credential sitting in a file on disk -- the outcome this library exists
+  to avoid.
+
+- **`docs/proposals/`**, starting with
+  [the road to 1.0](docs/proposals/0001-the-road-to-1-0.md). ADRs record
+  decisions already made; a plan is neither, and a roadmap in a README is a
+  list without its reasoning. The roadmap is revised there in light of what
+  0.7 measured, and says what is deliberately *not* planned.
+
+- **A promises test that a command which reads writes nothing.** `kiseki`'s
+  ADR-0070 found a command in that project quietly keeping a snapshot every
+  time somebody ran it to look at something, and no test caught it. Ten mamori
+  commands are now checked for leaving the working directory untouched and for
+  being safe to run twice. All of them already were; the point is that they
+  stay that way.
+
+### Changed
+
+- `MamoriConfig` gains `corrections`, accepting either a path to a log or the
+  entries themselves. A path is a log somebody appends to; entries in the
+  settings are rulings that travel with the configuration and get reviewed
+  alongside it.
+
+- `PrivacySession` and `ProtectionService` accept a `CorrectionLog`. Exclusions
+  are applied *before* overlap resolution, not after: a corrected-away value
+  that could first win a span and then vanish would leave a hole where a real
+  detection would have been.
+
+### Fixed
+
+- `MamoriConfig.from_mapping` silently dropped any key without an explicit
+  converter, which is how the new `corrections` setting did nothing the first
+  time it was tried. Found immediately, and worth recording: this is the exact
+  failure the module's "unknown keys are refused rather than ignored" rule
+  exists to prevent, arriving from the other direction.
+
 ## [0.7.0] - 2026-08-29
 
 The model tier gets measured for the first time, and the numbers say it was
@@ -526,7 +603,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Nananananana/mamori/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Nananananana/mamori/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Nananananana/mamori/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nananananana/mamori/compare/v0.4.0...v0.5.0

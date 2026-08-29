@@ -1,6 +1,11 @@
 # Architecture decision records
 
 One file per decision that changed a boundary, a default, or a security
+property. What is *intended* next, and why, is in
+[docs/proposals](../proposals/0001-the-road-to-1-0.md) instead: ADRs record
+decisions already made, and a plan is neither.
+
+One file per decision that changed a boundary, a default, or a security
 property. Each says what the situation was, what was chosen, what follows from
 it, and — the part that is usually missing — what it costs.
 
@@ -29,3 +34,4 @@ it, and — the part that is usually missing — what it costs.
 | [0021](0021-a-long-document-is-windowed.md) | A long document is windowed, not skipped |
 | [0022](0022-a-model-reports-values-not-offsets.md) | A model reports values, not offsets |
 | [0023](0023-the-model-tier-is-measured.md) | The model tier is measured, and the numbers are not what was claimed |
+| [0024](0024-corrections-are-appended-applied-at-read.md) | Corrections are appended, applied at read |

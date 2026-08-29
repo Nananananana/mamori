@@ -10,6 +10,7 @@
     mamori llm      -- where the model is, and whether it answers
     mamori serve    -- an OpenAI-compatible endpoint that protects as it forwards
     mamori privacy  -- what this configuration actually does with your data
+    mamori correct  -- rule on a value the detectors got wrong
     mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
 
@@ -208,6 +209,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--upstream", help="a proxy destination, to include it in the destinations"
     )
     privacy_cmd.add_argument("--json", action="store_true", help="emit JSON")
+
+    correct_cmd = sub.add_parser("correct", help="rule on a value the detectors got wrong")
+    add_config_args(correct_cmd)
+    correct_cmd.add_argument("value", help="the value being ruled on")
+    verdict = correct_cmd.add_mutually_exclusive_group(required=True)
+    verdict.add_argument(
+        "--never",
+        action="store_true",
+        help="this value is not sensitive here. The only setting that reduces "
+        "what mamori protects, so it is logged and reported. A credential "
+        "cannot be ruled this way",
+    )
+    verdict.add_argument(
+        "--always",
+        metavar="TYPE",
+        help="this value is sensitive here, of this type, wherever it appears",
+    )
+    correct_cmd.add_argument("--note", default="", help="why. Worth writing")
+    correct_cmd.add_argument(
+        "--log",
+        metavar="PATH",
+        help="the log to append to. Defaults to the 'corrections' path in your settings",
+    )
+
+    corrections_cmd = sub.add_parser(
+        "corrections", help="show what has been ruled on, and what it costs"
+    )
+    add_config_args(corrections_cmd)
+    corrections_cmd.add_argument("--json", action="store_true", help="emit JSON")
     sub.add_parser("demo", help="run a full round trip on a sample text")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
@@ -372,6 +402,139 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
         "mask_token": settings.mask_token,
         "llm": settings.llm.as_mapping() if settings.llm is not None else None,
     }
+
+
+def _cmd_correct(args: argparse.Namespace) -> int:
+    from ...domain.corrections import Correction, Verdict
+    from ...infrastructure.storage.corrections import append_correction
+
+    settings = _settings_from(args)
+    path = args.log or (settings.corrections if isinstance(settings.corrections, str) else None)
+    if not path:
+        print(
+            "no correction log to append to. Give --log PATH, or put a "
+            '"corrections" path in your settings.',
+            file=sys.stderr,
+        )
+        return _EXIT_ERROR
+
+    if args.never:
+        refusal = _credential_refusal(settings, args.value)
+        if refusal:
+            print(refusal, file=sys.stderr)
+            return _EXIT_ERROR
+
+    try:
+        correction = Correction(
+            value=args.value,
+            verdict=Verdict.NEVER if args.never else Verdict.ALWAYS,
+            entity_type=args.always or "",
+            note=args.note,
+            recorded_at=_today(),
+        )
+        log = append_correction(Path(path), correction)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return _EXIT_ERROR
+
+    verdict = "never sensitive" if args.never else f"always {args.always}"
+    print(f"recorded: {args.value!r} is {verdict}")
+    print(f"  log     {path} ({len(log)} entr{'y' if len(log) == 1 else 'ies'})")
+    if args.never:
+        print()
+        print("This reduces what mamori protects. It is reported by 'mamori privacy'")
+        print("and undone by recording the opposite -- nothing is deleted.")
+    return _EXIT_OK
+
+
+def _credential_refusal(settings: MamoriConfig, value: str) -> str:
+    """Refuse to write a credential into a correction log.
+
+    The domain refuses an exclusion that *names* a credential type, but a
+    ``never`` ruling names no type at all -- the operator is saying "this value
+    is not sensitive", not "this password is not a password". So the value is
+    run through the detectors here, before anything is written.
+
+    That ordering matters more than the refusal. Appending first and rejecting
+    at read time would leave the credential sitting in a file on disk, which is
+    the outcome this whole library exists to avoid.
+    """
+    from ...domain.corrections import PROTECTED_CATEGORIES
+
+    try:
+        detected = [
+            entity
+            for detector in settings.detectors()
+            for entity in detector.detect(value)
+            if entity.entity_type.category in PROTECTED_CATEGORIES
+        ]
+    except MamoriError:
+        return ""  # a broken configuration is reported by the command itself
+
+    if not detected:
+        return ""
+    names = ", ".join(sorted({e.entity_type.name for e in detected}))
+    return (
+        f"error: that value looks like a credential ({names}), and a credential "
+        "cannot be ruled 'never'.\n"
+        "Nothing was written -- recording it would have put the credential in a "
+        "file on disk.\n"
+        "A credential ruled not sensitive is a credential in somebody's prompt. "
+        "Rotate it instead."
+    )
+
+
+def _today() -> str:
+    from datetime import date
+
+    return date.today().isoformat()
+
+
+def _cmd_corrections(args: argparse.Namespace) -> int:
+    settings = _settings_from(args)
+    log = settings.correction_log()
+
+    if args.json:
+        print(json.dumps(log.as_mapping(), ensure_ascii=False, indent=2))
+        return _EXIT_OK
+
+    if not log:
+        print("nothing has been ruled on.")
+        print()
+        print("When a detector gets a value wrong, say so:")
+        print("  mamori correct Monday --never --note 'a weekday, not a name'")
+        print("  mamori correct Acme --always COMPANY_NAME")
+        return _EXIT_OK
+
+    excluded = log.excluded()
+    added = log.added()
+
+    if excluded:
+        print(f"Not sensitive here ({len(excluded)})")
+        print()
+        print("  These are no longer protected. This is the only thing in mamori")
+        print("  that reduces coverage.")
+        print()
+        for correction in sorted(excluded, key=lambda c: c.value):
+            print(f"    {correction.value}")
+            if correction.note:
+                print(f"      {correction.note}")
+        print()
+
+    if added:
+        print(f"Sensitive here, whatever the rules think ({len(added)})")
+        print()
+        for correction in sorted(added, key=lambda c: c.value):
+            print(f"    {correction.value}  -> {correction.entity_type}")
+            if correction.note:
+                print(f"      {correction.note}")
+        print()
+
+    superseded = len(log) - len(log.current())
+    print(f"{len(log)} entr{'y' if len(log) == 1 else 'ies'} in the log", end="")
+    print(f", {superseded} superseded" if superseded else "")
+    print("The latest ruling about a value wins. Nothing is ever deleted.")
+    return _EXIT_OK
 
 
 def _cmd_privacy(args: argparse.Namespace) -> int:
@@ -974,6 +1137,8 @@ _COMMANDS = {
     "llm": _cmd_llm,
     "serve": _cmd_serve,
     "privacy": _cmd_privacy,
+    "correct": _cmd_correct,
+    "corrections": _cmd_corrections,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
     "eval": _cmd_eval,

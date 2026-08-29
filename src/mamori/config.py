@@ -33,6 +33,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .domain.corrections import CorrectionLog
 from .domain.entity_types import Category
 from .domain.policy import Action, PrivacyPolicy
 from .domain.stance import Stance
@@ -81,6 +82,10 @@ class MamoriConfig:
         llm: A model to run as a final detection pass, on this machine or on
             the network. ``None`` means patterns only, which is what every
             release before this one did and remains a complete configuration.
+        corrections: Values this operator has ruled on -- either a path to a
+            log, or the entries themselves. This is the only setting that can
+            *reduce* what is detected, and what it excludes is reported by
+            ``mamori privacy``. A credential can never be excluded.
     """
 
     locales: tuple[str, ...] | None = None
@@ -94,6 +99,7 @@ class MamoriConfig:
     mask_token: str = "[REDACTED]"  # noqa: S105 - a redaction marker, not a credential
     prompts: Mapping[str, object] = field(default_factory=dict)
     llm: LLMSettings | None = None
+    corrections: str | Sequence[Mapping[str, object]] = ()
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -123,20 +129,46 @@ class MamoriConfig:
                 first document, so a misconfigured model is found at startup.
         """
         from .infrastructure.detectors import CoOccurrencePass, build_pipeline
+        from .infrastructure.detectors.corrections_pass import CorrectionsPass
 
         pass_ = (
             CoOccurrencePass(min_confidence=self.co_occurrence_min_confidence)
             if self.co_occurrence
             else None
         )
+        extra = list(self.llm_passes())
+        log = self.correction_log()
+        if log.added():
+            # Last, so it sees what everything else found and adds only what
+            # nothing covers. An operator saying "this is sensitive" is adding
+            # evidence, not relabelling a detection that already exists.
+            extra.append(CorrectionsPass(log))
         return (
             build_pipeline(
                 self.locales,
                 co_occurrence=pass_,
                 stance=self.stance,
-                extra_passes=self.llm_passes(),
+                extra_passes=extra,
             ),
         )
+
+    def correction_log(self) -> CorrectionLog:
+        """The operator's rulings, from a path or from the settings themselves.
+
+        Raises:
+            ConfigurationError: the log names an unknown type, is malformed, or
+                tries to allow-list a credential.
+        """
+        from .infrastructure.storage.corrections import from_mapping, load_corrections
+
+        if isinstance(self.corrections, str):
+            return load_corrections(Path(self.corrections))
+        if not self.corrections:
+            return CorrectionLog()
+        try:
+            return from_mapping(list(self.corrections), origin="<config>")
+        except ValueError as exc:
+            raise ConfigurationError(f"corrections: {exc}") from exc
 
     def llm_passes(self) -> tuple[Any, ...]:
         """The model pass these settings describe, or nothing.
@@ -208,6 +240,7 @@ class MamoriConfig:
             store=store,
             scope=scope,
             prompts=self.prompt_library(),
+            corrections=self.correction_log(),
         )
 
     def replace(self, **changes: object) -> MamoriConfig:
@@ -266,6 +299,8 @@ class MamoriConfig:
                 kwargs["llm"] = LLMSettings.from_mapping(raw_llm)
             else:
                 raise ConfigurationError("llm must be a mapping or null")
+        if "corrections" in values:
+            kwargs["corrections"] = _as_corrections(values["corrections"])
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -373,6 +408,24 @@ def _as_locales(value: object) -> tuple[str, ...] | None:
     if isinstance(value, Sequence):
         return tuple(str(item) for item in value)
     raise ConfigurationError(f"locales must be a list or a comma-separated string: {value!r}")
+
+
+def _as_corrections(value: object) -> str | Sequence[Mapping[str, object]]:
+    """Either a path to a log, or the entries themselves.
+
+    Both are useful and they are not the same thing. A path is a log an
+    operator appends to with ``mamori correct``; entries in the settings are
+    rulings that travel with the configuration and are reviewed alongside it.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Sequence):
+        entries = list(value)
+        if all(isinstance(entry, Mapping) for entry in entries):
+            return entries
+    raise ConfigurationError("corrections must be a path to a log, or a list of correction objects")
 
 
 def _as_prompts(value: object) -> dict[str, object]:

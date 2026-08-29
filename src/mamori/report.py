@@ -113,6 +113,12 @@ _BY_CONSTRUCTION = (
         "test_promises.py::TestTheModelOnlyAdds",
     ),
     Claim(
+        "A correction can never rule a credential to be not sensitive. The "
+        "refusal is mechanical, at the moment one is recorded and again when "
+        "one is applied.",
+        "test_corrections.py::TestACredentialCannotBeCorrectedAway",
+    ),
+    Claim(
         "The bundled evaluation data is invented. No real name, address or "
         "credential ships inside the package.",
         "test_detection_quality.py::TestDatasetHygiene",
@@ -159,7 +165,7 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
     for names in by_action.values():
         names.sort()
 
-    detection = {
+    detection: dict[str, Any] = {
         "locales": list(config.locales) if config.locales else "all",
         "stance": config.stance.value,
         "detectors": detector_count,
@@ -179,8 +185,22 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
     }
 
     destinations, warnings = _destinations(config, upstream)
+
+    log = config.correction_log()
+    corrections = {
+        "rulings": len(log),
+        "excluded": [c.value for c in log.excluded()],
+        "added": [c.value for c in log.added()],
+    }
+    if log.excluded():
+        warnings.append(
+            f"{len(log.excluded())} value(s) are ruled not sensitive and are no "
+            "longer protected: " + ", ".join(sorted(c.value for c in log.excluded()))
+        )
     if build_error:
         warnings.append(f"this configuration cannot be used as it stands: {build_error}")
+
+    detection["corrections"] = corrections
 
     return PrivacyReport(
         detection=detection,

@@ -453,3 +453,58 @@ class TestTheMeasurementCacheCannotBeTurnedOnByAccident:
 
     def test_the_privacy_report_still_says_nothing_is_written(self) -> None:
         assert build_report(MamoriConfig()).storage["written_to_disk"] is False
+
+
+class TestACommandThatReadsWritesNothing:
+    """`kiseki` ADR-0070: reading is not keeping.
+
+    That project found a command which quietly kept a snapshot every time
+    somebody ran it to look at something, and no test caught it -- the history
+    was polluted by a fortnight of debugging before anybody asked why. The
+    equivalent mistake here would be `mamori inspect` or `mamori privacy`
+    leaving something behind on a machine whose whole selling point is that
+    nothing is left behind.
+
+    A command that reads should be safe to run twice.
+    """
+
+    READ_ONLY = (
+        ["inspect", "田中太郎さんへ tanaka@example.com"],
+        ["protect", "田中太郎さんへ"],
+        ["privacy"],
+        ["corrections"],
+        ["config"],
+        ["policy"],
+        ["locales"],
+        ["prompt", "detection"],
+        ["llm"],
+        ["eval", "--locale", "ja"],
+    )
+
+    @pytest.mark.parametrize("argv", READ_ONLY, ids=lambda a: a[0])
+    def test_it_leaves_the_directory_as_it_found_it(
+        self, argv: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mamori.interfaces.cli.main import main
+
+        monkeypatch.chdir(tmp_path)
+        main(argv)
+        assert list(tmp_path.iterdir()) == [], f"'mamori {argv[0]}' wrote something"
+
+    @pytest.mark.parametrize("argv", READ_ONLY, ids=lambda a: a[0])
+    def test_it_is_safe_to_run_twice(
+        self, argv: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mamori.interfaces.cli.main import main
+
+        monkeypatch.chdir(tmp_path)
+        assert main(argv) == main(argv)
+
+    def test_the_commands_that_do_write_are_the_ones_you_would_expect(self) -> None:
+        """Two, and both are the point of running them."""
+        from mamori.interfaces.cli.main import build_parser
+
+        writers = {"correct"}  # and 'protect --save', which needs a flag
+        commands = set(build_parser()._subparsers._group_actions[0].choices)  # type: ignore[union-attr]
+        assert writers <= commands
+        assert not writers & {"inspect", "privacy", "corrections", "eval"}

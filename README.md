@@ -158,6 +158,43 @@ really in the document — so it now reports values and mamori locates them
 English false positive was `OTHER_SENSITIVE` used as a dustbin; one guidance
 rule about what that type is for halved over-redaction from 8.80% to 4.43%.
 
+
+## When it gets something wrong
+
+It will. A salutation anchor is right far more often than it is wrong, and
+`Dear Monday,` is when it is wrong. Say so:
+
+```bash
+mamori correct Monday --never --note "a weekday, not a name"
+mamori correct Acme   --always COMPANY_NAME --note "trading name, no suffix"
+```
+
+The second closes a gap documented since `v0.1` — a trading name with no legal
+suffix, which no pattern can reach in general and any operator can settle for
+their own data.
+
+The log is append-only and the latest word about a value wins, so undo is
+another correction and nothing is deleted. Rules are not rewritten and prompts
+are not edited; remove the log and you are exactly back where you were.
+
+```bash
+mamori corrections     # what has been ruled on, and what it costs
+```
+
+**`--never` is the only thing in mamori that reduces what it protects**, so it
+is kept narrow. Every exclusion is named by `mamori privacy` and reported as a
+warning with a non-zero exit status, so a deployment check can fail on one
+nobody meant to ship. And a credential can never be ruled away:
+
+```text
+error: that value looks like a credential (API_KEY), and a credential cannot
+be ruled 'never'. Nothing was written -- recording it would have put the
+credential in a file on disk. Rotate it instead.
+```
+
+That refusal happens *before* anything is appended, in three independent
+places. See [ADR 0024](docs/adr/0024-corrections-are-appended-applied-at-read.md).
+
 ---
 
 ## What is this actually doing with my data?
@@ -607,12 +644,18 @@ layer. `v0.5` made the model's location and its client library both
 configuration, and made the layering a test rather than a diagram. `v0.6`
 delivered the proxy, and made the privacy claims answerable and machine-checked.
 `v0.7` measured the model tier for the first time and found it had been
-discarding almost everything the model got right.
+discarding almost everything the model got right. `v0.8` gave the operator the
+last word.
 
 | | |
 |---|---|
-| **v0.8** | A Presidio adapter and an opt-in encrypted persistent store. |
-| **v0.9** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
+| **v0.9** | The evidence under the numbers: larger and harder datasets, a documented way to measure mamori on your own labelled text, and the open question from `v0.7` answered — does a model above 8B change the table? |
+| **v0.10** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
+| **v0.11** | An opt-in encrypted store with retention as a stated rule, and a Presidio adapter. |
+| **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
+
+The reasoning behind that table — and what is deliberately *not* planned — is
+in [docs/proposals/0001](docs/proposals/0001-the-road-to-1-0.md).
 
 A Presidio adapter is next, and an encrypted store for the deployments that
 cannot hold mappings in memory alone. The larger open question is whether a
