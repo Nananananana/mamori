@@ -204,6 +204,37 @@ forwarding it. It binds to this machine only unless you say otherwise, because
 anything that can reach the port can send documents through it. See
 [ADR 0018](docs/adr/0018-a-proxy-on-the-standard-library.md).
 
+### Turn two
+
+By default the proxy holds nothing between requests: one scope, used once,
+purged with the reply. For most clients that is invisible, because they resend
+the whole conversation each turn and the same values land on the same
+placeholders — a claim that is now a test rather than a paragraph.
+
+It breaks for a client whose history lives on the service side and sends only
+the new turn. The service answers about `<PERSON_001>`, this process has never
+heard of `<PERSON_001>`, and a token is printed at a human:
+
+```bash
+mamori serve --conversations --upstream https://api.openai.com/v1/
+```
+
+The reply carries `X-Mamori-Session`. A client that echoes it keeps its
+placeholders across turns; one that does not gets a fresh scope, exactly as
+before. **The token is minted by the server and never taken from the caller**
+— the thing behind it is a table of real values, and an identifier an outsider
+can guess is a way to read somebody else's table. An unrecognised token quietly
+starts a new conversation rather than reporting that it was unrecognised.
+
+Conversations expire after 30 minutes idle and 64 are held at most; both bounds
+purge what they drop, and nothing is ever written to disk. Watch it happen:
+
+```bash
+mamori demo --scenario conversation
+```
+
+See [ADR 0028](docs/adr/0028-the-server-names-the-conversation.md).
+
 ---
 
 ## Languages
@@ -826,22 +857,26 @@ added surrogate values, off by default. `v0.12` made it say why. `v0.13` went af
 more from the two fixes that failed than the two that worked. `v0.14` generated
 a thousand documents and a thousand replies, and they found five bugs in an hour.
 `v0.15` spent that corpus on Chinese, where a name followed by an ordinary word
-had been invisible since the first release.
+had been invisible since the first release. `v0.16` gave the proxy conversations,
+and checked a four-release-old argument that turned out to be correct.
 
 | | |
 |---|---|
-| **v0.9** | The evidence under the numbers: larger and harder datasets, a documented way to measure mamori on your own labelled text, and the open question from `v0.7` answered — does a model above 8B change the table? |
-| **v0.10** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
-| **v0.11** | An opt-in encrypted store with retention as a stated rule, and a Presidio adapter. |
+| **v0.17** | The assembled prompt. Prompts are increasingly not typed by anybody — they are rendered by a retrieval layer or an agent framework, with file paths in the headers and hashes in the structure. That gets a generated corpus and a measurement like everything else, and the structural parts get measured as a *negative* set: an id replaced is a bug with a number attached. |
+| **v0.18** | Deployment: a fail-closed stance that stops rather than misses, a CI linter for values that should not be committed, `<PERSON_001>` inside HTML, and a name split across two JSON keys. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 
-The reasoning behind that table — and what is deliberately *not* planned — is
-in [docs/proposals/0001](docs/proposals/0001-the-road-to-1-0.md).
+The reasoning behind that table — what was planned and did not happen, what was
+adopted and turned out redundant, and what is deliberately *not* planned — is in
+[docs/proposals/0003](docs/proposals/0003-what-mamori-is-for.md).
 
-A Presidio adapter is next, and an encrypted store for the deployments that
-cannot hold mappings in memory alone. The larger open question is whether a
-model above 8B changes the table above; the harness to settle that now exists
-and takes one command.
+Two things are wanted and deliberately have no version number, because giving
+them one a third time would be a way of not admitting they keep losing to
+whatever the corpus turned up that week: the optional Japanese morphological
+adapter, and an encrypted store for deployments that cannot hold mappings in
+memory alone. The oldest open question is still whether a model above 8B changes
+the model-tier table; the harness to settle it exists and the hardware here times
+out.
 
 Language priority is Japanese and English first, Chinese second. The Chinese
 rules exist and are measured; the design for making them good is written up in

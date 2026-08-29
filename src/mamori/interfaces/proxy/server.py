@@ -17,6 +17,13 @@ this one.
 (``--host 0.0.0.0``) and never a default, because anything that can reach this
 port can send documents through it and read the restored answers.
 
+**It holds nothing between requests unless it is asked to.** The default is
+one scope per exchange, purged with the reply. A deployment whose clients keep
+their history server-side can turn on conversations
+(:mod:`mamori.application.conversations`), which names each one with a token it
+mints itself and discards them on an idle timeout. What is being traded is a
+real property, so it is a choice rather than a default.
+
 **It fails closed.** Detection raising, the policy refusing, a payload it
 cannot parse: all of them are errors returned to the caller, and none of them
 forward anything. The one thing that must never happen is text going upstream
@@ -33,12 +40,14 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from ...application.conversations import ConversationRegistry
+from ...application.session import PrivacySession
 from ...config import MamoriConfig
 from ...errors import DetectionError, MamoriError, PolicyViolationError
 from .exchange import protect_request, restore_reply, restore_stream_chunk, summarise
 from .upstream import Upstream, UpstreamError
 
-__all__ = ["ProxySettings", "build_server", "serve"]
+__all__ = ["END_HEADER", "SESSION_HEADER", "ProxySettings", "build_server", "serve"]
 
 #: The one endpoint that matters, as callers address it. Everything else is
 #: refused rather than forwarded blind: a path this does not understand is a
@@ -48,6 +57,17 @@ CHAT_PATH = "/v1/chat/completions"
 #: The same endpoint as the upstream addresses it -- relative to a base URL
 #: that already ends at the version segment, the way every client appends it.
 UPSTREAM_CHAT_PATH = "chat/completions"
+
+#: The header a client echoes to stay in the same conversation, and the header
+#: this sends back naming it. The value is minted here, never accepted from
+#: outside: an identifier an outsider can choose is an identifier an outsider
+#: can collide with, and the thing on the other side of it is a table of real
+#: values. An unrecognised token quietly starts a new conversation.
+SESSION_HEADER = "X-Mamori-Session"
+
+#: Ending a conversation early, so a client that knows it is finished does not
+#: have to wait out the idle timeout.
+END_HEADER = "X-Mamori-Session-End"
 
 #: The largest request body accepted, in bytes. A proxy that reads whatever it
 #: is given can be made to hold a gigabyte in memory by one caller.
@@ -72,6 +92,14 @@ class ProxySettings:
     timeout: float = 300.0
     #: Called with a one-line summary per request. Counts and types only.
     log: Callable[[str], None] | None = None
+    #: Hold mappings between requests when a client asks to. ``None`` -- the
+    #: default -- is one scope per request and nothing kept, which is what
+    #: makes "the proxy remembers nothing" a claim rather than a setting.
+    conversations: ConversationRegistry | None = None
+
+    @property
+    def keeps_conversations(self) -> bool:
+        return self.conversations is not None
 
     @property
     def is_public(self) -> bool:
@@ -91,7 +119,14 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = "mamori"
     sys_version = ""
 
+    #: The conversation this request belongs to, echoed on every reply it
+    #: produces including the failures. A connection is reused for more than
+    #: one request, so this is cleared where a request starts rather than
+    #: where the handler is built.
+    _token: str | None = None
+
     def do_POST(self) -> None:  # http.server's naming, not ours
+        self._token = None
         if self.path.rstrip("/") != CHAT_PATH.rstrip("/"):
             # The one path that answers without reading the body, so it is the
             # one that has to read it anyway before replying.
@@ -124,26 +159,49 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         """A liveness check, so a client can tell the proxy is up."""
         if self.path.rstrip("/") in ("/health", "/healthz"):
-            self._json(HTTPStatus.OK, {"status": "ok", "proxies": CHAT_PATH})
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "status": "ok",
+                    "proxies": CHAT_PATH,
+                    # Whether it keeps anything, never how much or for whom.
+                    "conversations": self.settings.keeps_conversations,
+                },
+            )
             return
         self._fail(HTTPStatus.NOT_FOUND, "nothing here")
 
     # -- the exchange ------------------------------------------------------
 
     def _exchange(self, payload: object, *, streaming: bool) -> None:
-        with self.settings.config.session() as session:
-            protected, report = protect_request(
-                session, payload, add_guidance=self.settings.guidance
-            )
-            self._log(summarise(report))
-            headers = self._forwardable_headers()
+        registry = self.settings.conversations
+        if registry is None:
+            # The default, and the one that needs no qualification: one scope,
+            # used once, purged on the way out of this block.
+            with self.settings.config.session() as session:
+                self._run(session, payload, streaming=streaming)
+            return
 
-            if streaming:
-                self._stream(session, protected, headers)
-            else:
-                reply = self.upstream.send(UPSTREAM_CHAT_PATH, protected, headers)
-                restored = restore_reply(session, reply.json())
-                self._json(HTTPStatus(reply.status), restored)
+        conversation = registry.resume(self.headers.get(SESSION_HEADER))
+        self._token = conversation.token
+        try:
+            self._run(conversation.session, payload, streaming=streaming)
+        finally:
+            if _is_true(self.headers.get(END_HEADER)):
+                registry.end(conversation.token)
+                self._log("conversation ended by the client")
+
+    def _run(self, session: PrivacySession, payload: object, *, streaming: bool) -> None:
+        protected, report = protect_request(session, payload, add_guidance=self.settings.guidance)
+        self._log(summarise(report))
+        headers = self._forwardable_headers()
+
+        if streaming:
+            self._stream(session, protected, headers)
+        else:
+            reply = self.upstream.send(UPSTREAM_CHAT_PATH, protected, headers)
+            restored = restore_reply(session, reply.json())
+            self._json(HTTPStatus(reply.status), restored)
 
     def _stream(self, session: Any, protected: object, headers: Mapping[str, str]) -> None:
         """Relay server-sent events, restoring as they pass.
@@ -156,6 +214,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
+        self._send_token()
         self.end_headers()
 
         for line in self.upstream.stream(UPSTREAM_CHAT_PATH, protected, headers):
@@ -195,6 +254,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._send_token()
         self.end_headers()
         self.wfile.write(body)
 
@@ -230,6 +290,11 @@ class _Handler(BaseHTTPRequestHandler):
             {"error": {"message": message, "type": "mamori_error", "code": status.value}},
         )
 
+    def _send_token(self) -> None:
+        """Name the conversation, when there is one to name."""
+        if self._token is not None:
+            self.send_header(SESSION_HEADER, self._token)
+
     def _log(self, message: str) -> None:
         if self.settings.log is not None:
             self.settings.log(message)
@@ -241,6 +306,11 @@ class _Handler(BaseHTTPRequestHandler):
         opt-in through ``ProxySettings.log``, which is handed a summary that
         has never seen a protected value.
         """
+
+
+def _is_true(header: str | None) -> bool:
+    """Read a header a human typed. Anything but a clear yes is a no."""
+    return (header or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 class _BadRequestError(Exception):

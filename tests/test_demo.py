@@ -58,6 +58,28 @@ class TestTheTour:
         assert "'<PER'" in out, "the split chunk must be visible"
         assert "田中太郎" in out, "and the value it became"
 
+    def test_the_conversation_scenario_shows_the_failure_and_the_fix(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both halves, or it is an advertisement rather than a demonstration."""
+        assert main(["demo", "--scenario", "conversation"]) == 0
+        out = capsys.readouterr().out
+        without, with_one = out.split("with a conversation")
+        assert "<PERSON_001>さんの住所" in without, "unrestored, because the scope is new"
+        assert "田中太郎さんの住所" not in without
+        assert "田中太郎さんの住所" in with_one, "restored, because the conversation held it"
+
+    def test_the_conversation_scenario_does_not_print_a_whole_token(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """It is a credential for a table of real values."""
+        assert main(["demo", "--scenario", "conversation"]) == 0
+        for line in capsys.readouterr().out.splitlines():
+            if "X-Mamori-Session" in line:
+                shown = line.split(":")[-1].strip()
+                assert shown.endswith("...")
+                assert len(shown) <= 12
+
     def test_the_corrections_scenario_shows_a_before_and_an_after(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

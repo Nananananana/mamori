@@ -1,6 +1,11 @@
 # 0002. The road to 1.0, revised
 
-**Status:** current plan, revised after 0.13. Supersedes
+**Status:** superseded by [proposal 0003](0003-what-mamori-is-for.md) from
+0.16. Kept as the record of what was planned after 0.13 and what came of it:
+three of its version numbers turned out wrong and one of its adopted features
+was redundant, which is worth more as evidence than as an embarrassment.
+
+**Was:** current plan, revised after 0.13. Supersedes
 [proposal 0001](0001-the-road-to-1-0.md), which stands as the record of what
 was planned after 0.7 and what came of it.
 

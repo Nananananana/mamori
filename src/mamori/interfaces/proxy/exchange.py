@@ -6,16 +6,23 @@ actually matter -- did every message get protected, does a blocked credential
 stop the request, does the reply come back in the caller's own words -- are
 answered by tests that never open a socket.
 
-**One scope per exchange, and it is discarded at the end.** The mapping from
-``<PERSON_001>`` back to a name exists for the length of one request and is
-purged when the reply has been restored. Nothing accumulates between requests,
-so a proxy left running for a month holds exactly as much as one started a
-second ago.
+**One scope per exchange by default, and it is discarded at the end.** The
+mapping from ``<PERSON_001>`` back to a name exists for the length of one
+request and is purged when the reply has been restored. Nothing accumulates
+between requests, so a proxy left running for a month holds exactly as much as
+one started a second ago.
 
-That numbering restarts each time is not a problem in practice: a chat client
-resends the whole conversation on every turn, so the same value meets the same
-allocator in the same order and lands on the same placeholder. What it buys is
-a claim that needs no qualification -- the proxy remembers nothing.
+That numbering restarts each time is not a problem for most clients: a chat
+client that resends the whole conversation on every turn meets the same
+allocator in the same order and lands on the same placeholders. That argument
+was made here for four releases without being checked; it is checked now, in
+``tests/test_conversations.py``, and it holds.
+
+It does not hold for a client that sends only the new turn, because the service
+is keeping the history for it. That client gets a reply about ``<PERSON_001>``
+and no way to turn it back, which is a token printed at a human. For those,
+0.16 added :mod:`mamori.application.conversations`, off unless the deployment
+asks for it -- see that module for what it holds and for how long.
 """
 
 from __future__ import annotations

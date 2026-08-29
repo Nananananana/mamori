@@ -203,6 +203,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not prepend the briefing that tells the model to leave placeholders alone",
     )
     serve_cmd.add_argument("--quiet", action="store_true", help="do not print a line per request")
+    serve_cmd.add_argument(
+        "--conversations",
+        action="store_true",
+        help="keep mappings between requests for clients that ask, so a reply "
+        "about <PERSON_001> can still be restored when the client sent only "
+        "the new turn. Off by default: the default holds nothing at all",
+    )
+    serve_cmd.add_argument(
+        "--conversation-idle",
+        type=float,
+        default=30.0,
+        metavar="MINUTES",
+        help="discard a conversation after this long untouched (default 30)",
+    )
+    serve_cmd.add_argument(
+        "--max-conversations",
+        type=int,
+        default=64,
+        metavar="N",
+        help="how many conversations may be held at once (default 64)",
+    )
 
     privacy_cmd = sub.add_parser(
         "privacy", help="what this configuration actually does with your data"
@@ -741,15 +762,32 @@ def _cmd_privacy(args: argparse.Namespace) -> int:
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
+    from ...application.conversations import ConversationRegistry
     from ..proxy.server import ProxySettings, serve
+
+    config = _settings_from(args)
+    registry = None
+    if args.conversations:
+        if args.conversation_idle <= 0:
+            print("error: --conversation-idle must be positive", file=sys.stderr)
+            return _EXIT_ERROR
+        if args.max_conversations < 1:
+            print("error: --max-conversations must be at least 1", file=sys.stderr)
+            return _EXIT_ERROR
+        registry = ConversationRegistry(
+            config.session,
+            idle_seconds=args.conversation_idle * 60,
+            max_conversations=args.max_conversations,
+        )
 
     settings = ProxySettings(
         upstream=args.upstream,
         host=args.host,
         port=args.port,
-        config=_settings_from(args),
+        config=config,
         guidance=not args.no_guidance,
         log=None if args.quiet else _serve_log,
+        conversations=registry,
     )
 
     print(f"mamori proxy on {settings.url()}")
@@ -759,7 +797,16 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     print(f"  briefing        {'prepended' if settings.guidance else 'off'}")
     print()
     print("Point your application at the address above and change nothing else.")
-    print("Mappings live in memory for one request and are discarded with it.")
+    if registry is None:
+        print("Mappings live in memory for one request and are discarded with it.")
+    else:
+        idle = args.conversation_idle
+        print(f"  conversations   held for {idle:g} minute(s) idle, up to {args.max_conversations}")
+        print()
+        print("Mappings live in memory. A client that echoes the X-Mamori-Session")
+        print("header keeps its placeholders across turns; one that does not gets")
+        print("a fresh scope per request. Either way nothing is written to disk,")
+        print("and everything held is discarded when this process stops.")
     if settings.is_public:
         print()
         print("WARNING: this is bound to a public address. Anything that can reach")

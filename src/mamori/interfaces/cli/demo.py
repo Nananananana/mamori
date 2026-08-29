@@ -13,6 +13,7 @@ Each scenario answers one question somebody actually has.
 ``corrections`` It got one wrong. Now what?
 ``blocked``     What if there is a password in my text?
 ``surrogates``  Can I have readable values instead of tokens?
+``conversation`` What happens on turn two, when the client sent only turn two?
 
 The demo text is invented, like everything else that ships in this package.
 ``--text`` and ``--file`` run the same tour on yours instead, which is the
@@ -25,6 +26,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from ...application.conversations import ConversationRegistry
 from ...config import MamoriConfig
 from ...domain.corrections import Correction, CorrectionLog, Verdict
 from ...domain.script import scripts_in
@@ -210,6 +212,58 @@ def _surrogates(config: MamoriConfig, text: str) -> None:
     print("RestorationResult.missing is the thing to check when it is on.")
 
 
+def _conversation(config: MamoriConfig, text: str) -> None:
+    _heading("7. A conversation that keeps its placeholders")
+    print("Most chat clients resend the whole history each turn, and for those")
+    print("nothing here is needed -- the same values meet the same allocator")
+    print("and get the same placeholders. Some clients send only the new turn,")
+    print("because the service is keeping the history for them. Those are the")
+    print("ones that used to break.")
+    del text
+
+    first = "田中太郎さんの契約更新について確認したいです。"
+    second = "住所も教えてください。"
+    # What the service says on the second turn: it is still talking about the
+    # placeholder it was given on the first.
+    answer = "<PERSON_001>さんの住所は東京都港区です。契約は3月末までです。"
+
+    print("\n\nwithout a conversation -- one scope per request")
+    print(_RULE)
+    with config.session() as turn_one:
+        _block("turn 1, you wrote", first)
+        _block("the service sees", turn_one.protect(first).protected_text)
+    with config.session() as turn_two:
+        turn_two.protect(second)
+        _block("turn 2, the service answers", answer)
+        _block("restored", turn_two.restore(answer).text)
+    print("\n  The placeholder is still there. This scope never allocated it,")
+    print("  so there is nothing to put back -- a token printed at a human.")
+
+    print("\n\nwith a conversation")
+    print(_RULE)
+    registry = ConversationRegistry(config.session)
+    conversation = registry.resume(None)
+    _block("turn 1, the service sees", conversation.session.protect(first).protected_text)
+    print(f"\n  the proxy answers with  X-Mamori-Session: {conversation.token[:8]}...")
+    print("  and the client echoes it on the next request")
+
+    resumed = registry.resume(conversation.token)
+    resumed.session.protect(second)
+    _block("turn 2, the service answers", answer)
+    _block("restored", resumed.session.restore(answer).text)
+
+    print()
+    print(f"  {registry.describe()}")
+    registry.close_all()
+    print("  ended -- and every mapping it held went with it")
+
+    print()
+    print("The token is minted by the server, never taken from the caller: the")
+    print("thing behind it is a table of real values, and an identifier an")
+    print("outsider can guess is a way to read somebody else's table. Turn it")
+    print("on with  mamori serve --conversations.")
+
+
 SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "roundtrip": _roundtrip,
     "stream": _stream,
@@ -217,6 +271,7 @@ SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "corrections": _corrections,
     "blocked": _blocked,
     "surrogates": _surrogates,
+    "conversation": _conversation,
 }
 
 
@@ -358,4 +413,5 @@ def run_demo(
     print("Against a real model:      mamori demo --live --model qwen3:8b \\")
     print("                             --api http://localhost:11434/v1/")
     print("In front of your app:      mamori serve --upstream <your api>")
+    print("Keeping turns together:    mamori serve --conversations --upstream ...")
     return 0

@@ -8,6 +8,72 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-30
+
+Conversations: sessions that outlive one request, for the clients that need
+them, off for everybody else.
+
+### The claim that was checked
+
+The proxy has always held one scope per request and purged it with the reply.
+That was defended with an argument -- a chat client resends the whole
+conversation each turn, so the same values meet the same allocator in the same
+order and land on the same placeholders -- and the argument stood for four
+releases without anybody checking it. It is checked now, in
+`tests/test_conversations.py`, and **it holds**, which is why the default has
+not changed.
+
+It holds only for that client. A client whose history lives on the service side
+sends one message per turn. The service answers about `<PERSON_001>` because
+that is what it was told in turn one, this process has never heard of
+`<PERSON_001>`, and the caller is shown a token where a name should be -- the
+failure this library exists to prevent, arriving from the other direction.
+
+### Added
+
+- **`mamori serve --conversations`.** The reply carries `X-Mamori-Session`; a
+  client that echoes it keeps its placeholders across turns. The token is
+  minted by the server from `secrets.token_urlsafe` and **never taken from the
+  caller**: the thing behind it is a table of real values, and an identifier an
+  outsider can guess is a way to read somebody else's table. An unrecognised
+  token quietly starts a new conversation rather than reporting that it was
+  unrecognised, which would confirm to anybody asking which tokens exist.
+
+- **`mamori.application.conversations.ConversationRegistry`** -- the same thing
+  for code that does not use the proxy. Bounded in both directions: 30 minutes
+  idle and 64 conversations by default, and **both bounds purge what they
+  drop**. A caller whose conversation was dropped comes back to a new one and
+  re-protects its history, which is the behaviour it had before this existed.
+  Expiry runs on the path that uses the registry rather than on a timer,
+  because a background thread that purges secrets is one whose failure is
+  silent.
+
+- **`X-Mamori-Session-End`**, for a client that knows it is finished and would
+  rather not wait out the idle timeout.
+
+- **`mamori demo --scenario conversation`** -- the failure and the fix, side by
+  side, in one screen.
+
+- [ADR 0028](docs/adr/0028-the-server-names-the-conversation.md), and
+  [proposal 0003](docs/proposals/0003-what-mamori-is-for.md), which replaces the
+  roadmap.
+
+### Not built, and it was in the plan
+
+The **per-session salt** adopted in proposal 0002 for exactly this release. Its
+purpose was to make a placeholder stable inside one conversation and unrelated
+across conversations. Allocation order already gives both, because the index
+comes from the order values are met rather than from the values -- so the salt
+would have added a keyed hash that nothing reads. What this release actually
+needed was an identifier nobody outside the process can guess, which is a token,
+not a salt. The reasoning is in ADR 0028 so it is not proposed a third time.
+
+### Unchanged
+
+Mappings still never touch the disk. What a conversation extends is how long a
+scope lives, not where it lives, so [ADR 0006](docs/adr/0006-mappings-live-in-memory.md)
+stands as written: a process that stops forgets everything.
+
 ## [0.15.0] - 2026-08-30
 
 Chinese. The corpus generated in 0.14 was pointed at it, and the first thing it
@@ -1168,7 +1234,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/Nananananana/mamori/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/Nananananana/mamori/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Nananananana/mamori/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nananananana/mamori/compare/v0.12.0...v0.13.0
