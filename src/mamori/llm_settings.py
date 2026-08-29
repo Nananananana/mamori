@@ -54,8 +54,18 @@ class LLMSettings:
             host whose name happens to look public.
         require_model: Turn a model failure into a stopped request. Off by
             default: rules are the guarantee, the model is the improvement.
-        max_input_characters: Refuse to send more than this rather than let a
-            server truncate silently.
+        max_input_characters: How much text goes to the model in one request.
+            Longer text is **windowed** rather than refused or truncated --
+            overlapping pieces, with the offsets carried back
+            (:doc:`ADR 0021 </adr/0021-a-long-document-is-windowed>`), because
+            a document that is too long is exactly the document somebody most
+            wants protected.
+
+            This said "refuse to send more than this" until 0.23, which was
+            the behaviour before windowing existed and had been wrong ever
+            since. A setting whose description and behaviour disagree is worse
+            than one with no description: somebody configures the sentence
+            they read.
         locales: Keep only guidance for these languages in the prompt, which
             shortens it. ``None`` keeps all of it.
     """

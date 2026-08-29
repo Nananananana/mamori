@@ -17,6 +17,12 @@ this one.
 (``--host 0.0.0.0``) and never a default, because anything that can reach this
 port can send documents through it and read the restored answers.
 
+**It is sized for one team on one machine, and says so in numbers.** Protection
+allocates roughly a hundred times the size of the text while it works -- most of
+it transient, most of it detections rather than characters -- so the body cap is
+a memory bound rather than a bandwidth one, and concurrent large requests
+multiply it. See ``MAX_BODY_BYTES``.
+
 **It holds nothing between requests unless it is asked to.** The default is
 one scope per exchange, purged with the reply. A deployment whose clients keep
 their history server-side can turn on conversations
@@ -71,7 +77,19 @@ END_HEADER = "X-Mamori-Session-End"
 
 #: The largest request body accepted, in bytes. A proxy that reads whatever it
 #: is given can be made to hold a gigabyte in memory by one caller.
-MAX_BODY_BYTES = 32 * 1024 * 1024
+#:
+#: Lowered from 32 MB to 8 MB in 0.23, once somebody measured what protecting a
+#: large text actually costs. Reading the body is the cheap part: a 534 KB
+#: document produces nine thousand detections, and the transient allocation
+#: while resolving and rebuilding them peaks near **a hundred times** the size
+#: of the text. At 32 MB that is gigabytes, from one request, on a server whose
+#: whole design brief is "one team's traffic on one machine".
+#:
+#: 8 MB is still about two million tokens of text -- far past any model's
+#: context window -- so the cap that protects the process does not constrain
+#: any real prompt. If your payload genuinely exceeds it, the right answer is
+#: to protect the documents separately rather than to raise this.
+MAX_BODY_BYTES = 8 * 1024 * 1024
 
 _SSE_DATA = b"data: "
 _SSE_DONE = b"[DONE]"

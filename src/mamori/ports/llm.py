@@ -37,7 +37,17 @@ class LLMRequest:
     #: JSON schema the response must satisfy, for providers that enforce one.
     #: Ignored elsewhere; the parser validates either way.
     response_schema: dict[str, object] | None = None
-    timeout: float = 30.0
+    #: Seconds for this one request, when it needs less than the endpoint
+    #: allows. ``None`` means "whatever the endpoint is configured for", which
+    #: is the answer almost every caller wants.
+    #:
+    #: This was ``30.0`` until 0.23, and a provider takes the *smaller* of the
+    #: two -- so an endpoint configured for three hundred seconds got thirty,
+    #: and `llm.timeout` above thirty did nothing at all. On hardware where a
+    #: local model needs ninety seconds for a document that is the difference
+    #: between a model tier and a model tier that never answers, and because
+    #: the pass degrades to nothing by design, the symptom was silence.
+    timeout: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

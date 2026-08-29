@@ -284,6 +284,54 @@ class TestRequestShape:
         assert _Handler.received["headers"]["Authorization"] == "Bearer secret"
 
 
+class TestTheConfiguredTimeoutIsTheOneUsed:
+    """`llm.timeout` did nothing above thirty seconds until 0.23.
+
+    `LLMRequest.timeout` defaulted to 30 and the provider takes the smaller of
+    the two, so an endpoint configured for three hundred seconds got thirty.
+    On hardware where a local model needs ninety seconds for a document, that
+    is the difference between a model tier and one that never answers -- and
+    because the pass degrades to nothing by design, the symptom was silence.
+    """
+
+    def captured_timeout(self, monkeypatch: Any, endpoint_timeout: float, request: LLMRequest):  # type: ignore[no-untyped-def]
+        import urllib.request as urllib_request
+
+        seen: dict[str, Any] = {}
+        original = urllib_request.urlopen
+
+        def spy(http_request: Any, *args: Any, **kwargs: Any) -> Any:
+            seen["timeout"] = kwargs.get("timeout", args[1] if len(args) > 1 else None)
+            return original(http_request, *args, **kwargs)
+
+        monkeypatch.setattr(urllib_request, "urlopen", spy)
+        return seen
+
+    def test_the_endpoint_setting_reaches_the_socket(self, base_url: str, monkeypatch: Any) -> None:
+        _Handler.status, _Handler.body = 200, completion("{}")
+        seen = self.captured_timeout(monkeypatch, 300.0, LLMRequest(user="x"))
+        OpenAICompatibleProvider(endpoint(base_url, timeout=300.0)).generate(LLMRequest(user="x"))
+        assert seen["timeout"] == 300.0
+
+    def test_a_request_may_ask_for_less(self, base_url: str, monkeypatch: Any) -> None:
+        """Lowering it is a caller's business; raising it past the endpoint is
+        not, because the endpoint is where the operator set the limit."""
+        _Handler.status, _Handler.body = 200, completion("{}")
+        seen = self.captured_timeout(monkeypatch, 300.0, LLMRequest(user="x", timeout=5.0))
+        OpenAICompatibleProvider(endpoint(base_url, timeout=300.0)).generate(
+            LLMRequest(user="x", timeout=5.0)
+        )
+        assert seen["timeout"] == 5.0
+
+    def test_a_request_cannot_ask_for_more(self, base_url: str, monkeypatch: Any) -> None:
+        _Handler.status, _Handler.body = 200, completion("{}")
+        seen = self.captured_timeout(monkeypatch, 10.0, LLMRequest(user="x", timeout=900.0))
+        OpenAICompatibleProvider(endpoint(base_url, timeout=10.0)).generate(
+            LLMRequest(user="x", timeout=900.0)
+        )
+        assert seen["timeout"] == 10.0
+
+
 class TestResponses:
     def test_a_normal_answer(self, base_url: str) -> None:
         _Handler.status, _Handler.body = 200, completion('{"entities": []}')

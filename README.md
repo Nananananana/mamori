@@ -340,7 +340,12 @@ its sentence and no further. See
 
 ---
 
-## Before it is committed
+## Deploying it
+
+Three things a team needs before this goes near production, and none of
+them is a detection rule.
+
+### Before it is committed
 
 The values that reach a model through a *repository* never pass through this
 library at all. A prompt template with a real address in it, a fixture built
@@ -371,7 +376,7 @@ Pointed at this repository's own documentation, it found a bug on the first
 run: a GitHub URL is a long run of exactly the characters a base64 key is made
 of, and the wide secret rule was reporting one as a credential.
 
-## When you would rather be stopped
+### When you would rather be stopped
 
 The default resolves doubt in favour of sending: a detection below
 `min_confidence` is discarded, and the text goes out with the value in it. For
@@ -391,7 +396,7 @@ Types and confidences, never values. It does nothing at the default
 `min_confidence` of `0.0`, because nothing is below zero — the two settings are
 one dial, and this is the half that says what happens where certainty runs out.
 
-## A placeholder that is not a tag
+### A placeholder that is not a tag
 
 `<PERSON_001>` inside an HTML document is an unknown element: a browser drops
 it, and a model asked to edit the document is being shown a tag rather than a

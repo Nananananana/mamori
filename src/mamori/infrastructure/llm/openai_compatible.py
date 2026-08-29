@@ -155,6 +155,8 @@ class OpenAICompatibleProvider:
         }
         body = json.dumps(payload).encode("utf-8")
         url = urljoin(self._endpoint.normalised_base_url(), "chat/completions")
+        # The endpoint's setting is the authority; a request may ask for
+        # less but cannot silently impose less than it was configured for.
         timeout = min(self._endpoint.timeout, request.timeout or self._endpoint.timeout)
         # The suppressions below are safe because __init__ checked this URL
         # against the endpoint's trust boundary, which settles the scheme too.

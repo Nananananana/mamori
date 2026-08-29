@@ -508,3 +508,101 @@ class TestACommandThatReadsWritesNothing:
         commands = set(build_parser()._subparsers._group_actions[0].choices)  # type: ignore[union-attr]
         assert writers <= commands
         assert not writers & {"inspect", "privacy", "corrections", "eval"}
+
+
+class TestTheNewerSurfaces:
+    """A promise is only as good as the newest surface it was checked on.
+
+    Every class above was written against the surfaces of its own release.
+    These are the ones that came later, checked against the same four
+    promises: nothing leaves, nothing is written, no value reaches a
+    diagnostic, and restoration stays inside its scope.
+    """
+
+    def test_a_conversation_holds_nothing_after_it_ends(self) -> None:
+        """The registry's whole safety argument: both bounds purge."""
+        from mamori.application.conversations import ConversationRegistry
+
+        registry = ConversationRegistry(PrivacySession)
+        conversation = registry.resume(None)
+        conversation.session.protect("Dear Jane Doe, call 415-555-0198.")
+        registry.end(conversation.token)
+        assert conversation.session.restore("<PERSON_001>").text == "<PERSON_001>"
+
+    def test_a_conversation_token_is_not_derived_from_anything_sent(self) -> None:
+        """It is a credential for a table of real values, so it must not carry
+        information about what is in that table."""
+        from mamori.application.conversations import ConversationRegistry
+
+        registry = ConversationRegistry(PrivacySession)
+        first = registry.resume(None)
+        first.session.protect("Dear Jane Doe,")
+        assert "Jane" not in first.token
+        assert "jane" not in first.token.lower()
+
+    def test_a_tool_call_argument_is_protected_like_any_other_text(self) -> None:
+        import json as json_module
+
+        from mamori.interfaces.proxy.exchange import protect_request
+
+        payload = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "c",
+                            "type": "function",
+                            "function": {
+                                "name": "send",
+                                "arguments": '{"to": "jane.doe@example.com"}',
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+        with PrivacySession() as session:
+            protected, _ = protect_request(session, payload, add_guidance=False)
+        assert "jane.doe@example.com" not in json_module.dumps(protected)
+
+    def test_the_linter_never_prints_a_value(self, tmp_path: Path) -> None:
+        """Its output goes to CI logs, which outlive and out-read the repo."""
+        from mamori.config import MamoriConfig
+        from mamori.interfaces.cli.linting import lint_paths
+
+        (tmp_path / "fixture.md").write_text(
+            "Dear Jane Doe, call 415-555-0198.\npassword: hunter2spring\n", encoding="utf-8"
+        )
+        findings, _ = lint_paths(MamoriConfig(), [tmp_path])
+        assert findings, "the fixture must produce findings for this to mean anything"
+        rendered = "\n".join(f.describe() + repr(f.as_mapping()) for f in findings)
+        for value in ("Jane Doe", "415-555-0198", "hunter2spring"):
+            assert value not in rendered
+
+    def test_a_fail_closed_refusal_quotes_nothing(self) -> None:
+        from mamori.config import MamoriConfig
+        from mamori.errors import PolicyViolationError
+
+        config = MamoriConfig(min_confidence=0.85, uncertain="refuse")
+        with config.session() as session, pytest.raises(PolicyViolationError) as raised:
+            session.protect("Please ask Riverton about the Foundry Row site.")
+        assert "Riverton" not in str(raised.value)
+        assert "Foundry Row" not in str(raised.value)
+
+    def test_the_linter_opens_no_socket(self, tmp_path: Path) -> None:
+        from mamori.config import MamoriConfig
+        from mamori.interfaces.cli.linting import lint_paths
+
+        (tmp_path / "a.md").write_text("Dear Jane Doe,\n", encoding="utf-8")
+        with NoNetwork():
+            assert lint_paths(MamoriConfig(), [tmp_path])[0]
+
+    def test_a_conversation_does_not_cross_into_another(self) -> None:
+        """Two callers on one proxy. Scope binding is what keeps them apart."""
+        from mamori.application.conversations import ConversationRegistry
+
+        registry = ConversationRegistry(PrivacySession)
+        mine, theirs = registry.resume(None), registry.resume(None)
+        mine.session.protect("Dear Jane Doe,")
+        assert theirs.session.restore("<PERSON_001>").text == "<PERSON_001>"
