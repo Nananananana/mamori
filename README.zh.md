@@ -301,6 +301,7 @@ register_llm_provider("vllm", lambda endpoint: MyVLLMProvider(endpoint))
 
 ```python
 from mamori import MamoriConfig
+
 session = MamoriConfig.from_mapping(settings).session()
 ```
 
