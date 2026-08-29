@@ -383,12 +383,14 @@ class TestCliConfig:
     def test_protect_honours_the_co_occurrence_toggle(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        text = "尊敬的张伟先生：\n本次评审由张伟主持。"
+        # Japanese: the Chinese fixture stopped isolating propagation in
+        # 0.15, when the surname rule began reaching a second mention alone.
+        text = "凪沢さんへ\n\n本件は凪沢の担当です。"
         assert main(["protect", "--no-co-occurrence", text]) == 0
-        assert "张伟" in capsys.readouterr().out
+        assert "凪沢の担当" in capsys.readouterr().out
 
         assert main(["protect", text]) == 0
-        assert "张伟" not in capsys.readouterr().out
+        assert "凪沢の担当" not in capsys.readouterr().out
 
     def test_inspect_honours_a_config_file(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

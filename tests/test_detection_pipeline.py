@@ -245,12 +245,21 @@ class TestCoOccurrenceEndToEnd:
             assert session.restore(protected.protected_text).text == text
 
     def test_it_can_be_switched_off(self) -> None:
+        """Japanese, because Chinese stopped isolating this in 0.15.
+
+        The Chinese surname rule reaches a second mention directly now,
+        which is an improvement that made the old fixture stop testing what
+        it names. 凪沢 is outside the dictionary, so only the honorific
+        settles the first mention and only propagation reaches the rest.
+        """
         from mamori import MamoriConfig
 
-        text = "尊敬的张伟先生：\n本次评审由张伟主持。"
+        text = "凪沢さんへ\n\n本件は凪沢の担当です。"
         with MamoriConfig(co_occurrence=False).session() as session:
             protected = session.protect(text)
-        assert "张伟" in protected.protected_text
+        assert "凪沢の担当" in protected.protected_text, (
+            "without propagation the unanchored mention stays"
+        )
 
     def test_switching_it_off_never_leaks_more_than_leaving_it_on(self) -> None:
         """The pass only ever adds detections; it cannot remove one."""

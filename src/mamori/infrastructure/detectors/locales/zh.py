@@ -73,6 +73,19 @@ _HONORIFICS = (
     "医生", "教授", "博士", "律师", "工程师", "部长", "科长", "总裁", "董事长",
 )
 
+#: The one word class that is not a name at any stance.
+#:
+#: Every two-character Chinese word can be read as a surname plus a given
+#: character, so a stoplist always risks hiding somebody: 高兴 is "happy" and
+#: it is also a perfectly ordinary name. That risk is why the wide tier drops
+#: the stoplist below, and it stays dropped, with this one exception. 周 is a
+#: common surname, 周一 through 周日 is a closed set nobody extends, and no
+#: calendar day is anybody's name. Fifty-three spurious detections in a
+#: thousand generated documents came from this word class alone.
+_NEVER_A_NAME = frozenset({
+    "周一", "周二", "周三", "周四", "周五", "周六", "周日", "周末",
+})
+
 #: Two-character words that begin with a surname character. Chinese has no
 #: word boundary, so the dictionary rule cannot tell 张伟 (a name) from 高兴
 #: (happy) by shape alone. This list covers the common collisions; it will
@@ -84,18 +97,31 @@ _NOT_NAMES = frozenset({
     "史上", "夏天", "常见", "汤圆", "龙头", "孔子", "熊猫", "钱包", "钟点",
     "陆续", "范围", "方案", "方式", "方向", "方法", "方面", "史料", "石油",
     "黄色", "毛巾", "叶片", "谢谢", "宋代", "唐代", "秦代", "汉代",
-})
+    # Common words that a surname character starts, found the same way.
+    "方提", "李子", "王朝", "陈述", "许可", "客服", "患者", "程序",
+}) | _NEVER_A_NAME
 
 #: Suffixes that make a surname-looking run an organisation or a place.
+#:
+#: 山, 江 and 河 were here until 0.15 and are not any more. They end places
+#: (中山, 长江) but they also end given names -- 乐山, 建江, 小河 -- and a
+#: thousand generated documents lost five names to them while the places they
+#: were meant to stop were already covered by the organisation rules. The
+#: administrative and street suffixes stay: nobody is called 建村 or 小路.
 _NOT_A_NAME_AFTER = (
     "公司", "集团", "银行", "大学", "医院", "工厂", "商行", "有限",
-    "省", "市", "区", "县", "镇", "村", "路", "街", "站", "山", "江", "河",
+    "省", "市", "区", "县", "镇", "村", "路", "街", "站",
 )
 # fmt: on
 
 _HONORIFIC_ALT = "|".join(_HONORIFICS)
 _NOT_NAME_ALT = "|".join(_NOT_A_NAME_AFTER)
 _SURNAME_ALT = "|".join((*COMPOUND_SURNAMES, *COMMON_SURNAMES))
+
+
+def _not_a_closed_set_word(value: str) -> bool:
+    """The wide tier's only filter. See _NEVER_A_NAME for why it is this small."""
+    return value not in _NEVER_A_NAME
 
 
 def _plausible_name(value: str) -> bool:
@@ -122,6 +148,50 @@ def _plausible_name(value: str) -> bool:
 #: front of it. Same class as the English 'Where Umbrella Ltd' bug of 0.9.
 _STOP = "的和与及或在这那是给从到由向对把被让为称系即作也都就还已请于至如若先后当该"
 _COMPANY_BODY = r"(?:(?![" + _STOP + r"])[一-鿿A-Za-z0-9]){2,20}"
+
+#: Characters that end a name rather than belong to it. A closed set of
+#: function words, which is what makes it a defensible list where a vocabulary
+#: list would not be -- nobody coins a new particle.
+_ENDS_A_NAME = "的了是和与及或在这那给从到由向对把被让为称也都就还已请于至如若"
+
+#: Surnames that are also prepositions. The relaxed right edge is not offered
+#: after these, because a preposition is followed by a Han character in almost
+#: every sentence it appears in and a surname is not.
+_PREPOSITION_SURNAMES = "于向从由对与和"
+
+#: What follows a surname.
+#:
+#: Chinese has no spaces, so the right edge of a name has to be guessed. Until
+#: 0.15 the rules required a non-Han character after it, which is unambiguous
+#: and wrong: a name is followed by a verb or a particle far more often than by
+#: punctuation, so 张伟汇报了进度 and 李明的报告 matched nothing at all. A
+#: thousand generated documents missed 104 names that way.
+#:
+#: The first alternative is the old behaviour and still preferred: one or two
+#: characters ending where the Han run ends. The second applies when the name
+#: runs into the next word -- one character, and a second only if it is not a
+#: function word. 李明的 gives 李明, 王小明说 gives 王小明, and 张伟汇报 gives
+#: 张伟汇, which is one character too many. Over-redaction rather than a leak
+#: is the direction this library errs in.
+_GIVEN_NAME = (
+    r"(?:[一-鿿]{1,2}(?![一-鿿])"
+    # Two guards, both on the relaxed alternative only -- the strict one never
+    # needed either, because a Han character after the name was already enough
+    # to reject it.
+    #
+    # It is not offered after a surname that is also a preposition. 于, 向,
+    # 从, 由 and 对 are surnames and they are also the commonest words in
+    # 关于上次, 指向旧地址, 向管委会汇报. What is given up is a 于-surnamed
+    # name that runs into the next word; what is bought is that ordinary prose
+    # stops reading as names.
+    #
+    # And it still refuses an organisation or a place: 王氏集团 is a company,
+    # and without the second guard the surname plus one character reads it as
+    # somebody called 王氏.
+    r"|(?<![" + _PREPOSITION_SURNAMES + r"])"
+    r"(?![" + _ENDS_A_NAME + r"])[一-鿿](?!" + _NOT_NAME_ALT + r"))"
+)
+
 
 RULES: tuple[PatternRule, ...] = (
     # Mainland mobile numbers are unambiguous: 11 digits starting 1[3-9].
@@ -157,9 +227,16 @@ RULES: tuple[PatternRule, ...] = (
         _COMPANY_BODY + r"(?:股份有限公司|有限责任公司|有限公司|集团有限公司|集团|公司)",
         HIGH,
     ),
+    # The label does not always sit against its value: 工号预留为 A-1234
+    # and 工号已定为 A-1234 both put a verb in between. Same shape as the
+    # Japanese 社員番号は fix in 0.14, found the same way. The gap is
+    # capped at four characters and may not contain punctuation or a line
+    # break, so the label cannot reach across a clause into an unrelated
+    # number.
     compile_rule(
         t.EMPLOYEE_ID,
-        r"(?:员工(?:编号|号|工号)?|工号|职工编号)\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
+        r"(?:员工(?:编号|号|工号)?|工号|职工编号)"
+        r"(?:[一-鿿]{0,4})?\s*[:：]?\s*([A-Za-z0-9\-]{3,24})",
         HIGH,
         group=1,
     ),
@@ -223,8 +300,7 @@ RULES: tuple[PatternRule, ...] = (
     compile_rule(
         t.PERSON,
         r"(?:" + _SURNAME_ALT + r")"
-        r"(?!" + _NOT_NAME_ALT + r")"
-        r"[一-鿿]{1,2}(?![一-鿿])",
+        r"(?!" + _NOT_NAME_ALT + r")" + _GIVEN_NAME,
         LOW,
         validator=_plausible_name,
     ),
@@ -242,9 +318,16 @@ WIDE_RULES: tuple[PatternRule, ...] = (
     # starting in the middle of a word is a bug rather than a trade.
     compile_rule(
         t.PERSON,
+        # The strict boundary stays here. The core rule below has a dictionary
+        # and a stoplist behind it and can afford the relaxed right edge; this
+        # one has neither, and relaxing it tripled over-redaction without
+        # adding coverage the core rule did not already have.
         r"(?:" + _SURNAME_ALT + r")[一-鿿]{1,2}(?![一-鿿])",
         LOW,
         tier=RuleTier.WIDE,
+        # Not the whole stoplist -- see _NEVER_A_NAME. This tier exists to
+        # over-report, and 高兴 really could be somebody.
+        validator=_not_a_closed_set_word,
     ),
     # Six bare digits, no 邮编 label.
     compile_rule(

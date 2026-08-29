@@ -51,17 +51,25 @@ FLOORS = (
     # text, so these are the flattering numbers.
     Floor("en-core", _RECALL, 0.015, 0.020, 0.950, 0.900),
     Floor("ja-core", _RECALL, 0.005, 0.040, 0.970, 0.880),
-    Floor("zh-core", _RECALL, 0.020, 0.040, 0.950, 0.850),
+    Floor("zh-core", _RECALL, 0.020, 0.035, 0.950, 0.860),
     # Documents. The same rules on text at the length people actually send:
     # headings, signature blocks, attendee lists, quoted replies. Leak rates
     # are several times higher and these are the honest ones.
     Floor("en-docs", _RECALL, 0.050, 0.030, 0.850, 0.900),
     Floor("ja-docs", _RECALL, 0.010, 0.030, 0.950, 0.900),
-    Floor("zh-docs", _RECALL, 0.070, 0.040, 0.870, 0.840),
+    # 0.15 rewrote the right edge of a Chinese name. The first version of
+    # that change was a trade -- half the leaks for 0.06 of precision -- and
+    # the floors here were about to be written down that way. Then the
+    # precision came back too: three follow-up fixes, each measured on its
+    # own, left every number on this row better than 0.14 had them. Leak
+    # 4.41% -> 2.37%, recall 0.913 -> 0.978, over-redaction 1.84% -> 1.68%,
+    # precision 0.894 -> 0.918. The lesson is that the first measurement of
+    # a change is not the last word on it.
+    Floor("zh-docs", _RECALL, 0.030, 0.020, 0.960, 0.890),
     # -- anchored rules only -------------------------------------------------
     Floor("en-core", _BALANCED, 0.035, 0.010, 0.940, 0.970),
     Floor("ja-core", _BALANCED, 0.015, 0.020, 0.970, 0.950),
-    Floor("zh-core", _BALANCED, 0.050, 0.030, 0.950, 0.900),
+    Floor("zh-core", _BALANCED, 0.020, 0.020, 0.950, 0.900),
     # en-docs at 20% is not a typo and not a regression. A fifth of the
     # sensitive characters in an English document have no anchor near them --
     # a name in an attendee list, a name under a sign-off, a name after
@@ -70,7 +78,7 @@ FLOORS = (
     # visible rather than being quietly discovered by somebody's deployment.
     Floor("en-docs", _BALANCED, 0.250, 0.010, 0.650, 0.970),
     Floor("ja-docs", _BALANCED, 0.010, 0.010, 0.950, 0.950),
-    Floor("zh-docs", _BALANCED, 0.070, 0.030, 0.870, 0.900),
+    Floor("zh-docs", _BALANCED, 0.030, 0.015, 0.960, 0.950),
 )
 
 

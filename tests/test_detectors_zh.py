@@ -79,6 +79,17 @@ class TestOrganisations:
             "北京云图科技有限公司"
         }
 
+    def test_the_label_may_be_separated_from_its_value(self) -> None:
+        """工号预留为 X. The label is rarely flush against the number.
+
+        Same shape as the Japanese 社員番号は fix in 0.14, found the same way
+        and missed twenty-eight times in a thousand generated documents.
+        """
+        assert zh_values("若入职，工号预留为E-52260。", "EMPLOYEE_ID") == {"E-52260"}
+
+    def test_the_gap_may_not_cross_a_clause(self) -> None:
+        assert "EMPLOYEE_ID" not in zh_types("工号未定，联系电话为010-12345678")
+
     def test_employee_id_needs_its_label(self) -> None:
         assert zh_values("工号: A-12345", "EMPLOYEE_ID") == {"A-12345"}
 
@@ -110,6 +121,43 @@ class TestPersonNames:
 
     def test_a_place_is_not_read_as_a_person(self) -> None:
         assert "PERSON" not in zh_types("我去江苏省")
+
+
+class TestANameRunsIntoTheNextWord:
+    """0.15. Chinese has no spaces and the rules used to require one anyway.
+
+    Every case here matched nothing at all before, because the name had to
+    end at a non-Han character. A thousand generated documents missed 104
+    names this way, which is the largest single gap the project has measured.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "张伟汇报了进度。",
+            "李明的报告已经收到",
+            "王强负责办理设备",
+            "由徐乐山医生接诊",
+        ],
+    )
+    def test_a_name_followed_by_a_han_character(self, text: str) -> None:
+        assert "PERSON" in zh_types(text)
+
+    def test_a_given_name_may_end_in_a_mountain(self) -> None:
+        """山, 江 and 河 end places, and they end given names too."""
+        assert "PERSON" in zh_types("由孙乐山负责")
+
+    def test_but_a_place_suffix_still_wins(self) -> None:
+        assert "PERSON" not in zh_types("我去江苏省")
+        assert "PERSON" not in zh_types("寄到王家村")
+
+    @pytest.mark.parametrize("text", ["关于上次讨论", "手册仍然指向旧地址", "向管委会汇报"])
+    def test_a_preposition_is_not_a_name(self, text: str) -> None:
+        """于 and 向 are surnames. They are also the commonest words here."""
+        assert "PERSON" not in zh_types(text)
+
+    def test_the_relaxed_edge_still_refuses_an_organisation(self) -> None:
+        assert "PERSON" not in zh_types("发给王氏集团办理")
 
 
 class TestUniversalRulesStillApply:

@@ -165,6 +165,17 @@ class TestWideChineseRules:
         assert "PERSON" in wide_types("收到消息我很高兴", "zh")
         assert "PERSON" not in types_in("收到消息我很高兴", "zh")
 
+    def test_a_weekday_is_the_one_thing_it_still_refuses(self) -> None:
+        """The exception to the rule above, and the only one.
+
+        高兴 stays because somebody really could be called that. 周四 goes
+        because 周 is a common surname, the weekdays are a closed set nobody
+        extends, and no calendar day is anybody's name. Fifty-three spurious
+        detections in a thousand generated documents came from this word class.
+        """
+        assert "PERSON" not in wide_types("时间: 周四 14:00", "zh")
+        assert "PERSON" in wide_types("收到消息我很高兴", "zh")
+
     def test_bare_six_digits_become_a_postcode(self) -> None:
         assert "POSTAL_CODE" in wide_types("编号 100081", "zh")
 

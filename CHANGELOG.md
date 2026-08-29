@@ -8,6 +8,85 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-30
+
+Chinese. The corpus generated in 0.14 was pointed at it, and the first thing it
+found had been there since the first release: **a Chinese name followed by an
+ordinary word was invisible.**
+
+```
+张伟汇报了进度。      nothing detected
+李明的报告已经收到     nothing detected
+王强负责办理设备       nothing detected
+<PERSON_001>，请知悉。  found -- because a comma follows
+```
+
+Chinese has no spaces, so the right edge of a name has to be guessed, and every
+rule guessed it by requiring a non-Han character afterwards. That is the
+unambiguous case and it is also the rare one: in Chinese prose a name is
+followed by a verb or a particle far more often than by punctuation. A thousand
+generated documents missed 104 names this way. It is the largest single gap the
+project has measured.
+
+### Fixed
+
+- **The right edge of a name.** A name may now run into the next word: one
+  character, or two when the second is not a function word. 李明的 gives 李明
+  and 张伟汇报 gives 张伟汇 -- one character too many, which is over-redaction
+  rather than a leak, and that is the direction this library errs in. The
+  function-word list is a closed set, which is what makes it defensible where
+  the katakana vocabulary list deleted in 0.9 was not.
+
+- **A label separated from its value.** `工号预留为 E-52260` was not read as an
+  employee ID because the rule wanted the label flush against the number. The
+  same shape as the Japanese `社員番号は` fix in 0.14, found the same way,
+  twenty-eight times. The gap is capped at four characters and may not cross
+  punctuation.
+
+- **山, 江 and 河 are no longer proof of a place.** They end 中山 and 长江; they
+  also end 乐山, 建江 and 小河, and the organisation rules were already
+  catching the places.
+
+- **A preposition is not a name.** 于, 向, 从, 由 and 对 are surnames and also
+  the commonest words in `关于上次`, `指向旧地址`, `向管委会汇报`. The relaxed
+  right edge is not offered after them; the strict one still is, so 于明。 is
+  still found.
+
+- **A weekday is not a person, at any stance.** 周 is a common surname and the
+  wide tier deliberately drops the stoplist, so it was reporting 周四 as a
+  name fifty-three times per thousand documents. The wide tier now refuses
+  exactly one word class -- the weekdays -- and nothing else. 高兴 is still
+  reported there, because somebody really could be called that.
+
+### Changed
+
+Every Chinese number moved in the right direction, which was not the first
+result. The first version of the right-edge change was a straight trade: half
+the leaks for 0.06 of precision, and the quality floors were about to be
+written down that way. The three fixes after it brought the precision back.
+
+| default stance | 0.14 | 0.15 |
+|---|---|---|
+| `zh-docs` leak rate | 4.41% | **2.37%** |
+| `zh-docs` entity recall | 0.913 | **0.978** |
+| `zh-docs` over-redaction | 1.84% | **1.68%** |
+| `zh-docs` entity precision | 0.894 | **0.918** |
+
+On the thousand generated documents, where the work was done: leak rate 2.73%
+-> **0.35%**, recall 0.926 -> **0.996**, precision 0.837 -> 0.868.
+
+`zh-core` over-redaction rises from 2.29% to 2.94% -- two characters on a
+306-character set, the cost of no longer treating 山 as proof of a place.
+
+The quality floors are tightened on every axis except that one.
+
+### Known, and left alone
+
+Two names in the corpus are still missed and both are the cost of a stoplist:
+`周一帆` (the weekday entry) and `马若谷` (若 is in the function-word list). A
+stoplist that closes a leak opens a smaller one, and the residue is written
+down here rather than papered over.
+
 ## [0.14.0] - 2026-08-30
 
 A thousand generated documents and a thousand generated replies, in the
@@ -1089,7 +1168,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/Nananananana/mamori/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Nananananana/mamori/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nananananana/mamori/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nananananana/mamori/compare/v0.11.0...v0.12.0

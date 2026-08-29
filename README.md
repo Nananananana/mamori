@@ -310,10 +310,10 @@ default**:
 | | balanced | **recall-first** | balanced | **recall-first** |
 | `ja-core` | 0.68% | **0.00%** | 0.62% | **2.78%** |
 | `en-core` | 1.93% | **0.64%** | 0.00% | **0.72%** |
-| `zh-core` | 0.00% | **0.00%** | 0.98% | **2.29%** |
+| `zh-core` | 0.00% | **0.00%** | 1.63% | **2.94%** |
 | `ja-docs` | 0.33% | **0.33%** | 0.18% | **1.06%** |
 | `en-docs` | 20.02% | **3.50%** | 0.03% | **0.90%** |
-| `zh-docs` | 4.41% | **4.41%** | 1.20% | **1.84%** |
+| `zh-docs` | 2.37% | **2.37%** | 0.88% | **1.68%** |
 
 The `-docs` rows are the ones to read. They are business documents at the
 length people actually send; the `-core` rows are sentence fragments with a
@@ -825,6 +825,8 @@ demo that runs, and found a bug in the measurement harness itself. `v0.11`
 added surrogate values, off by default. `v0.12` made it say why. `v0.13` went after Japanese and Chinese, and learned
 more from the two fixes that failed than the two that worked. `v0.14` generated
 a thousand documents and a thousand replies, and they found five bugs in an hour.
+`v0.15` spent that corpus on Chinese, where a name followed by an ordinary word
+had been invisible since the first release.
 
 | | |
 |---|---|
