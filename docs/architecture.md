@@ -1,6 +1,6 @@
 # Architecture
 
-## The pipeline
+## The path a prompt takes
 
 ```text
                     your text
@@ -8,11 +8,13 @@
    ┌────────────────────▼────────────────────┐
    │ normalize          NFKC + offset map    │  domain/normalization
    ├─────────────────────────────────────────┤
-   │ detect             many rules, freely   │  infrastructure/detectors
-   │                    overlapping          │
+   │ detect             ordered passes,      │  infrastructure/detectors
+   │                    freely overlapping   │
    ├─────────────────────────────────────────┤
    │ map back           normalized span ->   │  application/protection
    │                    original span+value  │
+   ├─────────────────────────────────────────┤
+   │ filter             confidence floor     │  domain/policy
    ├─────────────────────────────────────────┤
    │ resolve            one winner per       │  domain/resolution
    │                    character            │
@@ -41,10 +43,11 @@
 ```
 
 The order is not arbitrary. Detection has to see normalized text; replacement
-has to touch original text; resolution has to happen after every detector has
-spoken and before anything is replaced; and the policy has to run before a
-single placeholder is allocated, so a blocked request leaves no trace in the
-store.
+has to touch original text; the confidence floor applies before resolution, so a
+detection the policy will not consider cannot win a span from one it would have;
+resolution has to happen after every pass has spoken and before anything is
+replaced; and the policy has to decide before a single placeholder is allocated,
+so a blocked request leaves no trace in the store.
 
 ## Layers
 
@@ -58,7 +61,7 @@ interfaces ──> application ──> domain
 | Layer | Holds | May import |
 |---|---|---|
 | `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity | stdlib only |
-| `ports/` | `Detector`, `MappingStore` protocols | `domain` |
+| `ports/` | `Detector`, `DetectionPass`, `MappingStore` protocols | `domain` |
 | `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports` |
 | `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file | `domain`, `ports` |
 | `evaluation/` | Labelled datasets, scoring, quality metrics | `application`, `domain` |
@@ -142,11 +145,56 @@ Every pack is enabled unless `locales=` narrows it. `mamori locales` prints what
 is registered and when each one fires. See
 [ADR 0008](adr/0008-language-packs.md).
 
+## Detection is a pipeline
+
+Detection is assembled from ordered passes rather than hardcoded. Each pass sees
+the text **and** what earlier passes found:
+
+```text
+   ┌── DetectionPipeline (itself a Detector) ──────────────────┐
+   │                                                           │
+   │  rules            universal patterns + language packs     │
+   │    │              (a plain Detector, wrapped)             │
+   │    ▼                                                      │
+   │  co-occurrence    values confirmed above the seed         │
+   │                   threshold, found again elsewhere        │
+   └───────────────────────────────────────────────────────────┘
+```
+
+The second pass is why the port exists: once a name is confirmed by an honorific
+in one sentence, every other mention of it in the document is the same person,
+and no rule looking at those mentions alone can tell. See
+[ADR 0011](adr/0011-detection-as-a-pipeline.md).
+
+Passes may report overlapping spans. Nothing is resolved here — that still
+happens once, in `domain/resolution.py`.
+
+## Configuration
+
+Every switch lives on one frozen object:
+
+```python
+MamoriConfig(locales=["ja", "en"], min_confidence=0.7, co_occurrence=True)
+```
+
+It has no opinion about file formats. `from_mapping()` takes an already-parsed
+mapping, so the caller picks JSON, TOML, YAML or a dict literal and keeps their
+parser to themselves. `from_env()` reads `MAMORI_*`. Layers, later winning:
+
+```text
+built-in defaults  ->  --config file  ->  MAMORI_* env  ->  command-line flags
+```
+
+`mamori config` prints the effective result. Unknown keys are refused rather
+than ignored: a typo in a privacy setting that silently does nothing is the
+worst available outcome. See
+[ADR 0012](adr/0012-configuration-without-a-format.md).
+
 ## Extension points
 
-Two, both with a second implementation already in view:
+Three, each with a second implementation already in the tree:
 
-A third is `LocalePack`: registering one with `register_locale` adds a language
+`LocalePack` is a fourth: registering one with `register_locale` adds a language
 without touching the library.
 
 ```python
@@ -169,6 +217,16 @@ class MappingStore(Protocol):
     def list_scope(self, scope: str) -> Sequence[Mapping]: ...
     def purge(self, scope: str) -> None: ...
 ```
+
+```python
+class DetectionPass(Protocol):
+    @property
+    def name(self) -> str: ...
+    def run(self, context: DetectionContext) -> Sequence[SensitiveEntity]: ...
+```
+
+The wider contract, for detection that needs to know what else was found.
+`DetectionContext` carries the normalized text and the findings so far.
 
 Custom entity types register with `mamori.register_type`. Note that a type
 whose category has no policy default falls through to `BLOCK` — deliberately,
@@ -230,6 +288,8 @@ run in CI. See [ADR 0009](adr/0009-measure-leaked-characters.md).
 | `test_evaluation.py` | The scoring harness and the dataset parser |
 | `test_detection_quality.py` | Quality floors per language, run in CI |
 | `test_port_contracts.py` | Every bundled adapter against the port conformance suites |
+| `test_detection_pipeline.py` | The pipeline, and the co-occurrence pass on top of it |
+| `test_config.py` | Settings, their layering, and what a bad one does |
 
 `tests/contracts.py` holds the conformance suites for `Detector` and
 `MappingStore`. A new adapter subclasses the matching mixin and inherits the

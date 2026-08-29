@@ -8,6 +8,51 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-29
+
+Architecture: the last hardcoded stage of the pipeline became swappable, and
+every switch moved onto one object.
+
+### Added
+
+- **Detection is a pipeline of passes.** A new `DetectionPass` port receives the
+  text *and* what earlier passes found; `DetectionPipeline` runs passes in order
+  and is itself a `Detector`, so nothing upstream changed. `DetectorPass` adapts
+  an ordinary detector, which keeps the narrow contract the default. See
+  [ADR 0011](docs/adr/0011-detection-as-a-pipeline.md).
+- **Co-occurrence detection.** Once a value is confirmed above the seed
+  threshold anywhere in a text, its other occurrences are found too. This is the
+  first thing the new port made possible and it is the largest recall gain
+  available without a model:
+
+  | | leak rate before | after |
+  |---|---|---|
+  | `en-core` | 7.37% | **2.01%** |
+  | `ja-core` | 1.43% | **0.71%** |
+  | `zh-core` | 1.49% | **0.00%** |
+
+  Precision and over-redaction are unchanged. Word boundaries are respected in
+  Latin text, so seeding on `Ann` does not match inside `Announcement`.
+- **`MamoriConfig`**, holding every switch, with no opinion about file formats.
+  `from_mapping()` takes an already-parsed mapping so the caller keeps their
+  parser; `from_env()` reads `MAMORI_*`; `load_config_file()` handles JSON
+  everywhere and TOML from 3.11. Unknown keys are refused rather than ignored.
+  See [ADR 0012](docs/adr/0012-configuration-without-a-format.md).
+- **`PrivacyPolicy.min_confidence`**, a coverage/quality dial. Detections below
+  it are discarded before anything else happens. Default `0.0`, and it stays
+  there: reducing coverage is a decision, not an inherited default.
+- **`mamori config`**, printing the effective settings and where the layers come
+  from, plus `--config`, `--min-confidence` and `--no-co-occurrence` on
+  `inspect` and `protect`.
+- A conformance suite for `DetectionPass` in `tests/contracts.py`.
+
+### Changed
+
+- Quality floors raised across all three languages, following the co-occurrence
+  gains. The old ones no longer defended anything.
+- `PrivacySession` accepts `config=`; it supplies the defaults for every other
+  argument, and an explicit argument still wins.
+
 ## [0.2.0] - 2026-08-29
 
 ### Added
@@ -134,6 +179,7 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Nananananana/mamori/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nananananana/mamori/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Nananananana/mamori/releases/tag/v0.1.0

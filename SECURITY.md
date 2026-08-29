@@ -28,8 +28,9 @@ riskier behaviour than the behaviour it replaced.
 
 ### Detection is incomplete
 
-The v0.1 detectors are regular expressions and a surname list. They are known
-to miss:
+The detectors are regular expressions, surname lists, and a pass that
+propagates a value confirmed once to its other mentions. They are known to
+miss:
 
 Language-independent:
 
@@ -73,13 +74,13 @@ those languages; nothing else does.
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets. Run `mamori eval`
-yourself; as of `0.2.0`:
+yourself; as of `0.3.0`:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
-| `ja-core` | 45 | 0.75% | 0.00% | 1.000 / 0.981 |
-| `en-core` | 45 | 2.25% | 0.74% | 1.000 / 0.951 |
-| `zh-core` | 22 | 0.00% | 1.19% | 0.955 / 1.000 |
+| `ja-core` | 49 | 0.71% | 0.00% | 1.000 / 0.983 |
+| `en-core` | 49 | 2.01% | 0.65% | 1.000 / 0.958 |
+| `zh-core` | 25 | 0.00% | 2.34% | 0.964 / 1.000 |
 
 *Leak rate* is the share of labelled sensitive characters that no detection
 covered — the part that would have left the machine. *Over-redaction* is the
@@ -89,11 +90,16 @@ share of ordinary characters replaced anyway.
 are small and synthetic. They were written to cover the cases the rules are
 meant to handle and the ones they are known to miss, which makes them good at
 catching a change that breaks something and poor at estimating recall on a
-corpus nobody has seen. A leak rate near zero on 45 invented sentences says
-nothing about a real inbox.
+corpus nobody has seen. A leak rate near zero on fifty invented
+sentences says nothing about a real inbox.
 
 The residual leaks are the documented gaps: an English name with nothing in
 front of it to mark it as one, and a trading name with no legal suffix.
+
+A name that appears repeatedly is now protected everywhere once any one mention
+is confirmed, which is what moved English from 7.4% to 2.0% and Chinese to zero.
+That helps most where the anchors are weakest, and it does not help at all with
+a name that never appears in a form any rule recognises.
 
 ### It is not a compliance control
 
@@ -111,7 +117,7 @@ values you were trying to protect.
 ### It is not automatic
 
 `mamori` protects the text you pass to it. It cannot intercept a call that does
-not go through it. The proxy planned for v0.2 narrows this gap; it does not
+not go through it. The proxy planned for v0.4 narrows this gap; it does not
 close it.
 
 ### It cannot control what the recipient does
@@ -126,7 +132,7 @@ message.
 The long form, including what is in and out of scope for each threat, is in
 [docs/threat-model.md](docs/threat-model.md).
 
-| Threat | v0.1 status |
+| Threat | Status |
 |---|---|
 | PII reaches the external service | Mitigated for what the detectors find |
 | A credential reaches the external service | Blocked outright for recognised formats |
@@ -134,7 +140,7 @@ The long form, including what is in and out of scope for each threat, is in
 | A response reads values out of the mapping table | Prevented; only placeholders allocated in the same scope resolve |
 | A detector fails and the request proceeds anyway | Prevented; a detector that raises stops the request |
 | Sensitive values reach logs or tracebacks | Mitigated; values are excluded from every `repr`, and the library logs nothing |
-| Prompt injection in the input steers a detector | Not applicable in v0.1 -- pattern rules cannot be argued with. Becomes a live threat with the v0.4 local-model detector |
+| Prompt injection in the input steers a detector | Not applicable yet -- pattern rules and the co-occurrence pass cannot be argued with. Becomes a live threat with the v0.6 local-model pass |
 | An input crafted to be undetectable | **Not mitigated.** No detector set is complete |
 | Local machine compromise | **Out of scope** |
 | Re-identification from what remains | **Not mitigated.** Removing names does not remove a distinctive combination of facts |
@@ -149,4 +155,4 @@ The long form, including what is in and out of scope for each threat, is in
 
 ## Supported versions
 
-`0.1.x` only, while the project is pre-1.0. Fixes land on `main`.
+The latest `0.x` only, while the project is pre-1.0. Fixes land on `main`.

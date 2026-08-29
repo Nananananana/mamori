@@ -130,6 +130,58 @@ and always run. Adding a language is one module and one registry entry; see
 
 ---
 
+## Switching things
+
+Detection is a pipeline of passes, not a fixed procedure. Each pass sees the
+text and what earlier passes found:
+
+```text
+rules            universal patterns + whichever language packs apply
+  ↓
+co-occurrence    values confirmed above the seed threshold, found again
+                 wherever else they appear in the same text
+```
+
+The second pass is why the first is not enough. Once a name is settled by an
+honorific in one sentence, every other mention of it is the same person — and no
+rule looking at those mentions alone can tell:
+
+```text
+尊敬的张伟先生：              ← an honorific settles it
+本次评审由张伟主持。           ← nothing here says this is a name
+请张伟在周五前回复。           ← nor here
+```
+
+All three are protected. In Chinese this is not an optimisation; there is
+nothing else to anchor on.
+
+Everything switchable lives on one object:
+
+```python
+mamori.PrivacySession(
+    config=mamori.MamoriConfig(
+        locales=["ja", "en"],
+        min_confidence=0.7,  # ignore shaky detections: fewer placeholders, less coverage
+        co_occurrence=True,
+    )
+)
+```
+
+`MamoriConfig` has no opinion about file formats. `from_mapping()` takes an
+already-parsed mapping, so you pick JSON, TOML, YAML or a dict literal and keep
+your parser to yourself — the library still has no runtime dependencies.
+
+```bash
+mamori config                       # what would be used, and where each layer came from
+mamori protect --min-confidence 0.7 -f draft.txt
+```
+
+Settings layer, later winning: defaults, `--config`, `MAMORI_*` environment
+variables, then flags. Unknown keys are refused rather than ignored — a typo in
+a privacy setting that silently does nothing is the worst available outcome.
+
+---
+
 ## The three things that make this hard
 
 Most of the work in `mamori` is in the parts that a first implementation gets
@@ -167,11 +219,11 @@ mamori eval
 ```
 
 ```text
-ja-core  (ja, 45 samples)
-  leak rate             0.75%   (4/531 sensitive chars left uncovered)
-  over-redaction        0.00%   (0/803 ordinary chars replaced)
-  entity P / R / F1   1.000 / 0.981 / 0.990   (match: overlap)
-  clean samples       44/45
+ja-core  (ja, 49 samples)
+  leak rate             0.71%   (4/561 sensitive chars left uncovered)
+  over-redaction        0.00%   (0/899 ordinary chars replaced)
+  entity P / R / F1   1.000 / 0.983 / 0.992   (match: overlap)
+  clean samples       48/49
 ```
 
 **Leak rate** is the share of labelled sensitive characters that no detection
@@ -190,10 +242,18 @@ third party.
 Quality floors run in CI, so a rule change that improves one language and
 quietly wrecks another turns the build red. Writing the first datasets found
 five real bugs within an hour — read
-[ADR 0009](docs/adr/0009-measure-leaked-characters.md) for what they were.
+[ADR 0009](docs/adr/0009-measure-leaked-characters.md) for what they were — and
+the numbers are what justified the co-occurrence pass rather than an opinion
+about it:
+
+| | leak rate before | after |
+|---|---|---|
+| `en-core` | 7.37% | **2.01%** |
+| `ja-core` | 1.43% | **0.71%** |
+| `zh-core` | 1.49% | **0.00%** |
 
 Treat the numbers as regression floors, not as a claim about your data: the
-datasets are small and synthetic, and a leak rate near zero on 45 invented
+datasets are small and synthetic, and a leak rate near zero on fifty invented
 sentences says nothing about a real inbox.
 
 ---
@@ -265,18 +325,19 @@ network and no database.
 `v0.1` is the core: detect, decide, pseudonymize, restore, in memory, from
 Python or the shell.
 
-`v0.2` added the measurement harness, streaming restoration, and English and
-Chinese language packs.
+`v0.2` added the measurement harness and streaming restoration. `v0.3` made
+detection a pipeline, added the co-occurrence pass on top of it, and collected
+every switch onto one configuration object.
 
 | | |
 |---|---|
-| **v0.3** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. Same-document co-occurrence: once a name is confirmed anywhere with high confidence, every later mention of it is too. |
-| **v0.4** | A Presidio adapter, an opt-in encrypted persistent store, and a confidence floor so answer quality can be traded against coverage. |
-| **v0.5** | Local-model detection as an opt-in deep-scan tier, for the cases patterns cannot reach — unanchored English names and Chinese given names above all. |
-| **v0.6** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
+| **v0.4** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. It is the reason v0.3 did the configuration work first: a proxy needs settings from a file and per-request switching, and neither existed. |
+| **v0.5** | A Presidio adapter and an opt-in encrypted persistent store. |
+| **v0.6** | Local-model detection as an opt-in deep-scan pass, for the cases patterns cannot reach — unanchored English names and Chinese given names above all. The pipeline is already the shape it needs. |
+| **v0.7** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
-The proxy is next on purpose. Nobody rewrites a working application to adopt a
-library, and a privacy layer that only protects new code protects very little.
+The proxy is next. Nobody rewrites a working application to adopt a library, and
+a privacy layer that only protects new code protects very little.
 
 Language priority is Japanese and English first, Chinese second. The Chinese
 rules exist and are measured; the design for making them good is written up in

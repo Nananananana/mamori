@@ -16,3 +16,5 @@ it, and — the part that is usually missing — what it costs.
 | [0008](0008-language-packs.md) | Language packs, selected by script |
 | [0009](0009-measure-leaked-characters.md) | Measure leaked characters, not just entity F1 |
 | [0010](0010-streaming-restoration.md) | Restore streamed responses by holding the shortest unsafe suffix |
+| [0011](0011-detection-as-a-pipeline.md) | Detection is a pipeline of passes |
+| [0012](0012-configuration-without-a-format.md) | One configuration object, no configuration format |

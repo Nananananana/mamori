@@ -130,8 +130,9 @@ make a change pass — if a change costs coverage, that is the finding.
 
 ## Adding an adapter
 
-`tests/contracts.py` holds the conformance suites for `Detector` and
-`MappingStore`. Subclass the matching mixin and you inherit the contract:
+`tests/contracts.py` holds the conformance suites for `Detector`,
+`DetectionPass` and `MappingStore`. Subclass the matching mixin and you inherit
+the contract:
 
 ```python
 class TestMyStore(MappingStoreContract):
@@ -139,8 +140,42 @@ class TestMyStore(MappingStoreContract):
         return MyStore()
 ```
 
-Scope isolation and index numbering are the two things implementations get
+Scope isolation and index numbering are the two things store implementations get
 wrong, and both are in the suite.
+
+### Detector or pass?
+
+Two ports, and the difference is one question: **does it need to see what else
+was found?**
+
+- **No** — write a `Detector`. Text in, findings out. Nearly everything belongs
+  here, and the narrowness is deliberate: a rule set that cannot see the other
+  rule sets' results cannot develop opinions about them.
+- **Yes** — write a `DetectionPass`. It receives a `DetectionContext` carrying
+  the text and everything earlier passes found. The co-occurrence pass is the
+  example: it propagates a value confirmed by an honorific in one sentence to
+  every other mention, which no rule looking at those mentions alone can do.
+
+A pass goes at the end of the pipeline, after whatever produces the findings it
+reasons over. Nothing enforces that ordering, because the pipeline cannot tell
+the two kinds apart — a pass placed first simply sees nothing.
+
+Do not deduplicate or resolve inside a pass. Report what you see, overlaps
+included; `domain/resolution.py` settles conflicts once, in one place.
+
+## Adding a setting
+
+A new switch goes on `MamoriConfig` as a field, gets coerced in `from_mapping`,
+and is printed by `mamori config`. Three rules:
+
+- **The default must be the fail-safe value.** `min_confidence` defaults to
+  `0.0` and co-occurrence to on, because reducing coverage is a decision
+  somebody makes, not one they inherit.
+- **Document it as a trade, not an improvement.** Say what it costs as well as
+  what it buys.
+- **Unknown keys stay refused.** Do not add a lenient mode. A typo in a privacy
+  setting that silently does nothing is the worst available outcome: the user
+  believes they tightened something and did not.
 
 ## Adding a language
 
