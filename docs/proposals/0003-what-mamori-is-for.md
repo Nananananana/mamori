@@ -28,6 +28,7 @@ list has moved every time.
 | (not planned) | 0.21 — the surrogate corpus | turned the scariest paragraph in the docs into two numbers |
 | (not planned) | 0.22 — time | a quadratic nobody had looked for |
 | (not planned) | 0.23 — the model tier | the oldest open question, and the bug in this library that kept it open |
+| 0.13 — the morphological adapter | 0.24 — the morphological adapter, declined | four deferrals, one afternoon, one number |
 
 Two of those are worth stating plainly rather than filing.
 
@@ -177,18 +178,17 @@ be worth it:
   345 seconds a document. What is left is whether anything closes it at
   interactive speed; the honest answer today is that a rule cannot and this is
   what a model is for.
-- The optional Japanese morphological adapter, still unrun, still the right
-  experiment.
+- ~~The optional Japanese morphological adapter~~ — run in 0.24 and declined.
 - Whether a model above 8B changes the model-tier table, still blocked on
   hardware.
 
 ### Not scheduled, and honestly so
 
-- **The `mamori[ja]` morphological adapter.** Proposed for 0.13, moved to 0.14,
-  not built in either. It is still the right experiment — an optional adapter
-  behind the existing port, published against `ja-docs`, dropped if it does not
-  win — and giving it a version number a third time would be a way of not
-  admitting that it keeps losing to whatever the corpus turned up that week.
+- ~~**The `mamori[ja]` morphological adapter.**~~ **Run in 0.24, and dropped**,
+  which is what "dropped if it does not win" was always supposed to mean. It
+  adds nothing the rules do not already find, and used the other way it leaks
+  in every Japanese set to buy a point of over-redaction —
+  [ADR 0031](../adr/0031-the-morphological-adapter-measured-and-declined.md).
 - **The encrypted store**, with retention as a stated rule rather than a
   background process. Wanted; blocked on nobody needing it yet.
 - ~~**Whether a model above 8B changes the model tier.**~~ **Answered in 0.23:

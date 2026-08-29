@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from mamori.domain.confidence import Confidence
@@ -42,6 +44,26 @@ class TestConfidence:
         assert Confidence(0.5) < Confidence(0.9)
 
 
+@pytest.fixture
+def registry_restored() -> Iterator[None]:
+    """Put the entity-type registry back as it was.
+
+    Registering is global and permanent by design -- a deployment declares its
+    types once at start-up. In a test suite that makes it shared mutable state,
+    and a type registered here changed what a test in another file measured
+    three hundred tests later. The leak was real for one release; nobody
+    noticed because the two tests happened to run in a harmless order.
+    """
+    from mamori.domain import entity_types
+
+    saved = dict(entity_types._registry)
+    try:
+        yield
+    finally:
+        entity_types._registry.clear()
+        entity_types._registry.update(saved)
+
+
 class TestEntityType:
     @pytest.mark.parametrize("name", ["person", "1PERSON", "PER SON", "PERSON-X", ""])
     def test_rejects_names_that_break_placeholders(self, name: str) -> None:
@@ -52,15 +74,35 @@ class TestEntityType:
         with pytest.raises(ValueError):
             EntityType("CUSTOM", Category.PII, severity=101)
 
-    def test_register_and_lookup(self) -> None:
+    def test_register_and_lookup(self, registry_restored: None) -> None:
         custom = EntityType("PATIENT_ID", Category.PII, 80)
         register_type(custom)
         assert get_type("PATIENT_ID") == custom
 
-    def test_registering_a_conflicting_definition_is_refused(self) -> None:
+    def test_registering_a_conflicting_definition_is_refused(self, registry_restored: None) -> None:
         register_type(EntityType("CASE_NUMBER", Category.PII, 60))
         with pytest.raises(ValueError):
             register_type(EntityType("CASE_NUMBER", Category.SECRET, 90))
+
+    def test_a_registered_type_beats_a_synonym(self, registry_restored: None) -> None:
+        """Which is the right precedence, and the reason the leak above was
+        visible at all: `CASE_NUMBER` is one of the names a model uses for an
+        identifier, so a test that registers it globally silently changes what
+        another test measures. A deployment that registers its own
+        `CASE_NUMBER` gets its own, and that is correct -- their definition is
+        more specific than this library's guess about a model's wording."""
+        from mamori.prompts.parsing import parse_detection_response
+
+        text = "Please ask Kenji about it."
+        proposal = '{"entities": [{"type": "CASE_NUMBER", "text": "Kenji"}]}'
+        assert parse_detection_response(proposal, text).entities[0].entity_type.name == (
+            "IDENTIFIER"
+        )
+
+        register_type(EntityType("CASE_NUMBER", Category.PII, 60))
+        assert parse_detection_response(proposal, text).entities[0].entity_type.name == (
+            "CASE_NUMBER"
+        )
 
     def test_builtin_names_match_their_keys(self) -> None:
         assert all(name == entity.name for name, entity in BUILTIN_TYPES.items())

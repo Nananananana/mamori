@@ -473,6 +473,12 @@ class TestParsingAModelAnswer:
             ("CARD_NUMBER", "CREDIT_CARD"),
             ("ZIP_CODE", "POSTAL_CODE"),
             ("DOB", "DATE_OF_BIRTH"),
+            # From the Chinese and Japanese runs, where the tail of near
+            # misses is different: 工号 comes back as WORK_NUMBER, and a
+            # reference of any kind comes back named after what it references.
+            ("WORK_NUMBER", "EMPLOYEE_ID"),
+            ("CUSTOMER_NUMBER", "IDENTIFIER"),
+            ("CASE_NUMBER", "IDENTIFIER"),
         ],
     )
     def test_the_synonyms_that_are_unambiguous(self, said: str, meant: str) -> None:
@@ -480,7 +486,10 @@ class TestParsingAModelAnswer:
         outcome = parse_detection_response(answer(item), self.TEXT)
         assert outcome.entities[0].entity_type.name == meant
 
-    @pytest.mark.parametrize("said", ["IP_ADDRESS", "LOCATION", "CREDENTIAL", "PII"])
+    @pytest.mark.parametrize(
+        "said",
+        ["IP_ADDRESS", "LOCATION", "CREDENTIAL", "PII", "HOSTNAME", "IDENTITY_NUMBER"],
+    )
     def test_the_ones_that_stay_refused(self, said: str) -> None:
         """Each for its own reason, all of them recorded in `_ALIASES`.
 
@@ -488,7 +497,10 @@ class TestParsingAModelAnswer:
         point of that type is that a public address is not sensitive.
         `LOCATION` could be a country or a street. `CREDENTIAL` would map onto
         PASSWORD, whose action is BLOCK, and a fuzzy label should not be able to
-        stop somebody's request.
+        stop somebody's request. `HOSTNAME` has no type to map to -- a URL and
+        an address are not a name. `IDENTITY_NUMBER` is a 身份证号 in a Chinese
+        document and something else with some other shape everywhere else, and
+        RESIDENT_ID carries a checksum this pass cannot verify.
         """
         item = dict(self.entity("Kenji"), type=said)
         outcome = parse_detection_response(answer(item), self.TEXT)

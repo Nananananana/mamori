@@ -938,20 +938,25 @@ sentences says nothing about a real inbox.
 Measured, not asserted — and the answer changed at `v0.23`, when a bug in this
 library turned out to be why it had not.
 
-**At 14B, on documents, at the recall-first default.**
-`qwen2.5:14b-instruct-q4_K_M` running locally against `en-docs`:
+**At 14B, on documents, in all three languages.**
+`qwen2.5:14b-instruct-q4_K_M` running locally, at the recall-first default:
 
-| | rules only | + model | |
+| set | leak: rules → +model | over-redaction | recall |
 |---|---|---|---|
-| leak rate | 3.50% | **0.36%** | −3.14 |
-| over-redaction | 0.90% | **0.90%** | ±0.00 |
-| entity precision | 0.946 | 0.935 | −0.011 |
-| entity recall | 0.883 | **0.967** | +0.083 |
+| `en-docs` | 3.50% → **0.36%** | 0.90% → 0.90% | 0.883 → 0.967 |
+| `ja-docs` | 0.33% → **0.00%** | 1.06% → 1.06% | 0.984 → 1.000 |
+| `zh-docs` | 2.37% → **0.00%** | 1.20% → 1.20% | 0.978 → 0.978 |
 
-The leak rate falls by ninety percent and over-redaction does not move at all.
-What it closes is the **anchorless name** — a name in an attendee list, under a
-sign-off, after "Reported by:" — which has been the largest measured gap here
-since `v0.9` and is not a regular-expression problem.
+**Over-redaction does not move in any of them**, and two of the three reach
+zero. What it closes in English is the **anchorless name** — in an attendee
+list, under a sign-off, after "Reported by:" — which has been the largest
+measured gap here since `v0.9` and is not a regular-expression problem.
+
+The Chinese row was `2.37% → 2.37%` until `v0.24`. The model had found the
+value; it called the type `CUSTOMER_NUMBER`, which this library did not
+recognise, so it was discarded before anything scored it. Two lines in a
+synonym table are the whole difference between "the model adds nothing to
+Chinese" and "the model closes the last Chinese leak".
 
 **At the balanced stance the same model does more, not less.** The rules leak
 20.02% there, because a fifth of the sensitive characters in an English
@@ -1117,7 +1122,9 @@ in the documentation into two numbers. `v0.22` measured time for the first
 time and found a quadratic that took thirteen seconds on a half-megabyte
 document. `v0.23` answered the question `v0.7` left open — a model above 8B
 *does* change the table — after finding that the reason nobody could measure it
-was a timeout setting this library was ignoring.
+was a timeout setting this library was ignoring. `v0.24` ran the same
+measurement in Japanese and Chinese, and closed the last item on the roadmap by
+measuring it and saying no.
 
 | | |
 |---|---|

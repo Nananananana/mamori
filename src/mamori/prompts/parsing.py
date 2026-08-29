@@ -205,6 +205,16 @@ def parse_detection_response(
 #:     not be able to stop somebody's request.
 #: ``PII``, ``SENSITIVE``
 #:     Not a type. A model that says this has restated the question.
+#: ``HOSTNAME``, ``INTERNAL_HOSTNAME``
+#:     There is no type for a bare host. ``INTERNAL_URL`` is a URL and
+#:     ``INTERNAL_IP`` is an address; a name is neither, and inventing a
+#:     mapping would put a value under a type whose rules never chose it.
+#: ``IDENTITY_NUMBER``
+#:     In a Chinese document this is a 身份证号 and ``RESIDENT_ID`` is right.
+#:     Everywhere else it is a national identifier of some other country with
+#:     some other shape, and ``RESIDENT_ID`` carries a checksum this pass
+#:     cannot verify. A type that means "verified Chinese resident id" should
+#:     not be assigned on a model's say-so.
 _ALIASES = {
     "ORG": "COMPANY_NAME",
     "ORGANIZATION": "COMPANY_NAME",
@@ -233,6 +243,15 @@ _ALIASES = {
     "EMPLOYEE_NUMBER": "EMPLOYEE_ID",
     "STAFF_ID": "EMPLOYEE_ID",
     "PROJECT": "PROJECT_NAME",
+    # Added after the same measurement was run in Japanese and Chinese, where
+    # the tail of near misses is different: 工号 comes back as WORK_NUMBER, and
+    # a reference of any kind comes back named after what it references.
+    "WORK_NUMBER": "EMPLOYEE_ID",
+    "CUSTOMER_NUMBER": "IDENTIFIER",
+    "ACCOUNT_NUMBER": "IDENTIFIER",
+    "REFERENCE_NUMBER": "IDENTIFIER",
+    "CASE_NUMBER": "IDENTIFIER",
+    "TICKET_NUMBER": "IDENTIFIER",
     "PROJECT_CODE": "PROJECT_NAME",
     "URL": "INTERNAL_URL",
     "SOCIAL_SECURITY_NUMBER": "SSN",

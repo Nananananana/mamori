@@ -203,17 +203,21 @@ not move the leak rate at all, because the wide rules already reach those
 values, and costs roughly six times the over-redaction.
 
 **At 14B the answer is different, and 0.23 is where that was first measurable.**
-`qwen2.5:14b-instruct-q4_K_M` against `en-docs`, which is documents rather than
-fragments:
+`qwen2.5:14b-instruct-q4_K_M` against the document sets, which are documents
+rather than fragments:
 
-| stance | leak: rules -> +model | over-redaction | recall |
+| set | leak: rules -> +model | over-redaction | recall |
 |---|---|---|---|
-| balanced | 20.02% -> **1.69%** | 0.03% -> 0.03% | 0.700 -> 0.950 |
-| recall-first | 3.50% -> **0.36%** | 0.90% -> 0.90% | 0.883 -> 0.967 |
+| `en-docs`, balanced | 20.02% -> **1.69%** | 0.03% -> 0.03% | 0.700 -> 0.950 |
+| `en-docs` | 3.50% -> **0.36%** | 0.90% -> 0.90% | 0.883 -> 0.967 |
+| `ja-docs` | 0.33% -> **0.00%** | 1.06% -> 1.06% | 0.984 -> 1.000 |
+| `zh-docs` | 2.37% -> **0.00%** | 1.20% -> 1.20% | 0.978 -> 0.978 |
 
-Over-redaction does not move on either stance, which is what did not happen at
-8B. What closes is the anchorless name, the largest measured gap in this
-project since 0.9. It costs **345 seconds per document** on the hardware these
+Over-redaction does not move anywhere, which is what did not happen at 8B, and
+two of the three languages reach zero. What closes in English is the anchorless
+name, the largest measured gap in this project since 0.9. The Chinese row read
+2.37% -> 2.37% until 0.24, when this library started accepting the type names
+the model actually uses. It costs **345 seconds per document** on the hardware these
 numbers come from, which is why the tier is off by default and why "measure it
 on your own hardware" is not a formality.
 

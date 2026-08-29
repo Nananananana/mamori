@@ -8,6 +8,108 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-30
+
+The model tier, in every language this library speaks — and the last item on
+the roadmap, closed by measuring it and saying no.
+
+### Measured: 14B against documents, all three languages
+
+`qwen2.5:14b-instruct-q4_K_M`, locally, at the recall-first default:
+
+| set | leak: rules → +model | over-redaction | recall |
+|---|---|---|---|
+| `en-docs` | 3.50% → **0.36%** | 0.90% → 0.90% | 0.883 → 0.967 |
+| `ja-docs` | 0.33% → **0.00%** | 1.06% → 1.06% | 0.984 → 1.000 |
+| `zh-docs` | 2.37% → **0.00%** | 1.20% → 1.20% | 0.978 → 0.978 |
+| `en-docs`, balanced | 20.02% → **1.69%** | 0.03% → 0.03% | 0.700 → 0.950 |
+
+**Over-redaction does not move in any of them.** Two of the three languages
+reach zero. At 8B this was "an English-recall tool that costs precision
+everywhere"; at 14B it closes almost every remaining document leak and costs
+nothing measurable.
+
+It still takes 345 seconds a document on the hardware these numbers come from,
+which is why the tier is off by default.
+
+### The Chinese result was hiding behind a vocabulary
+
+The first Chinese run said the model added **nothing at all** — every number
+identical. It had proposed 33 entities; the ones that mattered were named
+`CUSTOMER_NUMBER` and `WORK_NUMBER`, which this library did not recognise, so
+they were dropped before anything scored them.
+
+Accepting those two names takes `zh-docs` from 2.37% to 0.00%.
+
+0.23 added synonyms after seeing English discard 11 of 38 entities over
+spelling, and noted that on `en-docs` they changed no number because the rules
+had already found those values. In Chinese the same change is the difference
+between a model tier that does nothing and one that closes the last leak. A
+strictness that costs nothing on the material you happened to measure can cost
+everything on material you did not.
+
+Four names stay refused, each for its own reason, all recorded in the code:
+`IP_ADDRESS` would redact `8.8.8.8` when the point of `INTERNAL_IP` is that a
+public address is not sensitive; `LOCATION` could be a country or a street;
+`CREDENTIAL` would map onto `PASSWORD`, whose action is BLOCK; `HOSTNAME` has
+no type to map to, because a URL and an address are not a name; and
+`IDENTITY_NUMBER` means a 身份证号 in a Chinese document and something else
+everywhere else, while `RESIDENT_ID` carries a checksum this pass cannot
+verify.
+
+### Declined: the Japanese morphological adapter
+
+Proposed for 0.13, moved to 0.14, deferred in 0.19 and 0.22, and named in every
+roadmap since as "still the right experiment; still not run". It was run.
+**It does not win, and it is not built** —
+[ADR 0031](docs/adr/0031-the-morphological-adapter-measured-and-declined.md).
+
+`janome` adds **nothing**: in two hundred documents holding 1,010 rule-detected
+people it found no name the rules had missed. Used the other way — dropping a
+detection it does not recognise as a person — it buys 0.2 to 1.1 points of
+over-redaction and leaks in every set: `ja-core` 0.00% → 1.37%, `ja-context`
+0.00% → 9.48%.
+
+What it drops is right some of the time (森林, 原因, 山口県) and wrong the
+rest: `凪沢`, a surname no dictionary has; `清水`, one of the commonest
+surnames in Japan, read in that sentence as the ordinary word; and
+`sato.hanako`, a username in a file path, which is not Japanese text at all —
+and to a filter, "no opinion" and "not a person" are the same answer.
+
+The over-redaction it would have bought is still available, by name, from
+whoever is looking at the document: 森林 and 原因 are two `mamori correct`
+rulings, not a runtime dependency.
+
+**How it was measured is the part worth keeping.** The generated corpus said
+the filter was free — 22 spurious detections removed, *zero* real names lost
+across two hundred documents. The hand-written bundled sets, a fiftieth of the
+size, said it leaks. The generator draws from pools of common names, which the
+dictionary knows; `凪沢` was invented in 0.16 precisely because it is in no
+dictionary. **A corpus can only refute what its generator can produce**, and
+that sentence has now decided three answers in three releases.
+
+### Fixed
+
+- **A test registered a global entity type and never took it back.** The
+  registry is global and permanent by design — a deployment declares its types
+  once at start-up — which in a test suite makes it shared mutable state. One
+  test registered `CASE_NUMBER`, and three hundred tests later that silently
+  changed what another test measured. It had been true for a release and nobody
+  noticed, because the two happened to run in a harmless order until a synonym
+  for `CASE_NUMBER` was added.
+
+  The precedence itself is right and is now pinned by a test: **a registered
+  type beats a synonym**, because a deployment's own definition is more
+  specific than this library's guess about a model's wording.
+
+### Added
+
+- **`tests/test_concurrency.py`.** Six callers, one registry, one proxy, real
+  threads and real sockets. The property is that one caller's values never
+  reach another's answer, and until now the locking that provides it had been
+  argued rather than exercised. It holds, including while eviction races with
+  itself at the registry's ceiling.
+
 ## [0.23.0] - 2026-08-30
 
 The oldest open question in the project, answered — and the reason it stayed
@@ -1807,7 +1909,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/Nananananana/mamori/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Nananananana/mamori/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/Nananananana/mamori/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/Nananananana/mamori/compare/v0.20.0...v0.21.0
