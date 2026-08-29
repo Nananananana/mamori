@@ -18,10 +18,12 @@ import pytest
 from mamori.domain.mapping import Mapping
 from mamori.domain.normalization import NormalizedText
 from mamori.domain.placeholder import Placeholder
+from mamori.domain.sensitive_entity import SensitiveEntity
+from mamori.ports.detection_pass import DetectionContext, DetectionPass
 from mamori.ports.detector import Detector
 from mamori.ports.mapping_store import MappingStore
 
-__all__ = ["DetectorContract", "MappingStoreContract"]
+__all__ = ["DetectionPassContract", "DetectorContract", "MappingStoreContract"]
 
 #: Text a detector must survive. Nothing here is expected to be detected; the
 #: point is that none of it raises, hangs or reports a span outside the input.
@@ -221,3 +223,74 @@ class MappingStoreContract:
                 )
             )
         assert len(store.list_scope("s")) == 3
+
+
+class DetectionPassContract:
+    """What every ``DetectionPass`` implementation must do.
+
+    Subclass and implement :meth:`make_pass`. Two things are easy to get wrong
+    and both leak: reporting a span outside the text, and reporting a value that
+    is not the text the span covers -- the application splices on the span and
+    stores the value, so a mismatch puts the wrong characters back.
+    """
+
+    def make_pass(self) -> DetectionPass:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def seeds(self, text: str) -> tuple[SensitiveEntity, ...]:
+        """Prior findings to hand the pass. Override for passes that need them."""
+        return ()
+
+    def test_it_satisfies_the_protocol(self) -> None:
+        assert isinstance(self.make_pass(), DetectionPass)
+
+    def test_it_has_a_non_empty_name(self) -> None:
+        name = self.make_pass().name
+        assert isinstance(name, str) and name
+
+    @pytest.mark.parametrize("text", HOSTILE_INPUTS)
+    def test_it_survives_hostile_input(self, text: str) -> None:
+        context = DetectionContext(text=text, found=self.seeds(text))
+        assert isinstance(self.make_pass().run(context), Sequence)
+
+    @pytest.mark.parametrize("text", HOSTILE_INPUTS)
+    def test_spans_stay_inside_the_text(self, text: str) -> None:
+        context = DetectionContext(text=text, found=self.seeds(text))
+        for entity in self.make_pass().run(context):
+            assert 0 <= entity.span.start < entity.span.end <= len(text)
+
+    def test_the_value_is_the_text_the_span_covers(self) -> None:
+        text = (
+            "田中太郎さんへ tanaka@example.com / 田中太郎\n"
+            "Dear Jane Doe, cc Jane Doe\n"
+            "张伟先生，请张伟确认"
+        )
+        context = DetectionContext(text=text, found=self.seeds(text))
+        for entity in self.make_pass().run(context):
+            assert text[entity.span.start : entity.span.end] == entity.value
+
+    def test_it_does_not_re_report_what_is_already_covered(self) -> None:
+        """Prior findings are kept by the pipeline; duplicating them is noise."""
+        text = "田中太郎さんへ tanaka@example.com / 田中太郎"
+        seeds = self.seeds(text)
+        if not seeds:
+            pytest.skip("this pass does not consume prior findings")
+        claimed = DetectionContext(text=text, found=seeds).covered()
+        for entity in self.make_pass().run(DetectionContext(text=text, found=seeds)):
+            overlap = set(range(entity.span.start, entity.span.end)) & claimed
+            assert not overlap
+
+    def test_it_is_repeatable(self) -> None:
+        text = "田中太郎さんへ / 田中太郎 / Dear Jane Doe, cc Jane Doe"
+        context = DetectionContext(text=text, found=self.seeds(text))
+        stage = self.make_pass()
+        first = [(e.entity_type, e.span) for e in stage.run(context)]
+        second = [(e.entity_type, e.span) for e in stage.run(context)]
+        assert first == second
+
+    def test_it_does_not_mutate_the_context(self) -> None:
+        text = "田中太郎さんへ / 田中太郎"
+        context = DetectionContext(text=text, found=self.seeds(text))
+        before = context.found
+        self.make_pass().run(context)
+        assert context.found == before

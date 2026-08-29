@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from mamori.domain.sensitive_entity import SensitiveEntity
 from mamori.infrastructure.detectors import (
     CHINESE,
     ENGLISH,
@@ -9,14 +10,17 @@ from mamori.infrastructure.detectors import (
     UNIVERSAL_RULES,
     AdaptiveLocaleDetector,
     CompositeDetector,
+    CoOccurrencePass,
+    DetectorPass,
     RegexDetector,
     default_detectors,
 )
 from mamori.infrastructure.storage import InMemoryMappingStore
+from mamori.ports.detection_pass import DetectionContext, DetectionPass
 from mamori.ports.detector import Detector
 from mamori.ports.mapping_store import MappingStore
 
-from .contracts import DetectorContract, MappingStoreContract
+from .contracts import DetectionPassContract, DetectorContract, MappingStoreContract
 
 
 class TestUniversalRegexDetector(DetectorContract):
@@ -62,3 +66,30 @@ class TestEmptyCompositeDetector(DetectorContract):
 class TestInMemoryMappingStore(MappingStoreContract):
     def make_store(self) -> MappingStore:
         return InMemoryMappingStore()
+
+
+class TestRulesPass(DetectionPassContract):
+    def make_pass(self) -> DetectionPass:
+        return DetectorPass(
+            AdaptiveLocaleDetector(
+                [JAPANESE, ENGLISH, CHINESE],
+                always=[RegexDetector("universal", UNIVERSAL_RULES)],
+            ),
+            name="rules",
+        )
+
+
+class TestCoOccurrencePassContract(DetectionPassContract):
+    def make_pass(self) -> DetectionPass:
+        return CoOccurrencePass()
+
+    def seeds(self, text: str) -> tuple[SensitiveEntity, ...]:
+        """Whatever the rules find first, which is what the pipeline hands it."""
+        return tuple(
+            DetectorPass(
+                AdaptiveLocaleDetector(
+                    [JAPANESE, ENGLISH, CHINESE],
+                    always=[RegexDetector("universal", UNIVERSAL_RULES)],
+                )
+            ).run(DetectionContext(text=text))
+        )

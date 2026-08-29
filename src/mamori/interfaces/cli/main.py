@@ -5,6 +5,7 @@
     mamori restore  -- put the values back into a response
     mamori policy   -- show the active policy
     mamori locales  -- show the language packs and when each one runs
+    mamori config   -- show the settings that would be used, and where from
     mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
 
@@ -22,6 +23,7 @@ from pathlib import Path
 from ... import __version__
 from ...application.results import ProtectionResult, RestorationResult
 from ...application.session import PrivacySession
+from ...config import MamoriConfig, load_config_file
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.script import scripts_in
@@ -71,9 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"mamori {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    def add_input_args(p: argparse.ArgumentParser) -> None:
-        p.add_argument("text", nargs="?", help="text to process; omit to read stdin")
-        p.add_argument("-f", "--file", help="read the text from a file instead")
+    def add_config_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(
             "-l",
             "--locale",
@@ -84,6 +84,26 @@ def build_parser() -> argparse.ArgumentParser:
                 "which is the safer default"
             ),
         )
+        p.add_argument(
+            "-c", "--config", metavar="PATH", help="settings file (.json, or .toml on 3.11+)"
+        )
+        p.add_argument(
+            "--min-confidence",
+            type=float,
+            metavar="F",
+            help="ignore detections below this confidence; trades coverage for fewer"
+            " spurious placeholders",
+        )
+        p.add_argument(
+            "--no-co-occurrence",
+            action="store_true",
+            help="do not propagate a confirmed value to its other mentions in the text",
+        )
+
+    def add_input_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument("text", nargs="?", help="text to process; omit to read stdin")
+        p.add_argument("-f", "--file", help="read the text from a file instead")
+        add_config_args(p)
 
     inspect = sub.add_parser("inspect", help="report what would be detected")
     add_input_args(inspect)
@@ -109,6 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("policy", help="show the active policy")
     sub.add_parser("locales", help="show the language packs and when each runs")
+
+    config_cmd = sub.add_parser("config", help="show the settings that would be used")
+    add_config_args(config_cmd)
+    config_cmd.add_argument("--json", action="store_true", help="emit JSON")
     sub.add_parser("demo", help="run a full round trip on a sample text")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
@@ -171,12 +195,75 @@ def _reports_as_json(result: ProtectionResult) -> list[dict[str, object]]:
     ]
 
 
+def _settings_from(args: argparse.Namespace) -> MamoriConfig:
+    """Layer the settings: defaults, then file, then environment, then flags.
+
+    Later layers win, so a shared config file can be checked in and one machine
+    or one invocation can still differ without editing it.
+    """
+    settings = MamoriConfig()
+    path = getattr(args, "config", None)
+    if path:
+        settings = settings.merged_with(load_config_file(Path(path)))
+    settings = settings.merged_with(MamoriConfig.from_env())
+
+    changes: dict[str, object] = {}
+    if getattr(args, "locale", None):
+        changes["locales"] = tuple(args.locale)
+    if getattr(args, "min_confidence", None) is not None:
+        changes["min_confidence"] = args.min_confidence
+    if getattr(args, "no_co_occurrence", False):
+        changes["co_occurrence"] = False
+    return settings.replace(**changes) if changes else settings
+
+
+def _cmd_config(args: argparse.Namespace) -> int:
+    settings = _settings_from(args)
+    if args.json:
+        print(json.dumps(_settings_as_json(settings), ensure_ascii=False, indent=2))
+        return _EXIT_OK
+
+    print("effective settings\n")
+    print(f"  locales                      {', '.join(settings.locales or ['(all)'])}")
+    print(f"  default action               {settings.default_action.value}")
+    print(f"  min confidence               {settings.min_confidence}")
+    print(f"  co-occurrence                {'on' if settings.co_occurrence else 'off'}")
+    print(f"  co-occurrence min confidence {settings.co_occurrence_min_confidence}")
+    print(f"  mask token                   {settings.mask_token}")
+    if settings.rules:
+        print("\n  rules")
+        for name, action in sorted(settings.rules.items()):
+            print(f"    {name:<20} {action.value}")
+    print(
+        "\nLayered: built-in defaults, then --config, then MAMORI_* environment\n"
+        "variables, then the flags on this command line. Later wins."
+    )
+    return _EXIT_OK
+
+
+def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
+    return {
+        "locales": list(settings.locales) if settings.locales else None,
+        "rules": {name: action.value for name, action in settings.rules.items()},
+        "category_defaults": {
+            category.value: action.value for category, action in settings.category_defaults.items()
+        },
+        "default_action": settings.default_action.value,
+        "min_confidence": settings.min_confidence,
+        "co_occurrence": settings.co_occurrence,
+        "co_occurrence_min_confidence": settings.co_occurrence_min_confidence,
+        "mask_token": settings.mask_token,
+    }
+
+
 def _cmd_inspect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
+    settings = _settings_from(args)
     # Inspection must report on credentials rather than refuse, so it uses a
     # permissive policy. It never prints a protected text, so nothing here is
     # a step towards sending anything.
-    with PrivacySession(policy=PrivacyPolicy.permissive(), locales=args.locale) as session:
+    policy = PrivacyPolicy.permissive().with_min_confidence(settings.min_confidence)
+    with PrivacySession(config=settings, policy=policy) as session:
         result = session.protect(text)
         if args.json:
             print(json.dumps({"entities": _reports_as_json(result)}, ensure_ascii=False, indent=2))
@@ -187,9 +274,14 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 def _cmd_protect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
-    policy = PrivacyPolicy.permissive() if args.permissive else PrivacyPolicy.default()
+    settings = _settings_from(args)
+    policy = (
+        PrivacyPolicy.permissive().with_min_confidence(settings.min_confidence)
+        if args.permissive
+        else settings.policy()
+    )
     store = InMemoryMappingStore()
-    session = PrivacySession(policy=policy, store=store, locales=args.locale)
+    session = PrivacySession(config=settings, policy=policy, store=store)
     try:
         result = session.protect(text)
     except PolicyViolationError as exc:
@@ -424,6 +516,7 @@ _COMMANDS = {
     "protect": _cmd_protect,
     "restore": _cmd_restore,
     "policy": _cmd_policy,
+    "config": _cmd_config,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
     "eval": _cmd_eval,
