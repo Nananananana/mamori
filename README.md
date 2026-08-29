@@ -226,6 +226,44 @@ English false positive was `OTHER_SENSITIVE` used as a dustbin; one guidance
 rule about what that type is for halved over-redaction from 8.80% to 4.43%.
 
 
+### Readable values instead of tokens
+
+Some models reason badly about a page of `<PERSON_001>`. Substituting a
+readable value usually gets a better answer:
+
+```json
+{"surrogates": ["PERSON", "EMAIL", "PHONE"]}
+```
+
+```text
+you wrote   Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
+sent        Dear Alex Rivera, reach me at a.person@example.com or 415-555-0142.
+restored    Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
+```
+
+The address and the number come from ranges reserved for documentation
+(RFC 2606, the 555-01xx block), so one that escapes means nothing anywhere.
+**Nothing is reserved for personal names**, and that is the risk that stays.
+
+It is **off by default**, and the reason is worth understanding before turning
+it on. An unrestored `<PERSON_001>` is obvious. An unrestored `Alex Rivera` is
+a sentence about the wrong person, and nobody notices. A placeholder can be
+recognised by its shape, so restoration copes with a model that mangles one; a
+surrogate is just a name, so it either matches or it does not.
+
+What mamori can do is tell you. `RestorationResult.missing` lists everything
+that did not come back — check it on every answer — and `mamori privacy` warns
+whenever surrogates are on, naming which pools are reserved and which are
+merely invented.
+
+```bash
+mamori demo --scenario surrogates
+```
+
+See [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md).
+
+---
+
 ## When it gets something wrong
 
 It will. A salutation anchor is right far more often than it is wrong, and
@@ -729,7 +767,8 @@ delivered the proxy, and made the privacy claims answerable and machine-checked.
 discarding almost everything the model got right. `v0.8` gave the operator the
 last word. `v0.9` grew the datasets to document scale, which found four
 detection bugs that 44-character samples could not have shown. `v0.10` added a
-demo that runs, and found a bug in the measurement harness itself.
+demo that runs, and found a bug in the measurement harness itself. `v0.11`
+added surrogate values, off by default.
 
 | | |
 |---|---|

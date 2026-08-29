@@ -87,6 +87,11 @@ class MamoriConfig:
             log, or the entries themselves. This is the only setting that can
             *reduce* what is detected, and what it excludes is reported by
             ``mamori privacy``. A credential can never be excluded.
+        surrogates: Entity types replaced by a plausible value rather than by a
+            token -- ``["PERSON", "EMAIL"]``, or ``true`` for every type a pool
+            covers. Off by default. It buys answer quality and costs the thing
+            that makes a placeholder safe: an unrestored token is obvious, and
+            an unrestored surrogate reads as a fact about the wrong person.
     """
 
     locales: tuple[str, ...] | None = None
@@ -101,6 +106,7 @@ class MamoriConfig:
     prompts: Mapping[str, object] = field(default_factory=dict)
     llm: LLMSettings | None = None
     corrections: str | Sequence[Mapping[str, object]] = ()
+    surrogates: bool | Sequence[str] = False
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -161,6 +167,16 @@ class MamoriConfig:
                 extra_passes=extra,
             ),
         )
+
+    def surrogate_types(self) -> frozenset[str]:
+        """Types to substitute with a plausible value rather than a token."""
+        from .domain.surrogate import supported_types
+
+        if self.surrogates is True:
+            return supported_types()
+        if self.surrogates is False:
+            return frozenset()
+        return frozenset(str(name).strip().upper() for name in self.surrogates)
 
     def correction_log(self) -> CorrectionLog:
         """The operator's rulings, from a path or from the settings themselves.
@@ -257,6 +273,7 @@ class MamoriConfig:
             scope=scope,
             prompts=self.prompt_library(),
             corrections=self.correction_log(),
+            surrogate_types=self.surrogate_types(),
         )
 
     def replace(self, **changes: object) -> MamoriConfig:
@@ -317,6 +334,8 @@ class MamoriConfig:
                 raise ConfigurationError("llm must be a mapping or null")
         if "corrections" in values:
             kwargs["corrections"] = _as_corrections(values["corrections"])
+        if "surrogates" in values:
+            kwargs["surrogates"] = _as_surrogates(values["surrogates"])
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -424,6 +443,24 @@ def _as_locales(value: object) -> tuple[str, ...] | None:
     if isinstance(value, Sequence):
         return tuple(str(item) for item in value)
     raise ConfigurationError(f"locales must be a list or a comma-separated string: {value!r}")
+
+
+def _as_surrogates(value: object) -> bool | Sequence[str]:
+    """``true``, ``false``, or the list of types to substitute."""
+    from .domain.surrogate import supported_types
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        names = [str(name).strip().upper() for name in value]
+        unknown = sorted(set(names) - supported_types())
+        if unknown:
+            raise ConfigurationError(
+                f"no surrogate pool for {', '.join(unknown)}; "
+                f"available: {', '.join(sorted(supported_types()))}"
+            )
+        return names
+    raise ConfigurationError("surrogates must be true, false, or a list of type names")
 
 
 def _as_corrections(value: object) -> str | Sequence[Mapping[str, object]]:

@@ -8,6 +8,86 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-29
+
+Surrogate values: `山田一郎` instead of `<PERSON_001>`, off by default. On the
+roadmap since 0.4 and deferred four times, because it is an answer-quality
+feature and everything above it was a correctness one.
+
+### Added
+
+- **Surrogates, as a policy option.** Some models reason visibly worse about a
+  page of tokens -- they lose track of who is who, they occasionally refuse to
+  draft a reply *to* a placeholder, and they sometimes describe the token
+  instead of using it. A readable value usually gets a better answer.
+
+  ```json
+  {"surrogates": ["PERSON", "EMAIL", "PHONE"]}
+  ```
+
+  ```text
+  you wrote   Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
+  sent        Dear Alex Rivera, reach me at a.person@example.com or 415-555-0142.
+  restored    Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198.
+  ```
+
+  See [ADR 0026](docs/adr/0026-surrogates-trade-obviousness-for-readability.md).
+
+- **Reserved ranges wherever any exist.** Emails use `example.com` and
+  `example.org` (RFC 2606), addresses use the TEST-NET blocks of RFC 5737,
+  telephone numbers use the ranges kept aside for fiction. A structured
+  surrogate that escapes is not only harmless but identifiable: somebody who
+  finds `192.0.2.10` in a log can look it up and learn it means nothing
+  anywhere. Each pool records why it is safe, and `mamori privacy` prints it --
+  "reserved for documentation" and "a plausible name we invented" are very
+  different promises.
+
+- **`mamori demo --scenario surrogates`**, which shows the trade including the
+  failure, not just the happy path.
+
+### The reason it is off by default
+
+**An unrestored placeholder is obvious. An unrestored surrogate is not.**
+Somebody reading `<PERSON_001>さんへ` knows at once that something did not
+finish; somebody reading `山田一郎さんへ` reads a sentence about a person and
+has no way to tell it is the wrong one.
+
+Restoration loses its tolerance, and that cannot be avoided. A placeholder is
+recognised by shape, so the restorer copes with `PERSON_001`, `<person_001>`
+and `＜PERSON_001＞`. A surrogate is a name: it matches exactly or it does not.
+
+What mamori can do is say so. `RestorationResult.missing` lists every mapping
+that did not come back, so the failure is detectable even when it is not
+visible. `mamori privacy` warns whenever surrogates are on -- twice when an
+invented pool is in use -- with a non-zero exit status, so a deployment check
+can fail on it.
+
+**Nothing is reserved for personal names**, and no design fixes that. It is
+stated in the module, in the report, in the demo and in all three READMEs.
+
+### Design notes
+
+- **Chosen by allocation order, never derived from the value.** Hashing the
+  original would be tidier and would open a correlation channel: the same real
+  person would get the same fake name in every document, so an observer holding
+  two protected documents could tell they concern the same individual. Order is
+  what keeps a surrogate from carrying information about what it replaced.
+
+- **A surrogate never collides with the text it enters.** If the pool's choice
+  already appears in the document, the next one is used -- restoring the wrong
+  occurrence would corrupt the caller's own words, which is the one hazard here
+  that would do damage rather than merely fail.
+
+- **An exhausted pool falls back to a placeholder**, which is always safe.
+
+- **No pool covers a credential.** There is no plausible stand-in for a
+  password, and credentials are blocked rather than substituted anyway.
+
+- `Mapping` gains `surface`, empty for every mapping mamori makes by default.
+  It is excluded from `repr` alongside the original value: a surrogate is not
+  sensitive, but the *pair* is exactly the lookup table this library exists to
+  keep off other machines.
+
 ## [0.10.0] - 2026-08-29
 
 A demo you can actually run, a guide to measuring mamori on your own text, and
@@ -783,7 +863,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Nananananana/mamori/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Nananananana/mamori/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Nananananana/mamori/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Nananananana/mamori/compare/v0.7.0...v0.8.0

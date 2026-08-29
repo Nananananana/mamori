@@ -60,7 +60,7 @@ interfaces ──> application ──> domain
 
 | Layer | Holds | May import |
 |---|---|---|
-| `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity, host trust, corrections | stdlib only |
+| `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity, host trust, corrections, surrogates | stdlib only |
 | `ports/` | `Detector`, `DetectionPass`, `MappingStore`, `LLMProvider` protocols, `LLMEndpoint` | `domain` |
 | `prompts/` | Guidance, prompt definitions, overlays, response parsing | `domain` |
 | `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports`, `prompts`, and `infrastructure` for default construction only |

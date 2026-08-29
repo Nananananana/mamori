@@ -12,6 +12,7 @@ Each scenario answers one question somebody actually has.
 ``document``    Does this work on something longer than a sentence?
 ``corrections`` It got one wrong. Now what?
 ``blocked``     What if there is a password in my text?
+``surrogates``  Can I have readable values instead of tokens?
 
 The demo text is invented, like everything else that ships in this package.
 ``--text`` and ``--file`` run the same tour on yours instead, which is the
@@ -172,12 +173,50 @@ def _blocked(config: MamoriConfig, text: str) -> None:
             print("Nothing was sent. The credential is not quoted back, either.")
 
 
+def _surrogates(config: MamoriConfig, text: str) -> None:
+    _heading("6. Plausible values instead of tokens")
+    print("Some models reason badly about a page of <PERSON_001>. Substituting")
+    print("a readable name usually gets a better answer -- and gives up the")
+    print("thing that makes a token safe.")
+
+    sample = "Dear Jane Doe, reach me at jane.doe@example.com or 415-555-0198."
+    with config.session() as session:
+        _block("with tokens (the default)", session.protect(sample).protected_text)
+
+    surrogate = MamoriConfig(surrogates=True)
+    with surrogate.session() as session:
+        result = session.protect(sample)
+        _block("with surrogates", result.protected_text)
+        _block("restored", session.restore(result.protected_text).text)
+
+    print()
+    print("The address and the number come from ranges reserved for")
+    print("documentation, so one that escapes means nothing anywhere. Nothing")
+    print("is reserved for personal names, which is the risk that stays.")
+
+    with surrogate.session() as session:
+        result = session.protect(sample)
+        mangled = result.protected_text.replace("Alex Rivera", "Alex")
+        _block("if the model rewrites one", mangled)
+        answer = session.restore(mangled)
+        _block("restored", answer.text)
+        print()
+        print(f"  missing: {[p.token for p in answer.missing]}")
+
+    print()
+    print("A token can be recognised by its shape, so restoration tolerates a")
+    print("model that mangles it. A surrogate is just a name -- it either")
+    print("matches or it does not. That is why this is off by default, and why")
+    print("RestorationResult.missing is the thing to check when it is on.")
+
+
 SCENARIOS: dict[str, Callable[[MamoriConfig, str], None]] = {
     "roundtrip": _roundtrip,
     "stream": _stream,
     "document": _document,
     "corrections": _corrections,
     "blocked": _blocked,
+    "surrogates": _surrogates,
 }
 
 

@@ -12,8 +12,10 @@ from ..domain.normalization import NormalizedText
 from ..domain.placeholder import STRICT_PLACEHOLDER_RE, Placeholder
 from ..domain.policy import Action, PrivacyPolicy
 from ..domain.resolution import assert_non_overlapping, resolve_overlaps
+from ..domain.script import scripts_in
 from ..domain.sensitive_entity import SensitiveEntity
 from ..domain.span import Span
+from ..domain.surrogate import pool_for, surrogate_for
 from ..errors import DetectionError, PolicyViolationError
 from ..ports.detector import Detector
 from ..ports.mapping_store import MappingStore
@@ -36,8 +38,13 @@ class ProtectionService:
         policy: PrivacyPolicy,
         store: MappingStore,
         corrections: CorrectionLog | None = None,
+        surrogate_types: frozenset[str] = frozenset(),
     ) -> None:
         self._corrections = corrections if corrections is not None else CorrectionLog()
+        #: Types substituted with a plausible value instead of a token. Empty
+        #: by default, and deliberately: an unrestored placeholder is obvious
+        #: and an unrestored surrogate reads as a fact about the wrong person.
+        self._surrogate_types = frozenset(surrogate_types)
         self._detectors = tuple(detectors)
         self._policy = policy
         self._store = store
@@ -134,8 +141,9 @@ class ProtectionService:
             elif action is Action.MASK:
                 replacement = self._policy.mask_token
             else:  # ANONYMIZE
-                placeholder = self._allocate(entity, scope)
-                replacement = placeholder.token
+                mapping = self._allocate(entity, scope, text)
+                placeholder = mapping.placeholder
+                replacement = mapping.substituted
 
             pieces.append(text[cursor : entity.span.start])
             pieces.append(replacement)
@@ -160,7 +168,7 @@ class ProtectionService:
             scope=scope,
         )
 
-    def _allocate(self, entity: SensitiveEntity, scope: str) -> Placeholder:
+    def _allocate(self, entity: SensitiveEntity, scope: str, text: str) -> Mapping:
         """Return the placeholder for this entity, reusing it within the scope.
 
         The same value seen twice must map to the same token, or the model
@@ -169,17 +177,60 @@ class ProtectionService:
         identity = entity.identity_key
         existing = self._store.find_by_identity(scope, identity)
         if existing is not None:
-            return existing.placeholder
+            return existing
 
         type_name = entity.entity_type.name
-        placeholder = Placeholder(type_name, self._store.next_index(scope, type_name))
-        self._store.put(
-            Mapping(
-                scope=scope,
-                placeholder=placeholder,
-                entity_type_name=type_name,
-                original_value=entity.value,
-                identity_key=identity,
-            )
+        index = self._store.next_index(scope, type_name)
+        placeholder = Placeholder(type_name, index)
+        mapping = Mapping(
+            scope=scope,
+            placeholder=placeholder,
+            entity_type_name=type_name,
+            original_value=entity.value,
+            identity_key=identity,
+            surface=self._surface_for(type_name, index, scope, text),
         )
-        return placeholder
+        self._store.put(mapping)
+        return mapping
+
+    def _surface_for(self, type_name: str, index: int, scope: str, text: str) -> str:
+        """A surrogate to substitute, or empty for the placeholder token.
+
+        Empty is the default and the safe answer. A surrogate is only produced
+        when the caller asked for one for this type, a pool covers it, and the
+        value it would use appears nowhere in the document and has not already
+        been handed to something else -- because restoring the wrong occurrence
+        would corrupt the caller's own words.
+        """
+        if type_name not in self._surrogate_types:
+            return ""
+        taken = {m.surface for m in self._store.list_scope(scope) if m.surface}
+        return (
+            surrogate_for(
+                type_name,
+                index,
+                locale=self._surrogate_locale(text),
+                avoid=frozenset(taken) | _appearing_in(text, type_name),
+            )
+            or ""
+        )
+
+    def _surrogate_locale(self, text: str) -> str:
+        """Which pool to draw from, so a Japanese name is replaced by one."""
+        scripts = {script.value for script in scripts_in(text)}
+        if "kana" in scripts:
+            return "ja"
+        if "han" in scripts:
+            return "zh"
+        return "en"
+
+
+def _appearing_in(text: str, type_name: str) -> frozenset[str]:
+    """Pool values already present in the document, which must not be reused."""
+    pool = pool_for(type_name, "*")
+    candidates = set(pool.values) if pool else set()
+    for locale in ("ja", "en", "zh"):
+        located = pool_for(type_name, locale)
+        if located is not None:
+            candidates |= set(located.values)
+    return frozenset(value for value in candidates if value in text)

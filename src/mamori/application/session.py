@@ -48,6 +48,7 @@ class PrivacySession:
         locales: Sequence[str] | str | None = None,
         prompts: PromptLibrary | None = None,
         corrections: CorrectionLog | None = None,
+        surrogate_types: frozenset[str] = frozenset(),
     ) -> None:
         """
         Args:
@@ -63,6 +64,11 @@ class PrivacySession:
             corrections: Values the operator has ruled on. The only input
                 that can reduce what is detected, and the one place a
                 credential cannot be ruled away.
+            surrogate_types: Types replaced by a plausible value rather than a
+                token. Empty by default. Read
+                :mod:`mamori.domain.surrogate` before turning it on: an
+                unrestored placeholder is obvious and an unrestored surrogate
+                is a sentence about the wrong person.
 
         To build one from a :class:`~mamori.config.MamoriConfig`, call
         :meth:`~mamori.config.MamoriConfig.session`. Settings assemble a
@@ -81,7 +87,11 @@ class PrivacySession:
         self._scope = scope or f"session-{uuid.uuid4().hex[:12]}"
         self._corrections = corrections if corrections is not None else CorrectionLog()
         self._protection = ProtectionService(
-            self._detectors, self._policy, self._store, self._corrections
+            self._detectors,
+            self._policy,
+            self._store,
+            self._corrections,
+            surrogate_types=frozenset(surrogate_types),
         )
         self._restoration = RestorationService(self._store)
 

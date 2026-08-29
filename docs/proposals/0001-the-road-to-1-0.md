@@ -1,6 +1,6 @@
 # 0001. The road to 1.0
 
-**Status:** current plan, revised after 0.10.0
+**Status:** current plan, revised after 0.11.0
 
 A roadmap in a README is a list. This is the reasoning behind the list, which
 is the part that changes when something is learned. ADRs record decisions
@@ -25,6 +25,8 @@ edited.
   fragment sets could not have shown.
 - `0.10` — a demo that runs, a guide to measuring on your own text, and a bug
   in the harness that had been corrupting the model-tier numbers since 0.7.
+- `0.11` — surrogate values, off by default, with the failure mode they carry
+  made detectable rather than merely documented.
 
 ## What measuring keeps changing about the plan
 
@@ -105,13 +107,18 @@ third time in four releases that something correct-looking turned out to be
 doing nothing, which is beginning to look less like bad luck and more like the
 shape of this kind of software.
 
-### 0.11 — Surrogate values
+### 0.11 — Surrogate values *(delivered)*
 
-`田中太郎` → `山田一郎` rather than `<PERSON_001>`, as a policy option. Some
-prompts lose too much answer quality to an opaque token, and a model reasons
-better about a sentence that still reads like a sentence. Deferred this long
-because it is an answer-quality feature and everything above it is a
-correctness one.
+`田中太郎` → `山田一郎` rather than `<PERSON_001>`, off by default. Reserved
+ranges wherever any exist (RFC 2606, RFC 5737, the 555-01xx block), so a
+structured surrogate that escapes means nothing anywhere. Names have nothing
+reserved and that is the residual risk, stated everywhere it can be.
+
+The design turned on one observation: an unrestored placeholder is obvious and
+an unrestored surrogate is a sentence about the wrong person. Restoration loses
+its shape-tolerance, which cannot be avoided, so `RestorationResult.missing`
+became the thing that makes the failure detectable instead of silent. See
+[ADR 0026](../adr/0026-surrogates-trade-obviousness-for-readability.md).
 
 ### 0.12 — Deployment: persistence and integration
 

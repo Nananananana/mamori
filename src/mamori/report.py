@@ -186,6 +186,34 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
 
     destinations, warnings = _destinations(config, upstream)
 
+    surrogate_types = sorted(config.surrogate_types())
+    if surrogate_types:
+        from .domain.surrogate import pool_for
+
+        bases: dict[str, str] = {}
+        for name in surrogate_types:
+            for locale in ("*", "en", "ja", "zh"):
+                pool = pool_for(name, locale)
+                if pool is not None:
+                    bases[name] = pool.basis
+                    break
+        detection["surrogates"] = bases
+        invented = [name for name, basis in detection["surrogates"].items() if "invented" in basis]
+        warnings.append(
+            "surrogate values are substituted for "
+            + ", ".join(surrogate_types)
+            + ". An unrestored placeholder is obvious; an unrestored surrogate "
+            "reads as a fact about the wrong person"
+        )
+        if invented:
+            warnings.append(
+                "nothing is reserved for " + ", ".join(invented) + ", so those "
+                "surrogates are plausible rather than identifiable. Check "
+                "RestorationResult.missing on every answer"
+            )
+    else:
+        detection["surrogates"] = {}
+
     log = config.correction_log()
     corrections = {
         "rulings": len(log),
