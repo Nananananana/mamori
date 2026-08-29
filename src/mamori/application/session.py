@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ..domain.policy import PrivacyPolicy
 from ..ports.detector import Detector
 from ..ports.mapping_store import MappingStore
+from ..prompts.library import EXTERNAL_PROMPT_ID
 from .protection import ProtectionService
 from .restoration import RestorationService
 from .results import ProtectionResult, RestorationResult
@@ -110,6 +111,21 @@ class PrivacySession:
     def restore(self, text: str) -> RestorationResult:
         """Replace this session's placeholders in ``text`` with real values."""
         return self._restoration.restore(text, self._scope)
+
+    def external_system_prompt(self) -> str:
+        """What to tell the service model about the placeholders.
+
+        Prepend this to your own system prompt. It costs a few hundred tokens
+        and it is the cheapest recall the library offers: every placeholder
+        that comes back intact is one restoration does not have to recover from
+        a mangled form, and a placeholder nobody recovers is an answer with a
+        hole in it.
+
+            >>> with PrivacySession() as session:
+            ...     "placeholders" in session.external_system_prompt()
+            True
+        """
+        return self._config.prompt_library().render(EXTERNAL_PROMPT_ID).text
 
     def stream_restore(self) -> StreamingRestorer:
         """Start restoring a response that arrives in pieces.

@@ -6,6 +6,7 @@
     mamori policy   -- show the active policy
     mamori locales  -- show the language packs and when each one runs
     mamori config   -- show the settings that would be used, and where from
+    mamori prompt   -- show exactly what would be sent to a model
     mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
 
@@ -27,6 +28,7 @@ from ...config import MamoriConfig, load_config_file
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.script import scripts_in
+from ...domain.stance import Stance
 from ...errors import MamoriError, PolicyViolationError
 from ...evaluation import (
     Dataset,
@@ -38,6 +40,7 @@ from ...evaluation import (
 from ...infrastructure.detectors import available_locales
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
+from ...prompts.library import EXTERNAL_PROMPT_ID
 
 __all__ = ["build_parser", "main"]
 
@@ -99,6 +102,14 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="do not propagate a confirmed value to its other mentions in the text",
         )
+        p.add_argument(
+            "--stance",
+            choices=[stance.value for stance in Stance],
+            help=(
+                "which rule tiers run. recall_first (the default) adds rules that "
+                "match on shape alone: fewer misses, more ordinary words replaced"
+            ),
+        )
 
     def add_input_args(p: argparse.ArgumentParser) -> None:
         p.add_argument("text", nargs="?", help="text to process; omit to read stdin")
@@ -133,6 +144,20 @@ def build_parser() -> argparse.ArgumentParser:
     config_cmd = sub.add_parser("config", help="show the settings that would be used")
     add_config_args(config_cmd)
     config_cmd.add_argument("--json", action="store_true", help="emit JSON")
+
+    prompt_cmd = sub.add_parser("prompt", help="show exactly what would be sent to a model")
+    prompt_cmd.add_argument(
+        "name",
+        nargs="?",
+        default=EXTERNAL_PROMPT_ID,
+        help="prompt id: external (for the service model) or detection (for a local one)",
+    )
+    add_config_args(prompt_cmd)
+    prompt_cmd.add_argument(
+        "--guidance",
+        action="store_true",
+        help="list the guidance ids instead of the text, so they can be disabled",
+    )
     sub.add_parser("demo", help="run a full round trip on a sample text")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
@@ -154,6 +179,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.0,
         metavar="F",
         help="drop detections below this confidence before scoring",
+    )
+    evaluate_cmd.add_argument(
+        "--stance",
+        choices=[stance.value for stance in Stance],
+        default=Stance.RECALL_FIRST.value,
+        help="which rule tiers to score (default: recall_first)",
     )
     evaluate_cmd.add_argument(
         "--show-leaks",
@@ -214,6 +245,8 @@ def _settings_from(args: argparse.Namespace) -> MamoriConfig:
         changes["min_confidence"] = args.min_confidence
     if getattr(args, "no_co_occurrence", False):
         changes["co_occurrence"] = False
+    if getattr(args, "stance", None):
+        changes["stance"] = Stance(args.stance)
     return settings.replace(**changes) if changes else settings
 
 
@@ -225,6 +258,7 @@ def _cmd_config(args: argparse.Namespace) -> int:
 
     print("effective settings\n")
     print(f"  locales                      {', '.join(settings.locales or ['(all)'])}")
+    print(f"  stance                       {settings.stance.value}")
     print(f"  default action               {settings.default_action.value}")
     print(f"  min confidence               {settings.min_confidence}")
     print(f"  co-occurrence                {'on' if settings.co_occurrence else 'off'}")
@@ -244,6 +278,7 @@ def _cmd_config(args: argparse.Namespace) -> int:
 def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
     return {
         "locales": list(settings.locales) if settings.locales else None,
+        "stance": settings.stance.value,
         "rules": {name: action.value for name, action in settings.rules.items()},
         "category_defaults": {
             category.value: action.value for category, action in settings.category_defaults.items()
@@ -254,6 +289,34 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
         "co_occurrence_min_confidence": settings.co_occurrence_min_confidence,
         "mask_token": settings.mask_token,
     }
+
+
+def _cmd_prompt(args: argparse.Namespace) -> int:
+    settings = _settings_from(args)
+    library = settings.prompt_library()
+    rendered = library.render(args.name, settings.locales)
+
+    if args.guidance:
+        prompt = library.get(args.name)
+        print(f"{args.name} v{rendered.version}  ({len(prompt.guidance)} guidance rules)\n")
+        width = max((len(rule.id) for rule in prompt.guidance), default=4)
+        for rule in prompt.guidance:
+            locales = ",".join(rule.locales) or "any"
+            marker = " " if rule.origin == "builtin" else "*"
+            print(f" {marker}{rule.id:<{width}}  {rule.kind.value:<8}  {locales}")
+        print(
+            "\n* = added by an overlay. Disable any of these with\n"
+            '  {"prompts": {"' + args.name + '": {"disable": ["<id>"]}}}'
+        )
+        return _EXIT_OK
+
+    print(rendered.text)
+    print(
+        f"-- {args.name} v{rendered.version}, fingerprint {rendered.fingerprint}, "
+        f"{len(rendered)} characters, {len(rendered.guidance_ids)} guidance rules",
+        file=sys.stderr,
+    )
+    return _EXIT_OK
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
@@ -488,9 +551,11 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         print("no datasets matched", file=sys.stderr)
         return _EXIT_ERROR
 
+    detectors = list(MamoriConfig(stance=Stance(args.stance)).detectors())
     reports = [
         evaluate(
             dataset,
+            detectors=detectors,
             match=MatchMode(args.match),
             min_confidence=args.min_confidence,
         )
@@ -517,6 +582,7 @@ _COMMANDS = {
     "restore": _cmd_restore,
     "policy": _cmd_policy,
     "config": _cmd_config,
+    "prompt": _cmd_prompt,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
     "eval": _cmd_eval,

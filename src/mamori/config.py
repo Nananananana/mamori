@@ -35,7 +35,9 @@ from typing import Any
 
 from .domain.entity_types import Category
 from .domain.policy import Action, PrivacyPolicy
+from .domain.stance import Stance
 from .errors import ConfigurationError
+from .prompts.library import PromptLibrary, default_library
 
 __all__ = ["MamoriConfig", "load_config_file"]
 
@@ -50,6 +52,11 @@ class MamoriConfig:
 
     Args:
         locales: Language pack codes, or ``None`` for all of them.
+        stance: Which rule tiers run. ``recall_first`` adds the wide tier --
+            rules that match on shape alone, with no anchor. They find what
+            nothing else can and they also fire on order numbers and product
+            names. The default, because a miss is silent and a stray
+            placeholder is visible.
         rules: Entity type name -> action, highest precedence.
         category_defaults: Category name -> action.
         default_action: Used when neither matches. ``block`` keeps an
@@ -62,9 +69,14 @@ class MamoriConfig:
         co_occurrence_min_confidence: How sure a detection must be before its
             value is trusted as a seed.
         mask_token: Text substituted for the ``mask`` action.
+        prompts: Per-prompt overlays -- guidance to add, guidance to disable,
+            sections to replace. This is where an organisation puts what the
+            library cannot know: that their case numbers look like ACME-12345,
+            or that a product name keeps coming back as a person.
     """
 
     locales: tuple[str, ...] | None = None
+    stance: Stance = Stance.RECALL_FIRST
     rules: Mapping[str, Action] = field(default_factory=dict)
     category_defaults: Mapping[Category, Action] = field(default_factory=dict)
     default_action: Action = Action.BLOCK
@@ -72,6 +84,7 @@ class MamoriConfig:
     co_occurrence: bool = True
     co_occurrence_min_confidence: float = 0.85
     mask_token: str = "[REDACTED]"  # noqa: S105 - a redaction marker, not a credential
+    prompts: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -101,7 +114,18 @@ class MamoriConfig:
             if self.co_occurrence
             else None
         )
-        return (build_pipeline(self.locales, co_occurrence=pass_),)
+        return (build_pipeline(self.locales, co_occurrence=pass_, stance=self.stance),)
+
+    def prompt_library(self) -> PromptLibrary:
+        """The prompts these settings describe, overlays applied.
+
+        Raises:
+            ConfigurationError: an overlay for an unknown prompt, or one that
+                disables guidance that is not there.
+        """
+        from .prompts.library import PromptLibrary as _Library
+
+        return _Library.from_mapping(self.prompts) if self.prompts else default_library()
 
     def replace(self, **changes: object) -> MamoriConfig:
         """Return a copy with some fields changed."""
@@ -131,6 +155,8 @@ class MamoriConfig:
         kwargs: dict[str, object] = {}
         if "locales" in values:
             kwargs["locales"] = _as_locales(values["locales"])
+        if "stance" in values:
+            kwargs["stance"] = _as_stance(values["stance"])
         if "rules" in values:
             kwargs["rules"] = _as_rules(values["rules"])
         if "category_defaults" in values:
@@ -147,6 +173,8 @@ class MamoriConfig:
             )
         if "mask_token" in values:
             kwargs["mask_token"] = str(values["mask_token"])
+        if "prompts" in values:
+            kwargs["prompts"] = _as_prompts(values["prompts"])
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -236,6 +264,26 @@ def _as_locales(value: object) -> tuple[str, ...] | None:
     if isinstance(value, Sequence):
         return tuple(str(item) for item in value)
     raise ConfigurationError(f"locales must be a list or a comma-separated string: {value!r}")
+
+
+def _as_prompts(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ConfigurationError(f"prompts must be a mapping, got {type(value).__name__}")
+    # Validated eagerly: an overlay that only fails when a model is finally
+    # wired up is an overlay nobody notices is broken.
+    from .prompts.library import PromptLibrary as _Library
+
+    overlays = {str(key): item for key, item in value.items()}
+    _Library.from_mapping(overlays)
+    return overlays
+
+
+def _as_stance(value: object) -> Stance:
+    try:
+        return Stance(str(value).strip().lower())
+    except ValueError as exc:
+        allowed = ", ".join(stance.value for stance in Stance)
+        raise ConfigurationError(f"unknown stance {value!r}; allowed: {allowed}") from exc
 
 
 def _as_action(value: object, where: str) -> Action:
