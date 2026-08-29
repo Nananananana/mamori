@@ -59,12 +59,32 @@ class PrivacyPolicy:
             ``BLOCK`` so that an unrecognised kind of sensitive data stops the
             request instead of silently leaving the machine.
         mask_token: Text substituted for ``MASK``.
+        min_confidence: Detections below this are discarded before anything
+            else happens -- they are treated as never having been found.
+
+            This is the coverage/quality dial. Raising it trades recall for
+            fewer spurious placeholders, which is a real trade: a document full
+            of tokens standing in for ordinary words is one nobody sends, and a
+            privacy layer people stop using protects nothing.
+
+            The default is ``0.0`` and must stay there. Lowering coverage is a
+            decision for whoever is handling the data, not a default they
+            inherit without being asked.
     """
 
     rules: MappingABC[str, Action] = field(default_factory=dict)
     category_defaults: MappingABC[Category, Action] = field(default_factory=dict)
     default_action: Action = Action.BLOCK
     mask_token: str = "[REDACTED]"  # noqa: S105 - a redaction marker, not a credential
+    min_confidence: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.min_confidence <= 1.0:
+            raise ValueError(f"min_confidence out of range: {self.min_confidence}")
+
+    def accepts(self, confidence: float) -> bool:
+        """Whether a detection is confident enough to be considered at all."""
+        return confidence >= self.min_confidence
 
     def action_for(self, entity_type: EntityType) -> Action:
         """Resolve the action for ``entity_type``."""
@@ -76,6 +96,16 @@ class PrivacyPolicy:
             return by_category
         return self.default_action
 
+    def with_min_confidence(self, min_confidence: float) -> PrivacyPolicy:
+        """Return a copy that ignores detections below ``min_confidence``."""
+        return PrivacyPolicy(
+            rules=self.rules,
+            category_defaults=self.category_defaults,
+            default_action=self.default_action,
+            mask_token=self.mask_token,
+            min_confidence=min_confidence,
+        )
+
     def with_rule(self, entity_type_name: str, action: Action) -> PrivacyPolicy:
         """Return a copy with one rule added or replaced."""
         rules = dict(self.rules)
@@ -85,6 +115,7 @@ class PrivacyPolicy:
             category_defaults=self.category_defaults,
             default_action=self.default_action,
             mask_token=self.mask_token,
+            min_confidence=self.min_confidence,
         )
 
     @classmethod

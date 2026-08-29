@@ -53,7 +53,13 @@ class ProtectionService:
         detections = list(self._run_detectors(normalized))
         detections.extend(self._detect_placeholder_literals(text))
 
-        resolved = resolve_overlaps(detections)
+        # Filter before resolution, not after: a detection the policy will not
+        # consider must not be able to win a span from one it would have.
+        confident = [
+            entity for entity in detections if self._policy.accepts(entity.confidence.value)
+        ]
+
+        resolved = resolve_overlaps(confident)
         assert_non_overlapping(resolved)
 
         decided = [(entity, self._policy.action_for(entity.entity_type)) for entity in resolved]

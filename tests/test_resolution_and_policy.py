@@ -145,3 +145,32 @@ class TestPrivacyPolicy:
         derived = base.with_rule("PERSON", Action.BLOCK)
         assert base.action_for(t.PERSON) is Action.ANONYMIZE
         assert derived.action_for(t.PERSON) is Action.BLOCK
+
+
+class TestConfidenceFloor:
+    """The coverage/quality dial. Default 0.0, and it must stay there."""
+
+    def test_the_default_accepts_everything(self) -> None:
+        assert PrivacyPolicy.default().min_confidence == 0.0
+        assert PrivacyPolicy.default().accepts(0.0)
+
+    def test_a_floor_rejects_what_is_below_it(self) -> None:
+        policy = PrivacyPolicy.default().with_min_confidence(0.7)
+        assert not policy.accepts(0.5)
+        assert policy.accepts(0.7)
+        assert policy.accepts(0.9)
+
+    @pytest.mark.parametrize("value", [-0.01, 1.01])
+    def test_an_out_of_range_floor_is_refused(self, value: float) -> None:
+        with pytest.raises(ValueError):
+            PrivacyPolicy(min_confidence=value)
+
+    def test_with_min_confidence_does_not_mutate_the_original(self) -> None:
+        base = PrivacyPolicy.default()
+        base.with_min_confidence(0.9)
+        assert base.min_confidence == 0.0
+
+    def test_with_rule_carries_the_floor_across(self) -> None:
+        policy = PrivacyPolicy.default().with_min_confidence(0.6).with_rule("EMAIL", Action.ALLOW)
+        assert policy.min_confidence == 0.6
+        assert policy.action_for(t.EMAIL) is Action.ALLOW
