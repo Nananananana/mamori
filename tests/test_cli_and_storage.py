@@ -397,3 +397,100 @@ class TestCliConfig:
         path.write_text(json.dumps({"locales": ["ja"]}), encoding="utf-8")
         assert main(["inspect", "--config", str(path), "Dear Jane Doe,"]) == 0
         assert "PERSON" not in capsys.readouterr().out
+
+
+class TestCliPrompt:
+    def test_it_shows_the_external_prompt_by_default(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["prompt"]) == 0
+        assert "<PERSON_001>" in capsys.readouterr().out
+
+    def test_it_shows_the_detection_prompt(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["prompt", "detection"]) == 0
+        assert "What counts as sensitive" in capsys.readouterr().out
+
+    def test_the_footer_records_version_and_fingerprint(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["prompt", "detection"]) == 0
+        err = capsys.readouterr().err
+        assert "fingerprint" in err and "guidance rules" in err
+
+    def test_guidance_lists_the_ids(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["prompt", "detection", "--guidance"]) == 0
+        out = capsys.readouterr().out
+        assert "ja.person.honorific" in out
+        assert "disable" in out
+
+    def test_narrowing_the_locale_shortens_it(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["prompt", "detection"]) == 0
+        full = len(capsys.readouterr().out)
+        assert main(["prompt", "detection", "--locale", "ja"]) == 0
+        assert len(capsys.readouterr().out) < full
+
+    def test_an_overlay_from_a_config_file_shows_up(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "mamori.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "prompts": {
+                        "detection": {
+                            "disable": ["en.person.unanchored"],
+                            "add": [
+                                {"id": "acme.case", "text": "Case numbers look like ACME-12345."}
+                            ],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert main(["prompt", "detection", "--config", str(path)]) == 0
+        out = capsys.readouterr().out
+        assert "ACME-12345" in out
+        assert "no marker at all" not in out
+
+    def test_an_overlay_marks_local_guidance(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "mamori.json"
+        path.write_text(
+            json.dumps({"prompts": {"detection": {"add": [{"id": "acme.case", "text": "..."}]}}}),
+            encoding="utf-8",
+        )
+        assert main(["prompt", "detection", "--guidance", "--config", str(path)]) == 0
+        assert "*acme.case" in capsys.readouterr().out
+
+    def test_an_unknown_prompt_is_an_error_not_a_traceback(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["prompt", "nope"]) == 1
+        assert "unknown prompt" in capsys.readouterr().err
+
+
+class TestCliStance:
+    def test_config_shows_the_stance(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["config", "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["stance"] == "recall_first"
+
+    def test_the_stance_flag_is_honoured(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["config", "--json", "--stance", "balanced"]) == 0
+        assert json.loads(capsys.readouterr().out)["stance"] == "balanced"
+
+    def test_protect_finds_more_under_the_default(self, capsys: pytest.CaptureFixture[str]) -> None:
+        text = "I spoke to Jane Doe yesterday."
+        assert main(["protect", "--stance", "balanced", text]) == 0
+        assert "Jane Doe" in capsys.readouterr().out
+        assert main(["protect", text]) == 0
+        assert "Jane Doe" not in capsys.readouterr().out
+
+    def test_eval_can_score_either_stance(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "ja", "--stance", "balanced", "--json"]) == 0
+        balanced = json.loads(capsys.readouterr().out)[0]
+        assert main(["eval", "--locale", "ja", "--json"]) == 0
+        recall = json.loads(capsys.readouterr().out)[0]
+        assert recall["leak_rate"] <= balanced["leak_rate"]
+        assert recall["over_redaction_rate"] >= balanced["over_redaction_rate"]
