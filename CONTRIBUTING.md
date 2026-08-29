@@ -163,6 +163,48 @@ the two kinds apart — a pass placed first simply sees nothing.
 Do not deduplicate or resolve inside a pass. Report what you see, overlaps
 included; `domain/resolution.py` settles conflicts once, in one place.
 
+## Adding a rule to the wide tier
+
+`RuleTier.WIDE` is for rules that match on shape alone: a run of digits, two
+capitalised words, a long random-looking token. They find what nothing else can
+and they also fire on order numbers and product names, so they run only under
+the recall-first stance.
+
+Before adding one, answer two questions in the comment above it:
+
+1. **What does it find that no core rule can?** If the answer is "nothing", it
+   belongs in the core tier with a proper anchor.
+2. **What does it also fire on?** Say so plainly. A wide rule with no stated
+   cost is a core rule somebody has not thought about hard enough.
+
+Then measure. `mamori eval --stance balanced` and `mamori eval` are the two
+halves of the trade, and a wide rule that raises over-redaction without lowering
+the leak rate is not worth its noise.
+
+Stoplists are the usual way to buy the precision back — `_KATAKANA_NOT_NAMES`
+and `_NOT_NAME_WORDS` between them cut English over-redaction from 8.4% to 2.9%.
+Neither will ever be complete, and neither has to be.
+
+## Adding guidance
+
+Guidance is what the rules taught, written for a model. It lives in
+`src/mamori/prompts/guidance.py`, and each piece needs an id, because an id is
+what lets somebody disable it without forking the library.
+
+- **Namespace it**: `ja.person.honorific`, `en.company.no-suffix`.
+- **Pick the right kind.** `FIND` is what counts as sensitive; `IGNORE` is what
+  looks sensitive and is not; `BOUNDARY` is where a value starts and ends;
+  `OUTPUT` is how to answer. They render as separate sections, because a model
+  follows a short "find these" and a short "these are not those" far better than
+  one long mixture.
+- **`IGNORE` guidance is the valuable half.** Anything you had to add a stoplist
+  for is knowledge a model needs too.
+- **Give examples.** A model follows `田中さん -> 田中` more reliably than a
+  sentence describing the same thing.
+
+Check the result with `mamori prompt detection`, and remember that a locale-
+tagged rule only reaches a prompt rendered for that locale.
+
 ## Adding a setting
 
 A new switch goes on `MamoriConfig` as a field, gets coerced in `from_mapping`,

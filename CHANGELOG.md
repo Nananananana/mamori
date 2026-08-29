@@ -8,6 +8,73 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-29
+
+Two themes: lean harder towards catching everything, and build the prompt layer
+the model tier will run on.
+
+### Added
+
+- **A recall-first stance, and it is the default.** Every rule now declares a
+  tier -- `CORE` (anchored on a checksum, a prefix, an honorific, a label) or
+  `WIDE` (shape alone) -- and the stance decides which run. See
+  [ADR 0013](docs/adr/0013-recall-first-by-default.md).
+
+  | | leak rate balanced | recall-first | over-redaction balanced | recall-first |
+  |---|---|---|---|---|
+  | `ja-core` | 0.71% | **0.00%** | 0.00% | 6.34% |
+  | `en-core` | 2.01% | **0.67%** | 0.65% | 2.95% |
+  | `zh-core` | 0.00% | **0.00%** | 2.34% | 11.71% |
+
+  Wide rules close the documented gaps that could only be closed by accepting
+  false positives: an unanchored English name, an unseparated phone number, a
+  credential with no vendor prefix, a postal code with no marker. They are
+  `LOW` confidence, so `min_confidence` switches them off without changing
+  stance. The stance changes no security decision; it only proposes more.
+- **A prompt architecture.** Guidance is a shared, addressable knowledge base
+  carrying what the regex work taught -- that an honorific fixes the right edge
+  of a Japanese name, that 森林 is a forest, that an English name in prose has
+  no anchor. A prompt is a document of named sections plus selected guidance,
+  rendered deterministically with a fingerprint. See
+  [ADR 0014](docs/adr/0014-prompts-are-documents.md).
+- **Prompt overlays**, so an organisation adds its own rules and drops what does
+  not fit without forking anything:
+
+  ```json
+  {"prompts": {"detection": {
+    "disable": ["en.person.unanchored"],
+    "add": [{"id": "acme.case", "text": "Case numbers look like ACME-12345."}]
+  }}}
+  ```
+
+  A disable that matches nothing is refused, and refused when the config is
+  built rather than months later.
+- **`session.external_system_prompt()`** -- what to tell the *service* model
+  about the placeholders. Needs no local model and pays for itself immediately:
+  every placeholder returned intact is one restoration does not have to recover
+  from a mangled form.
+- **`LLMProvider` port and `LLMDetectionPass`**, the tier that reaches what
+  shape cannot. It only ever adds, its output is checked against the text so a
+  hallucinated span is dropped, and a failing model degrades the detector rather
+  than stopping the request. `require_model=True` inverts the last one.
+- **`OpenAICompatibleProvider`**, for Ollama, llama.cpp, vLLM and LM Studio,
+  written against `urllib` so the library still has no runtime dependencies. It
+  refuses a non-local URL: the text reaches a detector *before* it is protected.
+- **`mamori prompt`** shows exactly what would be sent, with version and
+  fingerprint; `--guidance` lists the ids so they can be disabled, marking which
+  came from an overlay.
+- `--stance` on `inspect`, `protect`, `config` and `eval`, so the trade can be
+  measured rather than assumed.
+- `IDENTIFIER` and `OTHER_SENSITIVE` entity types, for a long digit run with no
+  label and for a model saying "this matters and I cannot name it".
+
+### Changed
+
+- Quality floors are now per stance, and a new test asserts the property the
+  default rests on: recall-first never leaks more than balanced.
+- Rule-level tests pin the balanced stance, since they are specifications of
+  individual core rules.
+
 ## [0.3.0] - 2026-08-29
 
 Architecture: the last hardcoded stage of the pipeline became swappable, and
@@ -179,7 +246,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Nananananana/mamori/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Nananananana/mamori/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nananananana/mamori/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Nananananana/mamori/releases/tag/v0.1.0

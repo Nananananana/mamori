@@ -180,6 +180,118 @@ Settings layer, later winning: defaults, `--config`, `MAMORI_*` environment
 variables, then flags. Unknown keys are refused rather than ignored — a typo in
 a privacy setting that silently does nothing is the worst available outcome.
 
+### The recall dial
+
+Every rule declares a tier. **Core** rules are anchored on something rarely
+anything else: a checksum, a vendor prefix, an honorific, a label. **Wide** rules
+match on shape alone — ten bare digits, two capitalised words, a long
+random-looking token. The stance decides which run, and **recall-first is the
+default**:
+
+| | leak rate | | over-redaction | |
+|---|---|---|---|---|
+| | balanced | **recall-first** | balanced | **recall-first** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **6.34%** |
+| `en-core` | 2.01% | **0.67%** | 0.65% | **2.95%** |
+| `zh-core` | 0.00% | **0.00%** | 2.34% | **11.71%** |
+
+That is the trade, stated rather than buried. A miss is silent and permanent; a
+false positive is a word visibly replaced that should not have been. Somebody
+reading a protected prompt notices the second. Nobody notices the first.
+
+```bash
+mamori protect --stance balanced -f draft.txt   # fewer stray placeholders
+mamori eval --stance balanced                   # measure either one
+```
+
+The stance changes no security decision — policy still decides what leaves,
+resolution still picks one detection per character, credentials are still
+blocked. It only proposes more, which is why "recall-first never leaks more than
+balanced" is a test rather than a hope.
+
+---
+
+## Prompts
+
+Two models are involved, facing opposite directions, and both get a prompt you
+can read and change.
+
+**The service model** is told to leave the placeholders alone. This needs no
+local model and pays for itself immediately:
+
+```python
+system = session.external_system_prompt() + "
+
+" + your_own_system_prompt
+```
+
+Every placeholder that comes back intact is one restoration does not have to
+recover from a mangled form.
+
+**A local model** is asked to find what patterns cannot reach: an English name
+in running prose, a Chinese given name, a codename that looks like an ordinary
+word. Its prompt carries everything the regex work taught —
+
+```bash
+mamori prompt detection
+```
+
+```text
+## What looks sensitive and is not
+
+- Many ordinary words begin with a character that is also a surname. 森林 is a
+  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
+- Two capitalised words are usually not a name. Headings, products, departments,
+  weekdays and sentence openers all look identical.
+```
+
+— because that knowledge is about *languages*, not about regular expressions.
+
+### Your rules, not ours
+
+Guidance is addressable, so an organisation adds what the library cannot know
+and drops what does not fit, without forking anything:
+
+```json
+{"prompts": {"detection": {
+  "disable": ["en.person.unanchored"],
+  "add": [{"id": "acme.case", "text": "Case numbers look like ACME-12345."}]
+}}}
+```
+
+```bash
+mamori prompt detection --guidance   # list the ids, so they can be disabled
+```
+
+A disable that matches nothing is refused, when the config is loaded rather than
+months later.
+
+### Wiring up a local model
+
+```python
+from mamori.infrastructure.llm import OpenAICompatibleProvider
+from mamori.infrastructure.detectors import build_pipeline, CoOccurrencePass
+from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+
+provider = OpenAICompatibleProvider("qwen2.5:7b")  # Ollama, llama.cpp, vLLM, LM Studio
+pipeline = build_pipeline(
+    co_occurrence=CoOccurrencePass(), extra_passes=[LLMDetectionPass(provider)]
+)
+```
+
+Three properties hold whatever the model does:
+
+- **It only ever adds.** Text that talks it out of reporting anything gets you
+  back to the rules, which is where every earlier release already was.
+- **Its output is checked against the text.** Offsets must lie inside it and the
+  reported value must be exactly the characters between them, so a hallucinated
+  span is dropped rather than spliced out of your document.
+- **Its failure is not your request's failure.** A missing model is a weaker
+  detector, not a stopped pipeline. Pass `require_model=True` to invert that.
+
+The provider refuses a non-local URL. A detector sees the text *before* it is
+protected, so a detector that is not local is the leak.
+
 ---
 
 ## The three things that make this hard
@@ -220,10 +332,10 @@ mamori eval
 
 ```text
 ja-core  (ja, 49 samples)
-  leak rate             0.71%   (4/561 sensitive chars left uncovered)
-  over-redaction        0.00%   (0/899 ordinary chars replaced)
-  entity P / R / F1   1.000 / 0.983 / 0.992   (match: overlap)
-  clean samples       48/49
+  leak rate             0.00%   (0/561 sensitive chars left uncovered)
+  over-redaction        6.34%   (57/899 ordinary chars replaced)
+  entity P / R / F1   0.868 / 0.983 / 0.922   (match: overlap)
+  clean samples       49/49
 ```
 
 **Leak rate** is the share of labelled sensitive characters that no detection
@@ -239,18 +351,20 @@ under overlap matching and a miss under exact matching; neither says the thing
 that matters, which is that two characters of somebody's name were sent to a
 third party.
 
-Quality floors run in CI, so a rule change that improves one language and
-quietly wrecks another turns the build red. Writing the first datasets found
-five real bugs within an hour — read
-[ADR 0009](docs/adr/0009-measure-leaked-characters.md) for what they were — and
-the numbers are what justified the co-occurrence pass rather than an opinion
-about it:
+Quality floors run in CI — per stance, so neither half of the trade can rot —
+and a rule change that improves one language while quietly wrecking another
+turns the build red. Writing the first datasets found five real bugs within an
+hour; read [ADR 0009](docs/adr/0009-measure-leaked-characters.md) for what they
+were.
 
-| | leak rate before | after |
-|---|---|---|
-| `en-core` | 7.37% | **2.01%** |
-| `ja-core` | 1.43% | **0.71%** |
-| `zh-core` | 1.49% | **0.00%** |
+The numbers are also what justified each subsequent change rather than an
+opinion about it:
+
+| leak rate | v0.2 | + co-occurrence | + recall-first |
+|---|---|---|---|
+| `en-core` | 7.37% | 2.01% | **0.67%** |
+| `ja-core` | 1.43% | 0.71% | **0.00%** |
+| `zh-core` | 1.49% | 0.00% | **0.00%** |
 
 Treat the numbers as regression floors, not as a claim about your data: the
 datasets are small and synthetic, and a leak rate near zero on fifty invented
@@ -265,10 +379,11 @@ than no tool, because the behaviour it licenses is riskier than the behaviour
 it replaced.
 
 - **Detection is not complete and never will be.** The default rules are
-  regular expressions. They will miss a name written with an uncommon surname
-  and no honorific, an English name with nothing in front of it to mark it as
-  one, an address with no prefecture or street type, an internal codename that
-  looks like an ordinary word, and anything sensitive only in context.
+  regular expressions, and the recall-first stance widens them rather than
+  finishing them. They will miss a name written with an uncommon surname in a
+  sentence that gives no clue, an address with no prefecture or street type, an
+  internal codename that looks like an ordinary word, and anything sensitive
+  only in context. A local model narrows this; it does not close it.
 - **`mamori` reduces the chance of a leak. It does not eliminate it.** If your
   team's rule was "never paste customer data into a chat window", `mamori` is
   not a reason to change that rule. It is a safety net for the times someone
@@ -326,15 +441,16 @@ network and no database.
 Python or the shell.
 
 `v0.2` added the measurement harness and streaming restoration. `v0.3` made
-detection a pipeline, added the co-occurrence pass on top of it, and collected
-every switch onto one configuration object.
+detection a pipeline and collected every switch onto one configuration object.
+`v0.4` leaned the default towards catching everything, and built the prompt
+layer.
 
 | | |
 |---|---|
-| **v0.4** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. It is the reason v0.3 did the configuration work first: a proxy needs settings from a file and per-request switching, and neither existed. |
-| **v0.5** | A Presidio adapter and an opt-in encrypted persistent store. |
-| **v0.6** | Local-model detection as an opt-in deep-scan pass, for the cases patterns cannot reach — unanchored English names and Chinese given names above all. The pipeline is already the shape it needs. |
-| **v0.7** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
+| **v0.5** | An OpenAI-compatible local proxy, so an existing app moves over by changing `base_url` and nothing else. |
+| **v0.6** | Evaluation of the local-model pass against the same datasets, and prompt tuning driven by those numbers rather than by taste. Everything needed to measure it is already here. |
+| **v0.7** | A Presidio adapter and an opt-in encrypted persistent store. |
+| **v0.8** | Surrogate values (`田中太郎` → `山田一郎`) as a policy option, for prompts where an opaque token costs too much answer quality. |
 
 The proxy is next. Nobody rewrites a working application to adopt a library, and
 a privacy layer that only protects new code protects very little.

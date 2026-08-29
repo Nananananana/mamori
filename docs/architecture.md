@@ -61,7 +61,8 @@ interfaces ──> application ──> domain
 | Layer | Holds | May import |
 |---|---|---|
 | `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity | stdlib only |
-| `ports/` | `Detector`, `DetectionPass`, `MappingStore` protocols | `domain` |
+| `ports/` | `Detector`, `DetectionPass`, `MappingStore`, `LLMProvider` protocols | `domain` |
+| `prompts/` | Guidance, prompt definitions, overlays, response parsing | `domain` |
 | `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports` |
 | `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file | `domain`, `ports` |
 | `evaluation/` | Labelled datasets, scoring, quality metrics | `application`, `domain` |
@@ -153,11 +154,15 @@ the text **and** what earlier passes found:
 ```text
    ┌── DetectionPipeline (itself a Detector) ──────────────────┐
    │                                                           │
-   │  rules            universal patterns + language packs     │
-   │    │              (a plain Detector, wrapped)             │
+   │  rules            universal patterns + language packs,    │
+   │    │              core tier always, wide tier under the   │
+   │    │              recall-first stance                     │
    │    ▼                                                      │
    │  co-occurrence    values confirmed above the seed         │
-   │                   threshold, found again elsewhere        │
+   │    │              threshold, found again elsewhere        │
+   │    ▼                                                      │
+   │  llm (optional)   a local model, proposing what shape     │
+   │                   alone cannot settle                     │
    └───────────────────────────────────────────────────────────┘
 ```
 
@@ -168,6 +173,44 @@ and no rule looking at those mentions alone can tell. See
 
 Passes may report overlapping spans. Nothing is resolved here — that still
 happens once, in `domain/resolution.py`.
+
+## Stance
+
+Every rule declares a tier, and the stance decides which run:
+
+| Tier | Anchored on | Example |
+|---|---|---|
+| `CORE` | Something rarely anything else | a checksum, an honorific, a label |
+| `WIDE` | Shape alone | ten bare digits, two capitalised words |
+
+`RECALL_FIRST` runs both and is the default; `BALANCED` runs core only. The
+stance changes **no security decision** — it only proposes more candidates,
+which is why "recall-first never leaks more than balanced" is a test. See
+[ADR 0013](adr/0013-recall-first-by-default.md).
+
+## Prompts
+
+Two, facing opposite directions:
+
+```text
+  detection  ──> a local model, asked to FIND what shape cannot settle
+  external   ──> the service model, told to leave the placeholders alone
+```
+
+A prompt is a document of named sections plus guidance selected from a shared
+knowledge base — everything the regex work taught, written for a model. An
+organisation adds and disables guidance by id through an overlay, without
+forking anything.
+
+```text
+  BUILTIN_GUIDANCE ──┐
+                     ├──> PromptDefinition ──> PromptOverlay ──> RenderedPrompt
+  sections ──────────┘                          (org rules)      (+ fingerprint)
+```
+
+Nothing a model returns is trusted: `prompts/parsing.py` checks every candidate
+against the text it claims to describe, and a mismatch is dropped. See
+[ADR 0014](adr/0014-prompts-are-documents.md).
 
 ## Configuration
 
@@ -228,7 +271,21 @@ class DetectionPass(Protocol):
 The wider contract, for detection that needs to know what else was found.
 `DetectionContext` carries the normalized text and the findings so far.
 
-Custom entity types register with `mamori.register_type`. Note that a type
+```python
+class LLMProvider(Protocol):
+    @property
+    def name(self) -> str: ...
+    @property
+    def supports_structured_output(self) -> bool: ...
+    def generate(self, request: LLMRequest) -> LLMResponse: ...
+```
+
+Deliberately the smallest interface that does the job. A provider is asked for
+text and never for a decision, which is what keeps a model outside every
+security judgement.
+
+Custom entity types register with `mamori.register_type`, and custom guidance
+with a `PromptOverlay`. Note that a type
 whose category has no policy default falls through to `BLOCK` — deliberately,
 so a new detector stops a request rather than quietly shipping what it found.
 
@@ -290,6 +347,9 @@ run in CI. See [ADR 0009](adr/0009-measure-leaked-characters.md).
 | `test_port_contracts.py` | Every bundled adapter against the port conformance suites |
 | `test_detection_pipeline.py` | The pipeline, and the co-occurrence pass on top of it |
 | `test_config.py` | Settings, their layering, and what a bad one does |
+| `test_stance.py` | Both halves of the recall/precision trade, per language |
+| `test_prompts.py` | Composition, overlays, and refusing to trust a model |
+| `test_llm_provider.py` | The HTTP adapter, against a real local server |
 
 `tests/contracts.py` holds the conformance suites for `Detector` and
 `MappingStore`. A new adapter subclasses the matching mixin and inherits the

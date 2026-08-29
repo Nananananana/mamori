@@ -167,6 +167,112 @@ mamori protect --min-confidence 0.7 -f draft.txt
 **未知的键会被拒绝而不是忽略**——隐私设置里的拼写错误被默默忽略是最坏的结果：
 以为收紧了，其实没有。
 
+### 优先「不漏」
+
+每条规则都声明**层级**。**core** 锚定在几乎不会是别的东西上——校验位、
+厂商前缀、敬称、标签。**wide** 只看形状——10 位数字、两个首字母大写的词、
+一长串看起来随机的字符。由 stance 决定跑哪些层，**默认是 recall_first**。
+
+| | leak rate | | over-redaction | |
+|---|---|---|---|---|
+| | balanced | **recall_first** | balanced | **recall_first** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **6.34%** |
+| `en-core` | 2.01% | **0.67%** | 0.65% | **2.95%** |
+| `zh-core` | 0.00% | **0.00%** | 2.34% | **11.71%** |
+
+这就是取舍，写出来而不是藏起来。**漏掉是无声且不可挽回的；误报则表现为
+「本不该被替换的词被替换了」，是看得见的。** 读保护后文本的人会注意到后者，
+但没有人会注意到那个没被替换的人名。
+
+```bash
+mamori protect --stance balanced -f draft.txt   # 想减少误报时
+mamori eval --stance balanced                   # 两种都能测
+```
+
+**stance 不改变任何安全判断。** 什么能发出去由策略决定，
+「每个字符只有一个检测胜出」不变，凭据依然被拦截。stance 只改变提出多少候选，
+所以「recall_first 绝不会比 balanced 漏得更多」是一条**测试**而不是期望。
+
+wide 规则是 LOW 置信度，因此也可以不改 stance、直接用 `min_confidence` 关掉。
+
+---
+
+## 提示词
+
+涉及两个模型，方向相反；两者的提示词都可读、可改。
+
+**服务端模型**被告知原样保留占位符。这不需要本地模型，立刻就能回本：
+
+```python
+system = session.external_system_prompt() + "
+
+" + your_own_system_prompt
+```
+
+每一个完好返回的占位符，都是还原过程不必再从改写形式中恢复的一个。
+
+**本地模型**用来找模式覆盖不到的东西：没有任何前置标记的英文人名、中文人名、
+看起来像普通词的内部代号。它的提示词里写满了**写正则时积累的知识**。
+
+```bash
+mamori prompt detection
+```
+
+```text
+## What looks sensitive and is not
+
+- Many ordinary words begin with a character that is also a surname. 森林 is a
+  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
+- This shape is also the shape of ordinary words... 高兴 is 'happy',
+  方便 is 'convenient'. Judge from the sentence.
+```
+
+因为这些是**关于语言的知识，不是关于正则表达式的知识**。
+
+### 加入公司规则、删掉不合用的
+
+每条 guidance 都有 ID。可以补充库无从知晓的内容，也可以移除不适用的，
+**无需 fork**。
+
+```json
+{"prompts": {"detection": {
+  "disable": ["en.person.unanchored"],
+  "add": [{"id": "acme.case", "text": "案件编号形如 ACME-12345。"}]
+}}}
+```
+
+```bash
+mamori prompt detection --guidance   # 列出 ID，可据此 disable
+```
+
+**disable 一个不存在的 ID 会被拒绝**，而且是在加载配置时就拒绝，
+不会拖到几个月后。
+
+### 接入本地模型
+
+```python
+from mamori.infrastructure.llm import OpenAICompatibleProvider
+from mamori.infrastructure.detectors import build_pipeline, CoOccurrencePass
+from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+
+provider = OpenAICompatibleProvider("qwen2.5:7b")  # Ollama / llama.cpp / vLLM / LM Studio
+pipeline = build_pipeline(
+    co_occurrence=CoOccurrencePass(), extra_passes=[LLMDetectionPass(provider)]
+)
+```
+
+无论模型做什么，以下三点都成立：
+
+- **它只能增加。** 即使被说服「什么都不要报告」，结果也只是回到只有规则的状态，
+  而那正是此前每个版本的出厂状态。
+- **它的输出会与文本核对。** 偏移必须落在范围内，报告的值必须与该区间的字符
+  完全一致，否则丢弃。幻觉出来的区间不会被从文档中切走。
+- **它的失败不是请求的失败。** 模型缺失、缓慢或损坏，意味着检测器变弱，
+  而不是流程停止。用 `require_model=True` 可以反过来。
+
+Provider **拒绝非本地 URL**。检测器拿到的是保护*之前*的文本，
+所以不在本地的检测器不是检测器，而是泄漏本身。
+
 ---
 
 ## 三处真正的难点
@@ -203,8 +309,8 @@ mamori eval
 ```text
 zh-core  (zh, 25 samples)
   leak rate             0.00%   (0/202 sensitive chars left uncovered)
-  over-redaction        2.34%   (7/299 ordinary chars replaced)
-  entity P / R / F1   0.964 / 1.000 / 0.982   (match: overlap)
+  over-redaction       11.71%   (35/299 ordinary chars replaced)
+  entity P / R / F1   0.844 / 1.000 / 0.915   (match: overlap)
   clean samples       25/25
 ```
 
@@ -222,13 +328,16 @@ zh-core  (zh, 25 samples)
 仅写这套评测集的一小时内就发现了 **5 个真实缺陷**，详见
 [ADR 0009](docs/adr/0009-measure-leaked-characters.md)。
 
-v0.3 引入 co-occurrence pass 的依据同样是这些数字，而不是判断：
+之后每一次改动的依据同样是这些数字，而不是判断：
 
-| | 引入前 leak rate | 引入后 |
-|---|---|---|
-| `en-core` | 7.37% | **2.01%** |
-| `ja-core` | 1.43% | **0.71%** |
-| `zh-core` | 1.49% | **0.00%** |
+| leak rate | v0.2 | + co-occurrence | + recall_first |
+|---|---|---|---|
+| `en-core` | 7.37% | 2.01% | **0.67%** |
+| `ja-core` | 1.43% | 0.71% | **0.00%** |
+| `zh-core` | 1.49% | 0.00% | **0.00%** |
+
+co-occurrence 没有牺牲精确率或 over-redaction。
+recall_first 以约五倍的 over-redaction 换来剩下的部分。**两张表必须一起看。**
 
 请把这些数字当作**防止退化的下限，而不是对你的数据的承诺**。
 评测集规模小且全为合成数据。25 条编造的句子上 leak rate 为 0，
@@ -292,16 +401,16 @@ infrastructure ──> ports
 `v0.1` 是核心部分：检测、判定、假名化、还原，全部在内存中完成，
 可从 Python 或命令行使用。
 
-`v0.2` 加入了测量框架与流式还原。
-`v0.3` 把检测改成了 pipeline，在其上加了 co-occurrence pass，
+`v0.2` 加入测量框架与流式还原。`v0.3` 把检测改成 pipeline，
 并把所有可切换项集中到一个配置对象上。
+`v0.4` 把默认值倒向「不漏」，并搭好了提示词层。
 
 | | |
 |---|---|
-| **v0.4** | OpenAI 兼容的本地代理，现有应用只改 `base_url` 即可接入。v0.3 先做配置的原因就在这里：代理需要配置文件和按请求切换，而这两样此前都不存在。 |
-| **v0.5** | Presidio 适配器、可选启用的加密持久化存储。 |
-| **v0.6** | 本地模型检测作为可选的深度扫描 pass，用于模式无法覆盖的情况——首先是无锚点的英文人名和中文名。pipeline 的形状已经就位。 |
-| **v0.7** | 替身值（`张伟` → `王强`）作为策略选项，用于占位符对回答质量损害过大的场景。 |
+| **v0.5** | OpenAI 兼容的本地代理，现有应用只改 `base_url` 即可接入。 |
+| **v0.6** | 用同一套评测集测量本地模型 pass，并据此调整提示词（而不是凭感觉）。测量所需的一切都已就位。 |
+| **v0.7** | Presidio 适配器、可选启用的加密持久化存储。 |
+| **v0.8** | 替身值（`张伟` → `王强`）作为策略选项。 |
 
 下一步是代理。没有人会为了采用一个库去重写一个正在运行的应用，
 而只能保护新代码的隐私层，能保护的范围非常有限。

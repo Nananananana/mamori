@@ -74,13 +74,21 @@ those languages; nothing else does.
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets. Run `mamori eval`
-yourself; as of `0.3.0`:
+yourself; as of `0.4.0`, at the default recall-first stance:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
-| `ja-core` | 49 | 0.71% | 0.00% | 1.000 / 0.983 |
-| `en-core` | 49 | 2.01% | 0.65% | 1.000 / 0.958 |
-| `zh-core` | 25 | 0.00% | 2.34% | 0.964 / 1.000 |
+| `ja-core` | 49 | 0.00% | 6.34% | 0.868 / 0.983 |
+| `en-core` | 49 | 0.67% | 2.95% | 0.900 / 0.938 |
+| `zh-core` | 25 | 0.00% | 11.71% | 0.844 / 1.000 |
+
+At `--stance balanced`, which runs only the anchored rules:
+
+| Set | Leak rate | Over-redaction | Entity P / R |
+|---|---|---|---|
+| `ja-core` | 0.71% | 0.00% | 1.000 / 0.983 |
+| `en-core` | 2.01% | 0.65% | 1.000 / 0.958 |
+| `zh-core` | 0.00% | 2.34% | 0.964 / 1.000 |
 
 *Leak rate* is the share of labelled sensitive characters that no detection
 covered — the part that would have left the machine. *Over-redaction* is the
@@ -93,13 +101,14 @@ catching a change that breaks something and poor at estimating recall on a
 corpus nobody has seen. A leak rate near zero on fifty invented
 sentences says nothing about a real inbox.
 
-The residual leaks are the documented gaps: an English name with nothing in
-front of it to mark it as one, and a trading name with no legal suffix.
+The residual leak is one documented gap: a trading name with no legal suffix.
 
-A name that appears repeatedly is now protected everywhere once any one mention
-is confirmed, which is what moved English from 7.4% to 2.0% and Chinese to zero.
-That helps most where the anchors are weakest, and it does not help at all with
-a name that never appears in a form any rule recognises.
+Two things closed the rest, and both cost something. A value confirmed once is
+now protected everywhere it appears, which moved English from 7.4% to 2.0% at no
+cost in precision. The recall-first stance then added rules that match on shape
+alone, which took English to 0.67% and Japanese to zero and raised
+over-redaction fivefold. **Read the two tables together.** A tool that redacts
+everything has a perfect leak rate and destroys every answer.
 
 ### It is not a compliance control
 
@@ -117,7 +126,7 @@ values you were trying to protect.
 ### It is not automatic
 
 `mamori` protects the text you pass to it. It cannot intercept a call that does
-not go through it. The proxy planned for v0.4 narrows this gap; it does not
+not go through it. The proxy planned for v0.5 narrows this gap; it does not
 close it.
 
 ### It cannot control what the recipient does
@@ -140,7 +149,9 @@ The long form, including what is in and out of scope for each threat, is in
 | A response reads values out of the mapping table | Prevented; only placeholders allocated in the same scope resolve |
 | A detector fails and the request proceeds anyway | Prevented; a detector that raises stops the request |
 | Sensitive values reach logs or tracebacks | Mitigated; values are excluded from every `repr`, and the library logs nothing |
-| Prompt injection in the input steers a detector | Not applicable yet -- pattern rules and the co-occurrence pass cannot be argued with. Becomes a live threat with the v0.6 local-model pass |
+| Prompt injection in the input steers a detector | Partly mitigated. Pattern rules and the co-occurrence pass cannot be argued with. The local-model pass can be, and the worst a successful injection achieves is silencing it: proposals only ever add, so the rules still run |
+| A model hallucinates a span and the wrong text is replaced | Prevented. Offsets must lie inside the text and the reported value must be exactly the characters between them, or the candidate is dropped |
+| A detector sends the unprotected text somewhere | Prevented by default. The model provider refuses a non-local URL unless explicitly overridden |
 | An input crafted to be undetectable | **Not mitigated.** No detector set is complete |
 | Local machine compromise | **Out of scope** |
 | Re-identification from what remains | **Not mitigated.** Removing names does not remove a distinctive combination of facts |

@@ -178,6 +178,121 @@ mamori protect --min-confidence 0.7 -f draft.txt
 **未知のキーは無視せず拒否する。** プライバシー設定のタイプミスが黙って
 無視されるのは最悪の結果である（締めたつもりで締まっていない）。
 
+### 匿名化漏れを優先する
+
+各規則は**ティア**を宣言する。**core** は「それ以外である可能性が低いもの」に
+固定された規則——チェックディジット、ベンダー接頭辞、敬称、ラベル。
+**wide** は形だけで判断する規則——数字10桁、大文字始まりの2語、
+長いランダム風トークン。どちらを走らせるかは stance が決め、
+**既定は recall_first**（wide も走らせる）である。
+
+| | leak rate | | over-redaction | |
+|---|---|---|---|---|
+| | balanced | **recall_first** | balanced | **recall_first** |
+| `ja-core` | 0.71% | **0.00%** | 0.00% | **6.34%** |
+| `en-core` | 2.01% | **0.67%** | 0.65% | **2.95%** |
+| `zh-core` | 0.00% | **0.00%** | 2.34% | **11.71%** |
+
+これがトレードオフである。埋もれさせずに書いておく。
+**見逃しは静かで取り返しがつかない。誤検出は「置換すべきでない語が置換された」
+という目に見える形で現れる。** 保護後テキストを読んだ人は後者に気付くが、
+置換されなかった氏名には誰も気付かない。
+
+```bash
+mamori protect --stance balanced -f draft.txt   # 誤検出を減らしたいとき
+mamori eval --stance balanced                   # どちらも測れる
+```
+
+**stance はセキュリティ上の判断を一切変えない。** 何を送ってよいかはポリシーが
+決め、1文字につき1検出という解決も変わらず、資格情報は依然として遮断される。
+stance が変えるのは「候補を何件出すか」だけである。だからこそ
+「recall_first は balanced より漏らすことがない」を**テストとして固定**できる。
+
+wide 規則は LOW confidence なので、stance を変えずに `min_confidence` で
+落とすこともできる。同じトレードオフに対する粒度違いの2つのつまみである。
+
+---
+
+## プロンプト
+
+関わるモデルは2つあり、向きが逆である。どちらのプロンプトも読めて変更できる。
+
+**サービスLLM**にはプレースホルダをそのまま返すよう伝える。
+ローカルモデルは不要で、即座に元が取れる。
+
+```python
+system = session.external_system_prompt() + "
+
+" + your_own_system_prompt
+```
+
+無傷で返ってきたプレースホルダは、復元処理が改変から復旧しなくて済んだ分である。
+
+**ローカルLLM**にはパターンでは届かない対象を探させる。
+前置きの無い英語氏名、中国語の人名、普通名詞に見えるコードネーム。
+そのプロンプトには**正規表現の作業で得た知見をすべて載せてある**。
+
+```bash
+mamori prompt detection
+```
+
+```text
+## What looks sensitive and is not
+
+- Many ordinary words begin with a character that is also a surname. 森林 is a
+  forest, not 森 and 林. 原因, 金額, 石油, 田舎 and 林檎 are words.
+- Two capitalised words are usually not a name. Headings, products, departments,
+  weekdays and sentence openers all look identical.
+```
+
+これらは**正規表現についての知識ではなく、言語についての知識**だからである。
+
+### 社内ルールを足す・既存ルールを削る
+
+guidance は1件ずつ ID を持つ。ライブラリが知りようのないことを足し、
+合わないものを外せる。**フォーク不要**。
+
+```json
+{"prompts": {"detection": {
+  "disable": ["en.person.unanchored"],
+  "add": [{"id": "acme.case", "text": "案件番号は ACME-12345 の形式である。"}]
+}}}
+```
+
+```bash
+mamori prompt detection --guidance   # ID一覧。ここから disable できる
+```
+
+**存在しない ID の disable は拒否する。** しかも設定を読み込んだ時点で拒否する
+（何ヶ月も後ではなく）。外したつもりで外れていない状態を作らないためである。
+
+### ローカルLLMを繋ぐ
+
+```python
+from mamori.infrastructure.llm import OpenAICompatibleProvider
+from mamori.infrastructure.detectors import build_pipeline, CoOccurrencePass
+from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+
+provider = OpenAICompatibleProvider("qwen2.5:7b")  # Ollama / llama.cpp / vLLM / LM Studio
+pipeline = build_pipeline(
+    co_occurrence=CoOccurrencePass(), extra_passes=[LLMDetectionPass(provider)]
+)
+```
+
+モデルが何をしようと、次の3つが成り立つ。
+
+- **増やすことしかできない。** 「何も報告するな」と言い含められても、
+  結果は規則だけの状態に戻るだけ。それは前バージョンまでの出荷状態である。
+- **出力はテキストと照合される。** オフセットが範囲内にあり、報告された値が
+  その区間の文字と完全一致しなければ破棄する。幻覚したスパンが文書から
+  切り取られることはない。
+- **モデルの失敗はリクエストの失敗ではない。** モデルが無い・遅い・壊れている
+  のは「検出器が弱い」状態であって、処理停止ではない。
+  `require_model=True` で逆にできる。
+
+Provider は**ローカル以外のURLを拒否する**。検出器は保護*前*のテキストを
+受け取るので、ローカルでない検出器は検出器ではなく漏洩経路そのものである。
+
 ---
 
 ## 難しいのは3か所
@@ -216,10 +331,10 @@ mamori eval
 
 ```text
 ja-core  (ja, 49 samples)
-  leak rate             0.71%   (4/561 sensitive chars left uncovered)
-  over-redaction        0.00%   (0/899 ordinary chars replaced)
-  entity P / R / F1   1.000 / 0.983 / 0.992   (match: overlap)
-  clean samples       48/49
+  leak rate             0.00%   (0/561 sensitive chars left uncovered)
+  over-redaction        6.34%   (57/899 ordinary chars replaced)
+  entity P / R / F1   0.868 / 0.983 / 0.922   (match: overlap)
+  clean samples       49/49
 ```
 
 **leak rate** は、正解ラベルの機微文字のうちどの検出にも覆われなかった割合。
@@ -239,15 +354,17 @@ ja-core  (ja, 49 samples)
 ビルドを赤くする。この評価セットを書いた1時間で**実バグが5件**見つかった。
 内訳は [ADR 0009](docs/adr/0009-measure-leaked-characters.md) にある。
 
-そして v0.3 の co-occurrence パスを入れる根拠になったのも、意見ではなくこの数値である。
+その後の各変更を入れる根拠になったのも、意見ではなくこの数値である。
 
-| | 導入前 leak rate | 導入後 |
-|---|---|---|
-| `en-core` | 7.37% | **2.01%** |
-| `ja-core` | 1.43% | **0.71%** |
-| `zh-core` | 1.49% | **0.00%** |
+| leak rate | v0.2 | + co-occurrence | + recall_first |
+|---|---|---|---|
+| `en-core` | 7.37% | 2.01% | **0.67%** |
+| `ja-core` | 1.43% | 0.71% | **0.00%** |
+| `zh-core` | 1.49% | 0.00% | **0.00%** |
 
-precision と over-redaction は不変。
+co-occurrence は precision も over-redaction も悪化させずに効いた。
+recall_first は over-redaction を約5倍にする代わりに残りを詰めた。
+**2つの表は必ずセットで読むこと。**
 
 なお**この数値は退行を止めるための下限であって、実データに対する主張ではない**。
 評価セットは小さく、すべて合成である。49件の作り物の文で leak rate がほぼ 0 でも、
@@ -319,15 +436,15 @@ infrastructure ──> ports
 Pythonからもシェルからも。
 
 `v0.2` で測定基盤とストリーミング復元を追加。
-`v0.3` で検出をパイプライン化し、その上に co-occurrence パスを載せ、
-切り替え可能な設定を1つのオブジェクトに集約した。
+`v0.3` で検出をパイプライン化し、切り替え可能な設定を1つに集約。
+`v0.4` で既定を「漏らさない側」に倒し、プロンプト層を構築した。
 
 | | |
 |---|---|
-| **v0.4** | OpenAI互換のローカルプロキシ。既存アプリは `base_url` を変えるだけで移行できる。v0.3 で設定基盤を先に作ったのはこのためである：プロキシには設定ファイルとリクエスト単位の切り替えが要るが、どちらも存在しなかった。 |
-| **v0.5** | Presidioアダプタ、opt-inの暗号化永続ストア。 |
-| **v0.6** | ローカルモデル検出を opt-in の深掃引パスとして追加。パターンでは届かない領域、とりわけ前置きの無い英語氏名と中国語の人名向け。パイプラインは既にその形になっている。 |
-| **v0.7** | 代替値方式（`田中太郎` → `山田一郎`）をポリシー選択肢として追加。不透明なトークンでは回答品質の低下が大きすぎる用途向け。 |
+| **v0.5** | OpenAI互換のローカルプロキシ。既存アプリは `base_url` を変えるだけで移行できる。 |
+| **v0.6** | ローカルモデルパスを同じ評価セットで測定し、その数値に基づいてプロンプトを調整する（好みではなく）。測定に必要なものは既に揃っている。 |
+| **v0.7** | Presidioアダプタ、opt-inの暗号化永続ストア。 |
+| **v0.8** | 代替値方式（`田中太郎` → `山田一郎`）をポリシー選択肢として追加。 |
 
 次はプロキシである。動いているアプリをライブラリのために書き直す人はいない。
 新規コードしか守れないプライバシー層が守れる範囲はごくわずかである。

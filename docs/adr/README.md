@@ -18,3 +18,5 @@ it, and — the part that is usually missing — what it costs.
 | [0010](0010-streaming-restoration.md) | Restore streamed responses by holding the shortest unsafe suffix |
 | [0011](0011-detection-as-a-pipeline.md) | Detection is a pipeline of passes |
 | [0012](0012-configuration-without-a-format.md) | One configuration object, no configuration format |
+| [0013](0013-recall-first-by-default.md) | Recall first, by default |
+| [0014](0014-prompts-are-documents.md) | Prompts are documents with addressable parts |
