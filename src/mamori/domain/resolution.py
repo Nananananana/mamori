@@ -24,6 +24,7 @@ should be reserved for types whose extent you are sure about.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -43,6 +44,42 @@ def _preference(entity: SensitiveEntity) -> tuple[int, int, float, int, str, str
     )
 
 
+class _Kept:
+    """The spans accepted so far, kept sorted so a new one can be checked fast.
+
+    The obvious implementation compares each candidate against everything
+    already accepted, which is quadratic and invisible until the document is
+    large: 500 KB of prose holds tens of thousands of detections and took
+    thirteen seconds, of which twelve were three million span comparisons.
+
+    Accepted spans never overlap each other, so they are totally ordered, and a
+    candidate can only collide with the one that starts immediately before it
+    or the one that starts immediately after. Two binary searches, and the
+    answer is the same one the loop gave.
+    """
+
+    __slots__ = ("_entities", "_starts")
+
+    def __init__(self) -> None:
+        self._starts: list[int] = []
+        self._entities: list[SensitiveEntity] = []
+
+    def blocker(self, entity: SensitiveEntity) -> SensitiveEntity | None:
+        """The accepted entity this one collides with, if any."""
+        span = entity.span
+        position = bisect_right(self._starts, span.start)
+        if position and self._entities[position - 1].span.end > span.start:
+            return self._entities[position - 1]
+        if position < len(self._starts) and self._starts[position] < span.end:
+            return self._entities[position]
+        return None
+
+    def add(self, entity: SensitiveEntity) -> None:
+        position = bisect_right(self._starts, entity.span.start)
+        self._starts.insert(position, entity.span.start)
+        self._entities.insert(position, entity)
+
+
 def resolve_overlaps(entities: Iterable[SensitiveEntity]) -> list[SensitiveEntity]:
     """Return a non-overlapping subset, ordered by start offset.
 
@@ -50,10 +87,12 @@ def resolve_overlaps(entities: Iterable[SensitiveEntity]) -> list[SensitiveEntit
     to one.
     """
     ranked = sorted(entities, key=_preference)
+    kept = _Kept()
     accepted: list[SensitiveEntity] = []
     for candidate in ranked:
-        if any(candidate.span.overlaps(kept.span) for kept in accepted):
+        if kept.blocker(candidate) is not None:
             continue
+        kept.add(candidate)
         accepted.append(candidate)
     accepted.sort(key=lambda e: e.span.start)
     return accepted
@@ -102,19 +141,20 @@ def resolve_overlaps_traced(
 ) -> tuple[list[SensitiveEntity], list[Displacement]]:
     """Resolve, and say what was displaced by what.
 
-    Identical to :func:`resolve_overlaps` in what it keeps -- it is the same
-    loop -- and it additionally records every detection that lost, with the
-    one that took its span. Used by ``mamori trace``; the plain function stays
-    the fast path for producing text.
+    Identical to :func:`resolve_overlaps` in what it keeps -- the same loop
+    over the same structure -- and it additionally records every detection that
+    lost, with the one that took its span. Used by ``mamori trace``.
     """
     ranked = sorted(entities, key=_preference)
+    kept = _Kept()
     accepted: list[SensitiveEntity] = []
     displaced: list[Displacement] = []
     for candidate in ranked:
-        winner = next((kept for kept in accepted if candidate.span.overlaps(kept.span)), None)
+        winner = kept.blocker(candidate)
         if winner is not None:
             displaced.append(Displacement(loser=candidate, winner=winner))
             continue
+        kept.add(candidate)
         accepted.append(candidate)
     accepted.sort(key=lambda e: e.span.start)
     return accepted, displaced

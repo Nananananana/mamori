@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from mamori.domain import entity_types as t
 from mamori.domain.confidence import HIGH, LOW, MEDIUM
@@ -11,6 +13,8 @@ from mamori.domain.policy import Action, PrivacyPolicy
 from mamori.domain.resolution import assert_non_overlapping, resolve_overlaps
 from mamori.domain.sensitive_entity import SensitiveEntity
 from mamori.domain.span import Span
+
+SETTINGS = settings(max_examples=200, suppress_health_check=[HealthCheck.too_slow])
 
 
 def entity(
@@ -93,6 +97,84 @@ class TestResolveOverlaps:
             [entity(t.PERSON, 0, 5), entity(t.EMAIL, 3, 12), entity(t.PHONE, 11, 20)]
         )
         assert_non_overlapping(resolved)
+
+
+class TestTheFastPathAgreesWithTheObviousOne:
+    """Resolution stopped comparing every candidate against every kept span.
+
+    That loop was the definition of the rule for twenty releases, so the test
+    for the replacement is not "does it look right" but "does it return exactly
+    what the loop returned", on inputs drawn to collide as much as possible.
+    """
+
+    @staticmethod
+    def naive(entities: list[SensitiveEntity]) -> list[SensitiveEntity]:
+        """What the function did before 0.22, kept here as the specification."""
+        from mamori.domain.resolution import _preference
+
+        ranked = sorted(entities, key=_preference)
+        accepted: list[SensitiveEntity] = []
+        for candidate in ranked:
+            if any(candidate.span.overlaps(kept.span) for kept in accepted):
+                continue
+            accepted.append(candidate)
+        accepted.sort(key=lambda e: e.span.start)
+        return accepted
+
+    @staticmethod
+    def entity(start: int, end: int, kind: EntityType, confidence: object) -> SensitiveEntity:
+        return SensitiveEntity(
+            entity_type=kind,
+            span=Span(start, end),
+            value="x" * (end - start),
+            confidence=confidence,  # type: ignore[arg-type]
+        )
+
+    @SETTINGS
+    @given(
+        spans=st.lists(
+            st.tuples(st.integers(0, 60), st.integers(1, 12)),
+            min_size=0,
+            max_size=40,
+        ),
+        kinds=st.lists(st.sampled_from([t.PERSON, t.EMAIL, t.PHONE]), min_size=1, max_size=3),
+    )
+    def test_same_answer_for_any_pile_of_overlapping_spans(
+        self, spans: list[tuple[int, int]], kinds: list[EntityType]
+    ) -> None:
+        entities = [
+            self.entity(
+                start, start + length, kinds[index % len(kinds)], [HIGH, MEDIUM, LOW][index % 3]
+            )
+            for index, (start, length) in enumerate(spans)
+        ]
+        assert resolve_overlaps(entities) == self.naive(entities)
+
+    def test_same_answer_when_everything_starts_together(self) -> None:
+        """The case the binary search has to get right: equal starts."""
+        entities = [self.entity(10, 10 + length, t.PERSON, HIGH) for length in (1, 2, 3, 4, 5)]
+        assert resolve_overlaps(entities) == self.naive(entities)
+
+    def test_same_answer_for_nested_spans(self) -> None:
+        entities = [
+            self.entity(0, 40, t.PERSON, LOW),
+            self.entity(10, 20, t.EMAIL, HIGH),
+            self.entity(12, 14, t.PHONE, HIGH),
+            self.entity(41, 50, t.EMAIL, HIGH),
+        ]
+        assert resolve_overlaps(entities) == self.naive(entities)
+
+    def test_the_traced_variant_keeps_the_same_set(self) -> None:
+        from mamori.domain.resolution import resolve_overlaps_traced
+
+        entities = [
+            self.entity(0, 10, t.PERSON, LOW),
+            self.entity(5, 15, t.EMAIL, HIGH),
+            self.entity(20, 30, t.PHONE, HIGH),
+        ]
+        kept, displaced = resolve_overlaps_traced(entities)
+        assert kept == resolve_overlaps(entities)
+        assert [d.loser for d in displaced] == [e for e in entities if e not in kept]
 
 
 class TestAssertNonOverlapping:

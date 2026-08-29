@@ -255,3 +255,42 @@ class TestTheLinterAsACommand:
         (tmp_path / "readme.md").write_text("Nothing here.\n", encoding="utf-8")
         assert main(["lint", str(tmp_path)]) == 0
         assert "nothing found" in capsys.readouterr().out
+
+
+class TestTheReportDescribesTheseSettings:
+    """`mamori privacy` says what a configuration does with your data.
+
+    A setting it does not mention is a setting somebody has to read the source
+    to discover, which is the opposite of the point. Four releases added
+    settings before this test existed, and two of them changed behaviour.
+    """
+
+    def report(self, **settings: object) -> object:
+        from mamori.report import build_report
+
+        return build_report(MamoriConfig(**settings))  # type: ignore[arg-type]
+
+    def test_it_names_what_happens_below_the_threshold(self) -> None:
+        report = self.report(min_confidence=0.8, uncertain="refuse")
+        assert report.detection["uncertain"] == "refuse"  # type: ignore[attr-defined]
+        assert "stops the text" in report.detection["uncertain_note"]  # type: ignore[attr-defined]
+
+    def test_a_refusal_that_can_never_fire_is_a_warning(self) -> None:
+        """`uncertain="refuse"` at the default threshold does nothing at all,
+        and a privacy setting that silently does nothing is the worst kind."""
+        report = self.report(uncertain="refuse")
+        assert any("does nothing at min_confidence" in w for w in report.warnings)  # type: ignore[attr-defined]
+
+    def test_no_warning_when_it_can_fire(self) -> None:
+        report = self.report(uncertain="refuse", min_confidence=0.8)
+        assert not any("does nothing" in w for w in report.warnings)  # type: ignore[attr-defined]
+
+    def test_it_names_the_placeholder_style(self) -> None:
+        report = self.report(placeholder_style="square")
+        assert report.detection["placeholder_style"] == "square"  # type: ignore[attr-defined]
+
+    def test_the_command_prints_both(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["privacy"]) == 0
+        out = capsys.readouterr().out
+        assert "below that" in out
+        assert "placeholders" in out

@@ -856,6 +856,28 @@ it, which is why width comes first.
 
 ---
 
+---
+
+## What it costs
+
+| | median document | median | p95 |
+|---|---|---|---|
+| Japanese prose | 172 chars | 0.96 ms | 1.53 ms |
+| English prose | 274 chars | 0.84 ms | 1.27 ms |
+| Chinese prose | 141 chars | 0.89 ms | 1.35 ms |
+| an assembled prompt | 943 chars | 2.14 ms | 3.11 ms |
+
+Under a millisecond for a typical prompt, against a model call that takes
+hundreds. Restricting to one language pack is 30–45% faster on CJK; the default
+runs every pack because an unexpected language is exactly the case nobody
+redacted by hand.
+
+Flat at about 3 ms/KB from 16 KB to half a megabyte — flat since `v0.22`, which
+is when the measurement first happened and turned up a quadratic in overlap
+resolution that took thirteen seconds on a 534 KB document.
+
+---
+
 ## How well does it work?
 
 Ask it:
@@ -1042,7 +1064,9 @@ the deployment release, and its linter found a bug in this repository on its
 first run. `v0.20` measured restoration the way detection has been measured
 since `v0.2`, and found that streamed and whole replies had disagreed for four
 releases. `v0.21` did the same to surrogates and turned the scariest paragraph
-in the documentation into two numbers.
+in the documentation into two numbers. `v0.22` measured time for the first
+time and found a quadratic that took thirteen seconds on a half-megabyte
+document.
 
 | | |
 |---|---|

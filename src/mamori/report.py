@@ -33,6 +33,7 @@ from typing import Any
 
 from .config import MamoriConfig
 from .domain.entity_types import BUILTIN_TYPES
+from .domain.policy import Uncertain
 from .errors import MamoriError
 
 __all__ = ["Claim", "PrivacyReport", "build_report"]
@@ -170,7 +171,12 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
         "stance": config.stance.value,
         "detectors": detector_count,
         "minimum_confidence": config.min_confidence,
+        # What happens *at* that threshold, which is half of what it means. A
+        # report that gives the number and not the behaviour describes a dial
+        # without saying which way it turns.
+        "uncertain": config.uncertain,
         "co_occurrence": config.co_occurrence,
+        "placeholder_style": config.placeholder_style,
         "by_action": by_action,
     }
 
@@ -185,6 +191,18 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
     }
 
     destinations, warnings = _destinations(config, upstream)
+
+    warnings_from_settings: list[str] = []
+    if config.uncertainty() is Uncertain.REFUSE:
+        detection["uncertain_note"] = (
+            f"a detection below {config.min_confidence} stops the text rather than "
+            "being discarded; nothing is sent and the refusal names types, never values"
+        )
+        if config.min_confidence <= 0.0:
+            warnings_from_settings.append(
+                'uncertain="refuse" does nothing at min_confidence 0.0: nothing is '
+                "below zero, so no detection is ever uncertain. Set a threshold as well."
+            )
 
     surrogate_types = sorted(config.surrogate_types())
     if surrogate_types:
@@ -236,7 +254,7 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
         destinations=destinations,
         by_construction=_BY_CONSTRUCTION,
         your_responsibility=_YOUR_RESPONSIBILITY,
-        warnings=tuple(warnings),
+        warnings=(*warnings, *warnings_from_settings),
     )
 
 

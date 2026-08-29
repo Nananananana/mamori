@@ -178,6 +178,11 @@ class TestDomainPurity:
         """No pydantic, no SQLAlchemy, no LLM SDK. Not even indirectly."""
         allowed_stdlib = {
             "__future__",
+            # Added in 0.22 for overlap resolution, which was quadratic and
+            # took thirteen seconds on a half-megabyte document. A binary
+            # search over the accepted spans is the whole fix, and `bisect` is
+            # as much of the standard library as `re` is.
+            "bisect",
             "collections",
             "dataclasses",
             "enum",

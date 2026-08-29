@@ -8,6 +8,68 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-30
+
+Time, which nothing here had ever measured.
+
+Every number this project publishes is about correctness. None was about how
+long protection takes, and that decides whether a privacy layer gets used at
+all: one that adds a second to every request is one somebody routes around, and
+a routed-around privacy layer protects nothing. The same argument as
+over-redaction, in a different unit.
+
+### Fixed
+
+- **Overlap resolution was quadratic**, and it took thirteen seconds on a
+  534 KB document.
+
+  Each doubling of the input cost more than twice as much -- 2.3×, then 2.5×,
+  then 3.4×, then 5.5× -- which is quadratic arriving slowly enough to look
+  linear on anything small. Twelve of the thirteen seconds were three million
+  span comparisons: every candidate checked against every span already
+  accepted.
+
+  Accepted spans never overlap each other, so they are totally ordered, and a
+  candidate can only collide with the one starting immediately before it or
+  immediately after. Two binary searches. **8× faster at half a megabyte, and
+  flat at about 3 ms/KB from 16 KB to 534 KB.**
+
+  The old loop is kept in `tests/test_resolution_and_policy.py` as the
+  specification, and a property test asserts the new one returns exactly what
+  it returned. An optimisation of a security decision is worth exactly as much
+  as its equivalence proof.
+
+### Measured
+
+| corpus | median document | median | p95 |
+|---|---|---|---|
+| `ja-prose` | 172 chars | 0.96 ms | 1.53 ms |
+| `en-prose` | 274 chars | 0.84 ms | 1.27 ms |
+| `zh-prose` | 141 chars | 0.89 ms | 1.35 ms |
+| `ja-context` | 665 chars | 3.52 ms | 4.96 ms |
+| `en-context` | 943 chars | 2.14 ms | 3.11 ms |
+
+Under a millisecond for a typical prompt, against a model call that takes
+hundreds. There was no performance problem at this size and there never was --
+which is worth having measured rather than assumed.
+
+Restricting to one language pack is 30–45% faster on CJK, because the Japanese
+and Chinese packs both run on Han text. The default runs every pack, because an
+unexpected language is exactly the case nobody redacted by hand, and that is
+what it costs.
+
+### Changed
+
+- **`mamori privacy` describes the settings that exist.** `uncertain` and
+  `placeholder_style` were added in 0.19 and the report did not mention either,
+  so a setting that stops requests was discoverable only by reading the source.
+  It also **warns when `uncertain="refuse"` is set without a threshold**: at
+  the default `min_confidence` of 0.0 nothing is ever uncertain, so the setting
+  does nothing at all, and a privacy setting that silently does nothing is the
+  worst kind there is.
+
+- `bisect` joins the domain's allowed standard-library imports.
+
 ## [0.21.0] - 2026-08-30
 
 The most dangerous option in the library, measured.
@@ -1654,7 +1716,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/Nananananana/mamori/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/Nananananana/mamori/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/Nananananana/mamori/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/Nananananana/mamori/compare/v0.18.0...v0.19.0

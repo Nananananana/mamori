@@ -785,6 +785,8 @@ def _cmd_privacy(args: argparse.Namespace) -> int:
     print(f"  languages       {', '.join(locales) if isinstance(locales, list) else locales}")
     print(f"  stance          {detection['stance']}")
     print(f"  minimum conf.   {detection['minimum_confidence']}")
+    print(f"  below that      {detection['uncertain']}")
+    print(f"  placeholders    {detection['placeholder_style']} brackets")
     for action, names in sorted(detection["by_action"].items()):
         shown = ", ".join(names[:6]) + (", ..." if len(names) > 6 else "")
         print(f"  {action:<15} {len(names)} types: {shown}")
