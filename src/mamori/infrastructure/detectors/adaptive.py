@@ -21,8 +21,10 @@ from collections.abc import Sequence
 
 from ...domain.script import scripts_in
 from ...domain.sensitive_entity import SensitiveEntity
+from ...domain.stance import Stance
 from ...ports.detector import Detector
 from .locales import LocalePack
+from .patterns import rules_for
 from .regex_detector import RegexDetector
 
 __all__ = ["AdaptiveLocaleDetector"]
@@ -37,6 +39,7 @@ class AdaptiveLocaleDetector:
         *,
         name: str = "locale",
         always: Sequence[Detector] = (),
+        stance: Stance = Stance.RECALL_FIRST,
     ) -> None:
         """
         Args:
@@ -44,15 +47,24 @@ class AdaptiveLocaleDetector:
             name: Detector name, used only in error messages.
             always: Detectors that run whatever the text looks like, for rules
                 that do not depend on language.
+            stance: Which rule tiers to run.
         """
         self._name = name
         self._always = tuple(always)
         self._packs = tuple(packs)
-        self._detectors = {pack.code: RegexDetector(pack.code, pack.rules) for pack in self._packs}
+        self._stance = stance
+        self._detectors = {
+            pack.code: RegexDetector(pack.code, rules_for(pack.rules, stance))
+            for pack in self._packs
+        }
 
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def stance(self) -> Stance:
+        return self._stance
 
     @property
     def packs(self) -> tuple[LocalePack, ...]:

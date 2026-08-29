@@ -18,10 +18,11 @@ from __future__ import annotations
 from ....domain import entity_types as t
 from ....domain.confidence import HIGH, LOW, MEDIUM
 from ....domain.script import Script
+from ....domain.stance import RuleTier
 from ..patterns import PatternRule, compile_rule
 from .base import LocalePack
 
-__all__ = ["ENGLISH", "ssn_valid"]
+__all__ = ["ENGLISH", "WIDE_RULES", "ssn_valid"]
 
 #: Areas that no Social Security Number uses. Cheap, and it removes most of the
 #: dates and part numbers that share the NNN-NN-NNNN shape.
@@ -150,10 +151,83 @@ RULES: tuple[PatternRule, ...] = (
     ),
 )
 
+# --- Wide tier ------------------------------------------------------------
+# The documented gaps, addressed the only way shape allows: by accepting the
+# false positives that made them gaps in the first place.
+
+# fmt: off
+#: Words that appear title-cased in ordinary business English. A capitalised
+#: bigram containing any of these is a heading, a date or a sentence opener
+#: rather than a name. Without the list, "The Quarterly Business Review" and
+#: "Social Security Number" both come back as people.
+_NOT_NAME_WORDS = frozenset({
+    "The", "A", "An", "This", "That", "These", "Those", "Our", "Your", "Their",
+    "We", "I", "You", "He", "She", "It", "They", "There", "Here", "Please",
+    "Thanks", "Thank", "Regards", "Sincerely", "Best", "Dear", "Hi", "Hello",
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+    "January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December",
+    "Quarterly", "Business", "Review", "Report", "Meeting", "Project", "Team",
+    "Security", "Number", "Social", "Company", "Department", "Office", "Manager",
+    "Account", "Invoice", "Order", "Customer", "Client", "Service", "Support",
+    "Product", "Release", "Version", "Update", "Status", "Summary", "Notes",
+    "Attached", "Subject", "Re", "Fwd", "Cc", "Bcc", "To", "From", "Date",
+    "Note", "Action", "Next", "Steps", "Agenda", "Minutes", "Draft", "Final",
+    "New", "Old", "First", "Second", "Third", "Last", "Annual", "Monthly",
+    "Weekly", "Daily", "North", "South", "East", "West", "Group", "Board",
+    "Contract", "Agreement", "Policy", "Terms", "Conditions", "Data", "System",
+})
+# fmt: on
+
+
+def _plausible_latin_name(value: str) -> bool:
+    return not (set(value.split()) & _NOT_NAME_WORDS)
+
+
+WIDE_RULES: tuple[PatternRule, ...] = (
+    # Two capitalised words. Also every product, city, department and sentence
+    # opener -- which is exactly why the core rules are all anchored. Under a
+    # recall-first stance this is the difference between finding a name in
+    # running prose and not; the stoplist buys back most of the precision.
+    compile_rule(
+        t.PERSON,
+        r"(?<![A-Za-z0-9.])" + _NAME + r"(?:\s+" + _NAME + r"){1,2}(?![A-Za-z0-9])",
+        LOW,
+        validator=_plausible_latin_name,
+        tier=RuleTier.WIDE,
+    ),
+    # Ten bare digits. An order number looks identical; a phone number written
+    # without separators is invisible to every other rule.
+    compile_rule(
+        t.PHONE,
+        r"(?<![\d\-])\d{10}(?![\d\-])",
+        LOW,
+        tier=RuleTier.WIDE,
+    ),
+    # Nine bare digits that survive the SSA range check.
+    compile_rule(
+        t.SSN,
+        r"(?<!\d)\d{9}(?!\d)",
+        LOW,
+        validator=ssn_valid,
+        tier=RuleTier.WIDE,
+    ),
+    # A five-digit ZIP with a state abbreviation in front of it. Weakly
+    # anchored rather than unanchored, because bare five-digit runs are
+    # overwhelmingly part numbers.
+    compile_rule(
+        t.POSTAL_CODE,
+        r"(?<![A-Z])[A-Z]{2}\s+(\d{5})(?!\d)",
+        LOW,
+        group=1,
+        tier=RuleTier.WIDE,
+    ),
+)
+
 ENGLISH = LocalePack(
     code="en",
     name="English",
-    rules=RULES,
+    rules=RULES + WIDE_RULES,
     # Latin script is everywhere, including inside Japanese and Chinese
     # documents -- which is exactly when an English name or address is most
     # likely to be the thing nobody remembered to redact.

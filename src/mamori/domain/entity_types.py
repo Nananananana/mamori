@@ -73,6 +73,12 @@ MY_NUMBER = _t("MY_NUMBER", Category.PII, 95)  # Japan, 個人番号
 SSN = _t("SSN", Category.PII, 95)  # United States
 RESIDENT_ID = _t("RESIDENT_ID", Category.PII, 95)  # China, 居民身份证
 
+#: A number that identifies somebody or something and fits no more specific
+#: type. Only the recall-first stance produces these: a long digit run with no
+#: label is an account number as often as an order number, and there is no way
+#: to tell from the shape.
+IDENTIFIER = _t("IDENTIFIER", Category.PII, 40)
+
 # --- Secrets ---------------------------------------------------------------
 API_KEY = _t("API_KEY", Category.SECRET, 100)
 ACCESS_TOKEN = _t("ACCESS_TOKEN", Category.SECRET, 100)
@@ -107,6 +113,7 @@ BUILTIN_TYPES: dict[str, EntityType] = {
         MY_NUMBER,
         SSN,
         RESIDENT_ID,
+        IDENTIFIER,
         API_KEY,
         ACCESS_TOKEN,
         PASSWORD,

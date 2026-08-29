@@ -21,10 +21,11 @@ from __future__ import annotations
 from ....domain import entity_types as t
 from ....domain.confidence import HIGH, LOW, MEDIUM
 from ....domain.script import Script
+from ....domain.stance import RuleTier
 from ..patterns import PatternRule, compile_rule
 from .base import LocalePack
 
-__all__ = ["COMMON_SURNAMES", "JAPANESE", "my_number_valid"]
+__all__ = ["COMMON_SURNAMES", "JAPANESE", "WIDE_RULES", "my_number_valid"]
 
 
 def my_number_valid(value: str) -> bool:
@@ -207,10 +208,83 @@ RULES: tuple[PatternRule, ...] = (
     compile_rule(t.PERSON, r"[ァ-ヶー]{2,10}・[ァ-ヶー]{2,10}", MEDIUM),
 )
 
+# --- Wide tier ------------------------------------------------------------
+
+# fmt: off
+#: Katakana that is a loanword, not a name. Foreign names are written in
+#: katakana, and so is most of the vocabulary of any business document, so the
+#: wide katakana rule without this list turns バージョン and アップデート into
+#: people. Same technique as _NOT_NAMES, same admission: it will never be
+#: complete, which is why the rule is LOW confidence and wide-tier.
+_KATAKANA_NOT_NAMES = frozenset({
+    "プロジェクト", "システム", "サービス", "メール", "アドレス", "データ",
+    "ユーザー", "ユーザ", "バージョン", "アップデート", "ファイル", "フォルダ",
+    "サーバー", "サーバ", "ネットワーク", "セキュリティ", "パスワード",
+    "スケジュール", "ミーティング", "レポート", "ドキュメント", "クライアント",
+    "サポート", "テスト", "リリース", "チーム", "マネージャー", "コスト",
+    "リスク", "ステータス", "タスク", "ページ", "サイト", "アカウント",
+    "ログイン", "ログアウト", "コード", "エラー", "メッセージ", "グループ",
+    "センター", "オフィス", "ルーム", "コピー", "チェック", "スタート",
+    "レビュー", "デザイン", "モデル", "ツール", "インストール",
+    "ダウンロード", "アップロード", "バックアップ", "ソフトウェア",
+    "ハードウェア", "コンピュータ", "プログラム", "ブラウザ", "インターネット",
+    "スマートフォン", "パソコン", "プリンタ", "カレンダー", "フォーマット",
+    "オプション", "コメント", "リンク", "ボタン", "メニュー", "タイトル",
+    "コンテンツ", "セッション", "リクエスト", "レスポンス", "データベース",
+    "キャンセル", "スペース", "サンプル", "パターン", "タイミング",
+    "ポリシー", "ルール", "ケース", "パート", "エリア", "レベル",
+    "マイナンバー", "ステージング", "プロダクション", "ブランチ", "コミット",
+    "デプロイ", "ワークフロー", "ダッシュボード", "アラート", "ログ",
+    "カテゴリ", "アイテム", "オーダー", "インボイス", "ベンダー", "パートナー",
+})
+# fmt: on
+
+
+def _not_katakana_word(value: str) -> bool:
+    return value.strip() not in _KATAKANA_NOT_NAMES
+
+
+WIDE_RULES: tuple[PatternRule, ...] = (
+    # A run of katakana. Foreign names are written this way, and so are half
+    # the loanwords in any business document -- hence the stoplist.
+    compile_rule(
+        t.PERSON,
+        r"(?<![ァ-ヶー])[ァ-ヶ][ァ-ヶー]{2,9}(?![ァ-ヶー])",
+        LOW,
+        validator=_not_katakana_word,
+        tier=RuleTier.WIDE,
+    ),
+    # A digit run starting 0, unseparated. Order numbers look the same; the
+    # core rule refuses them for that reason.
+    compile_rule(
+        t.PHONE,
+        r"(?<![\d\-])0\d{9,10}(?![\d\-])",
+        LOW,
+        tier=RuleTier.WIDE,
+    ),
+    # Any surname-initial run, without the organisation and place guards the
+    # core rule applies. Catches 田中商事 as a person, which is wrong, and
+    # catches a name in front of a word the guard list happens to contain,
+    # which is the point.
+    compile_rule(
+        t.PERSON,
+        r"(?<![一-鿿])(?:" + _SURNAME_ALT + r")[一-鿿]{1,3}(?![一-鿿])",
+        LOW,
+        tier=RuleTier.WIDE,
+    ),
+    # NNN-NNNN without the 〒 marker.
+    compile_rule(
+        t.POSTAL_CODE,
+        r"(?<![\d\-])\d{3}[\-−ー]\d{4}(?![\d\-])",
+        LOW,
+        tier=RuleTier.WIDE,
+    ),
+)
+
 JAPANESE = LocalePack(
     code="ja",
     name="Japanese",
-    rules=RULES,
+    rules=RULES + WIDE_RULES,
     # Kana are decisive. Han alone could be either Japanese or Chinese, so the
     # Japanese pack runs on it too and over-detects rather than missing.
     triggers=frozenset({Script.KANA, Script.HAN}),

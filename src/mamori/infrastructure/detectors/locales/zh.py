@@ -20,10 +20,11 @@ from __future__ import annotations
 from ....domain import entity_types as t
 from ....domain.confidence import HIGH, LOW, MEDIUM
 from ....domain.script import Script
+from ....domain.stance import RuleTier
 from ..patterns import PatternRule, compile_rule
 from .base import LocalePack
 
-__all__ = ["CHINESE", "COMMON_SURNAMES", "resident_id_valid"]
+__all__ = ["CHINESE", "COMMON_SURNAMES", "WIDE_RULES", "resident_id_valid"]
 
 _ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
 _ID_CHECKS = "10X98765432"
@@ -185,10 +186,30 @@ RULES: tuple[PatternRule, ...] = (
     ),
 )
 
+# --- Wide tier ------------------------------------------------------------
+
+WIDE_RULES: tuple[PatternRule, ...] = (
+    # The surname rule without the ordinary-word stoplist. 高兴 comes back as a
+    # person, and so does the name the stoplist would have swallowed.
+    compile_rule(
+        t.PERSON,
+        r"(?:" + _SURNAME_ALT + r")[一-鿿]{1,2}(?![一-鿿])",
+        LOW,
+        tier=RuleTier.WIDE,
+    ),
+    # Six bare digits, no 邮编 label.
+    compile_rule(
+        t.POSTAL_CODE,
+        r"(?<!\d)\d{6}(?!\d)",
+        LOW,
+        tier=RuleTier.WIDE,
+    ),
+)
+
 CHINESE = LocalePack(
     code="zh",
     name="Chinese",
-    rules=RULES,
+    rules=RULES + WIDE_RULES,
     triggers=frozenset({Script.HAN}),
     # Kana never appear in Chinese. Their presence settles the ambiguity that
     # Han characters alone leave open.

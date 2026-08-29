@@ -20,14 +20,15 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from ...domain import entity_types as t
-from ...domain.confidence import CERTAIN, HIGH, MEDIUM, Confidence
+from ...domain.confidence import CERTAIN, HIGH, LOW, MEDIUM, Confidence
 from ...domain.entity_types import EntityType
+from ...domain.stance import RuleTier, Stance
 
-__all__ = ["UNIVERSAL_RULES", "PatternRule", "compile_rule", "luhn_valid"]
+__all__ = ["UNIVERSAL_RULES", "PatternRule", "compile_rule", "luhn_valid", "rules_for"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +53,7 @@ class PatternRule:
     confidence: Confidence = HIGH
     group: int = 0
     validator: Callable[[str], bool] | None = None
+    tier: RuleTier = RuleTier.CORE
 
 
 def compile_rule(
@@ -61,6 +63,7 @@ def compile_rule(
     *,
     group: int = 0,
     validator: Callable[[str], bool] | None = None,
+    tier: RuleTier = RuleTier.CORE,
 ) -> PatternRule:
     """Compile ``pattern`` into a rule. Convenience for the locale modules."""
     return PatternRule(
@@ -69,7 +72,13 @@ def compile_rule(
         confidence=confidence,
         group=group,
         validator=validator,
+        tier=tier,
     )
+
+
+def rules_for(rules: Sequence[PatternRule], stance: Stance) -> tuple[PatternRule, ...]:
+    """The subset of ``rules`` that runs under ``stance``."""
+    return tuple(rule for rule in rules if stance.includes(rule.tier))
 
 
 def luhn_valid(value: str) -> bool:
@@ -187,6 +196,33 @@ _INTERNAL_IP = compile_rule(
     validator=_private_ip,
 )
 
+# --- Wide tier ------------------------------------------------------------
+# Shape with no anchor. Each of these finds something no core rule can, and each
+# also fires on ordinary text. They run only under the recall-first stance.
+
+#: A long run of key-shaped characters. This is the documented gap in secret
+#: detection -- a credential with no vendor prefix and no keyword next to it --
+#: and it is a gap precisely because base64 payloads, hashes and content IDs
+#: look identical. Requires a mix of cases and digits, which removes most prose.
+_WIDE_SECRET = compile_rule(
+    t.API_KEY,
+    r"(?<![A-Za-z0-9+/=_\-])(?=[A-Za-z0-9+/_\-]{32,})"
+    r"(?=[^a-z]*[a-z])(?=[^A-Z]*[A-Z])(?=[^0-9]*[0-9])"
+    r"[A-Za-z0-9+/_\-]{32,}={0,2}(?![A-Za-z0-9+/=_\-])",
+    LOW,
+    tier=RuleTier.WIDE,
+)
+
+#: Any long digit run. Order numbers look the same, which is the point: under
+#: the recall-first stance an order number becoming a placeholder is cheaper
+#: than an unformatted account number leaving the machine.
+_WIDE_DIGIT_RUN = compile_rule(
+    t.IDENTIFIER,
+    r"(?<![\d\-])\d{8,20}(?![\d\-])",
+    LOW,
+    tier=RuleTier.WIDE,
+)
+
 #: Rules that hold whatever language the text is written in.
 UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     _EMAIL,
@@ -195,4 +231,6 @@ UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     *_CREDENTIAL_RULES,
     _INTERNAL_URL,
     _INTERNAL_IP,
+    _WIDE_SECRET,
+    _WIDE_DIGIT_RUN,
 )
