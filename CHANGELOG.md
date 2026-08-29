@@ -52,9 +52,7 @@ producing wrong output on plausible input:
   (`有限会社みどりから見積`); the tempered character class now stops on
   multi-character particles as well as single ones.
 
-## [0.1.1] - 2026-08-29
-
-### Added
+### Added -- language packs
 
 - **English and Chinese detection**, alongside Japanese. Rules are grouped into
   language packs and a pack runs when the text gives a reason to run it; all of
@@ -137,6 +135,5 @@ dependencies outside the standard library.
   response cannot read values out of the mapping table by guessing.
 
 [Unreleased]: https://github.com/Nananananana/mamori/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/Nananananana/mamori/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/Nananananana/mamori/compare/v0.1.0...v0.1.1
+[0.2.0]: https://github.com/Nananananana/mamori/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Nananananana/mamori/releases/tag/v0.1.0
