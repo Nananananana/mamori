@@ -1,0 +1,108 @@
+{
+  "format_version": 1,
+  "name": "zh-core",
+  "locale": "zh",
+  "source": "synthetic",
+  "description": "Chinese business correspondence. Smaller than the Japanese and English sets on purpose: Chinese is the secondary target, and its personal-name rule is known to be weak. The set exists to stop the pack regressing and to quantify the trade-off rather than to claim the language is solved. Every name, number and identifier is invented.",
+  "samples": [
+    {
+      "id": "zh-001",
+      "annotated": "尊敬的[[PERSON:张伟]]先生，请拨打[[PHONE:13812345678]]与我们联系。"
+    },
+    {
+      "id": "zh-002",
+      "annotated": "请联系[[PERSON:李明]]经理，邮箱是[[EMAIL:liming@example.com]]。"
+    },
+    {
+      "id": "zh-003",
+      "annotated": "合作方是[[COMPANY_NAME:北京云图科技有限公司]]。"
+    },
+    {
+      "id": "zh-004",
+      "annotated": "这是[[COMPANY_NAME:北京云图科技有限公司]]的[[PERSON:张伟]]。",
+      "note": "The company rule must not swallow the leading 这是 or the trailing name."
+    },
+    {
+      "id": "zh-005",
+      "annotated": "身份证号[[RESIDENT_ID:11010519491231002X]]，请妥善保管。"
+    },
+    {
+      "id": "zh-006",
+      "annotated": "订单号 110105194912310021 已发货。",
+      "note": "Negative: eighteen digits with a failing check character."
+    },
+    {
+      "id": "zh-007",
+      "annotated": "座机 [[PHONE:010-12345678]]，邮编 [[POSTAL_CODE:100081]]。"
+    },
+    {
+      "id": "zh-008",
+      "annotated": "编号 100081 的物料已入库。",
+      "note": "Negative: six bare digits without the postcode label."
+    },
+    {
+      "id": "zh-009",
+      "annotated": "地址：[[ADDRESS:北京市海淀区中关村大街1号]]"
+    },
+    {
+      "id": "zh-010",
+      "annotated": "出生日期: [[DATE_OF_BIRTH:1985-04-01]]，工号: [[EMPLOYEE_ID:A-12345]]"
+    },
+    {
+      "id": "zh-011",
+      "annotated": "交货日期是 2026-03-31，请安排验收。",
+      "note": "Negative: a delivery date."
+    },
+    {
+      "id": "zh-012",
+      "annotated": "项目名称: [[PROJECT_NAME:夜莺]] 进展顺利。"
+    },
+    {
+      "id": "zh-013",
+      "annotated": "各位女士，欢迎参加本次说明会。",
+      "note": "Negative: polite address, not a name."
+    },
+    {
+      "id": "zh-014",
+      "annotated": "发给[[COMPANY_NAME:王氏集团]]处理即可。",
+      "note": "An organisation, not a person. 王 is a surname, so the name rule must stand aside for the company rule."
+    },
+    {
+      "id": "zh-015",
+      "annotated": "我下周去江苏省出差。",
+      "note": "Negative: a province, not a person."
+    },
+    {
+      "id": "zh-016",
+      "annotated": "收到消息我很高兴，方便的时候请回复。",
+      "note": "Negative: 高兴 and 方便 both begin with a surname character. This is the case the LOW-confidence rule exists to survive."
+    },
+    {
+      "id": "zh-017",
+      "annotated": "负责人是[[PERSON:张伟]]，请知悉。",
+      "note": "Dictionary-anchored: no honorific to lean on."
+    },
+    {
+      "id": "zh-018",
+      "annotated": "作者是[[PERSON:欧阳修]]，宋代人。",
+      "note": "Compound surname."
+    },
+    {
+      "id": "zh-019",
+      "annotated": "密码: [[PASSWORD:huiyi2026chun]]，请及时修改。"
+    },
+    {
+      "id": "zh-020",
+      "annotated": "内网文档在[[INTERNAL_URL:https://wiki.corp.local/zh]]。"
+    },
+    {
+      "id": "zh-021",
+      "annotated": "已确认，明天之前处理完毕。",
+      "note": "Negative: a whole reply with nothing to protect."
+    },
+    {
+      "id": "zh-022",
+      "annotated": "[[PERSON:王强]]女士与[[PERSON:陈静]]老师都会出席。"
+    }
+  ]
+}

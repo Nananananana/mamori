@@ -259,3 +259,72 @@ class TestCliLocales:
         out = capsys.readouterr().out
         assert "(ja," in out and "(en," in out
         assert "scripts found:" in out
+
+
+class TestCliEval:
+    def test_eval_reports_the_headline_metrics(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "ja"]) == 0
+        out = capsys.readouterr().out
+        assert "leak rate" in out
+        assert "over-redaction" in out
+        assert "ja-core" in out
+
+    def test_eval_covers_every_bundled_dataset_by_default(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["eval"]) == 0
+        out = capsys.readouterr().out
+        for name in ("ja-core", "en-core", "zh-core"):
+            assert name in out
+
+    def test_eval_json(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "en", "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["dataset"] == "en-core"
+        assert 0.0 <= payload[0]["leak_rate"] <= 1.0
+        assert payload[0]["by_type"]
+
+    def test_eval_exact_match_mode(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "ja", "--match", "exact", "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)[0]["match"] == "exact"
+
+    def test_eval_show_leaks_names_the_samples(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "en", "--show-leaks"]) == 0
+        assert "leaked:" in capsys.readouterr().out
+
+    def test_eval_min_confidence_is_applied(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "ja", "--min-confidence", "1.0", "--json"]) == 0
+        strict = json.loads(capsys.readouterr().out)[0]
+        assert main(["eval", "--locale", "ja", "--json"]) == 0
+        lenient = json.loads(capsys.readouterr().out)[0]
+        assert strict["leak_rate"] > lenient["leak_rate"]
+
+    def test_eval_reads_a_dataset_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "d.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "format_version": 1,
+                    "name": "custom",
+                    "locale": "en",
+                    "samples": [{"id": "a", "annotated": "Dear [[PERSON:Jane Doe]],"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert main(["eval", "--dataset", str(path)]) == 0
+        assert "custom" in capsys.readouterr().out
+
+    def test_a_locale_with_no_dataset_is_an_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["eval", "--locale", "kl"]) == 1
+        assert "no datasets" in capsys.readouterr().err
+
+    def test_a_malformed_dataset_is_an_error_not_a_traceback(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text("{not json", encoding="utf-8")
+        assert main(["eval", "--dataset", str(path)]) == 1
+        assert "error" in capsys.readouterr().err

@@ -5,6 +5,7 @@
     mamori restore  -- put the values back into a response
     mamori policy   -- show the active policy
     mamori locales  -- show the language packs and when each one runs
+    mamori eval     -- score the detectors against labelled data
     mamori demo     -- a full round trip in one process
 
 ``inspect`` is the command to reach for first. It answers "what is in this
@@ -25,6 +26,13 @@ from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.script import scripts_in
 from ...errors import MamoriError, PolicyViolationError
+from ...evaluation import (
+    Dataset,
+    EvaluationReport,
+    MatchMode,
+    bundled_datasets,
+    evaluate,
+)
 from ...infrastructure.detectors import available_locales
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
@@ -102,6 +110,33 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("policy", help="show the active policy")
     sub.add_parser("locales", help="show the language packs and when each runs")
     sub.add_parser("demo", help="run a full round trip on a sample text")
+
+    evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
+    evaluate_cmd.add_argument(
+        "-d", "--dataset", metavar="PATH", help="dataset file; omit to use the bundled ones"
+    )
+    evaluate_cmd.add_argument(
+        "-l", "--locale", metavar="CODE", help="restrict to the bundled datasets for one locale"
+    )
+    evaluate_cmd.add_argument(
+        "--match",
+        choices=[mode.value for mode in MatchMode],
+        default=MatchMode.OVERLAP.value,
+        help="how closely a detection must line up with a label (default: overlap)",
+    )
+    evaluate_cmd.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.0,
+        metavar="F",
+        help="drop detections below this confidence before scoring",
+    )
+    evaluate_cmd.add_argument(
+        "--show-leaks",
+        action="store_true",
+        help="list the samples that leaked, worst first",
+    )
+    evaluate_cmd.add_argument("--json", action="store_true", help="emit JSON")
 
     return parser
 
@@ -287,6 +322,103 @@ def _cmd_locales(_args: argparse.Namespace) -> int:
     return _EXIT_OK
 
 
+def _report_as_json(report: EvaluationReport) -> dict[str, object]:
+    return {
+        "dataset": report.dataset,
+        "locale": report.locale,
+        "match": report.match_mode.value,
+        "leak_rate": report.leak_rate,
+        "over_redaction_rate": report.over_redaction_rate,
+        "precision": report.overall.precision,
+        "recall": report.overall.recall,
+        "f1": report.overall.f1,
+        "samples": len(report.samples),
+        "clean_samples": report.clean_samples,
+        "by_type": {
+            name: {
+                "support": score.support,
+                "precision": score.precision,
+                "recall": score.recall,
+                "f1": score.f1,
+            }
+            for name, score in report.by_type.items()
+        },
+        "leaking_samples": [
+            {"id": sample.sample_id, "leaked_characters": sample.leaked_characters}
+            for sample in report.leaking_samples()
+        ],
+    }
+
+
+def _print_report(report: EvaluationReport, show_leaks: bool) -> None:
+    print(f"{report.dataset}  ({report.locale}, {len(report.samples)} samples)")
+    print(
+        f"  leak rate           {report.leak_rate:>7.2%}"
+        f"   ({report.leaked_characters}/{report.sensitive_characters} sensitive chars"
+        " left uncovered)"
+    )
+    print(
+        f"  over-redaction      {report.over_redaction_rate:>7.2%}"
+        f"   ({report.over_redacted_characters}/{report.ordinary_characters} ordinary chars"
+        " replaced)"
+    )
+    print(
+        f"  entity P / R / F1   {report.overall.precision:.3f} / "
+        f"{report.overall.recall:.3f} / {report.overall.f1:.3f}"
+        f"   (match: {report.match_mode.value})"
+    )
+    print(f"  clean samples       {report.clean_samples}/{len(report.samples)}\n")
+
+    width = max((len(name) for name in report.by_type), default=4)
+    print(f"  {'type':<{width}}  {'n':>4}  {'prec':>6}  {'rec':>6}  {'f1':>6}")
+    for name, score in report.by_type.items():
+        print(
+            f"  {name:<{width}}  {score.support:>4}  {score.precision:>6.3f}"
+            f"  {score.recall:>6.3f}  {score.f1:>6.3f}"
+        )
+
+    leaking = report.leaking_samples()
+    if show_leaks and leaking:
+        print("\n  leaked:")
+        for sample in leaking:
+            types = ", ".join(sorted({a.entity_type for a in sample.missed})) or "partial span"
+            print(f"    {sample.sample_id}  {sample.leaked_characters:>3} chars  {types}")
+    print()
+
+
+def _cmd_eval(args: argparse.Namespace) -> int:
+    datasets: tuple[Dataset, ...]
+    if args.dataset:
+        datasets = (Dataset.load(Path(args.dataset)),)
+    else:
+        datasets = bundled_datasets(args.locale)
+    if not datasets:
+        print("no datasets matched", file=sys.stderr)
+        return _EXIT_ERROR
+
+    reports = [
+        evaluate(
+            dataset,
+            match=MatchMode(args.match),
+            min_confidence=args.min_confidence,
+        )
+        for dataset in datasets
+    ]
+
+    if args.json:
+        print(json.dumps([_report_as_json(r) for r in reports], ensure_ascii=False, indent=2))
+        return _EXIT_OK
+
+    for report in reports:
+        _print_report(report, args.show_leaks)
+    print(
+        "leak rate is the share of labelled sensitive characters that no detection\n"
+        "covered -- the part that would have left the machine. Over-redaction is what\n"
+        "it cost in ordinary text. Neither number is meaningful without the other."
+    )
+    return _EXIT_OK
+
+
 _COMMANDS = {
     "inspect": _cmd_inspect,
     "protect": _cmd_protect,
@@ -294,6 +426,7 @@ _COMMANDS = {
     "policy": _cmd_policy,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
+    "eval": _cmd_eval,
 }
 
 
