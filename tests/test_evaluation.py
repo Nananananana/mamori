@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -417,6 +419,23 @@ class TestToleratedSpans:
                     assert sample.note, f"{dataset.name}/{sample.id} tolerates a span silently"
 
 
+def _assert_one_hand(datasets: Iterable[Dataset]) -> None:
+    """Every hand in these datasets is the same one.
+
+    Extracted from the test that calls it on the real corpus, so that the
+    failing branch can be exercised on a corpus that does not exist yet. A
+    guard only checked on the input that satisfies it has never been run.
+    """
+    hands = {dataset.provenance.text for dataset in datasets}
+    hands |= {dataset.provenance.labels for dataset in datasets}
+    assert hands == {"mamori"}, (
+        f"the corpus now has more than one hand ({sorted(hands)}). Report "
+        "the leak rate split by hand rather than pooled: a pooled number "
+        "over mixed provenance hides exactly the difference that is worth "
+        "measuring."
+    )
+
+
 class TestProvenance:
     """Who wrote the corpus, and what the scorer refuses to call the result.
 
@@ -610,14 +629,38 @@ class TestProvenance:
         out loud, and will fail as soon as that stops being true -- at which
         point the reports should start being separated by hand.
         """
-        hands = {dataset.provenance.text for dataset in bundled_datasets()}
-        hands |= {dataset.provenance.labels for dataset in bundled_datasets()}
-        assert hands == {"mamori"}, (
-            f"the corpus now has more than one hand ({sorted(hands)}). Report "
-            "the leak rate split by hand rather than pooled: a pooled number "
-            "over mixed provenance hides exactly the difference that is worth "
-            "measuring."
+        _assert_one_hand(bundled_datasets())
+
+    def test_it_actually_fails_when_a_second_hand_arrives(self) -> None:
+        """The test above is written to fail on a day that has not come. Until
+        it does, it is indistinguishable from a test that never runs.
+
+        So the day is simulated here, once, with a hand that does not exist.
+        A guard whose failing branch has never executed is a guard nobody has
+        seen work -- which is the same defect as a CI step wrapped in
+        `continue-on-error`, or a counterexample orphaned by a changed test
+        digest: green, silent, and load-bearing.
+        """
+        one, *rest = bundled_datasets()
+        outsider = replace(
+            one,
+            name="pretend-external",
+            provenance=Provenance("acme", "acme", frozenset()),
         )
+
+        with pytest.raises(AssertionError, match="more than one hand"):
+            _assert_one_hand([*rest, outsider])
+
+    def test_the_failure_names_both_hands(self) -> None:
+        """Because the message is what somebody acts on, and "provenance is
+        mixed" without saying mixed with what is a second investigation."""
+        one, *rest = bundled_datasets()
+        outsider = replace(one, provenance=Provenance("acme", "acme", frozenset()))
+
+        with pytest.raises(AssertionError) as raised:
+            _assert_one_hand([*rest, outsider])
+        assert "acme" in str(raised.value)
+        assert "mamori" in str(raised.value)
 
 
 class TestAModelThatNeverAnswered:

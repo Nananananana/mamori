@@ -56,6 +56,29 @@ adversarial corpus were resolved by deciding what its generator should have
 been able to write, which is what a corpus refuting only its author's
 imagination looks like from the inside.
 
+Three things about commissioning it that are easy to get wrong:
+
+**The values do not have to be real, and must not be.** What has to be
+independent is the hand, not the data. An outside writer using invented values
+in real formats satisfies every constraint at once — redistributable under a
+licence they can grant, free of anybody's actual details, and written by
+somebody who has not seen these rules. The bundled corpora already meet the
+first two: all 34 addresses in them use RFC 2606 reserved domains and the
+telephone numbers use ranges kept aside for fiction. What is missing is only
+the third.
+
+**The labels have to come from the same outside hand as the text.** A document
+somebody else wrote and we annotated leaves the classification ours, which is
+the half that decides what counts as a value. `Provenance` records the two
+separately for exactly this reason.
+
+**Record the date it was published.** Commissioned text is unpublished, so a
+model cannot have memorised it — until it is committed here under Apache-2.0,
+at which point it becomes training data for whatever comes next. The rule-tier
+figures are unaffected, being deterministic. The **model-tier** figures decay
+from the day of publication, so the date is the floor under any claim they
+support.
+
 ---
 
 ## Identity folds width but not case, and nobody decided that
