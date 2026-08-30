@@ -33,7 +33,7 @@ from .dataset import (
     bundled_datasets,
     parse_annotated,
 )
-from .provenance import Provenance, ProvenanceError
+from .provenance import NOTHING_IN_VIEW, Provenance, ProvenanceError
 from .scoring import (
     EvaluationReport,
     MatchMode,
@@ -45,6 +45,7 @@ from .scoring import (
 
 __all__ = [
     "DATA_DIR",
+    "NOTHING_IN_VIEW",
     "Annotation",
     "CachedProvider",
     "Comparison",

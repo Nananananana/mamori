@@ -41,6 +41,22 @@ The default is undeclared, and undeclared refuses. That direction is deliberate
 and matches the rest of this library: claiming independence you do not have is a
 quiet failure that changes what a reader believes, and failing to claim
 independence you do have only makes a number more modest than it needed to be.
+
+Pointing the default the right way is not enough on its own, because a default
+only governs the value nobody wrote. The strongest claim here -- that the
+authors could see nobody's rules, which makes a corpus evidence about everybody
+-- must therefore also be expensive to write, and ``[]`` is the cheapest string
+in JSON to produce by accident. So it is spelled ``"none"`` and a literal empty
+list is refused. See :data:`NOTHING_IN_VIEW`.
+
+One asymmetry is deliberate and worth naming, because it puts friction on the
+path this module exists to encourage. A corpus written by a hand inside the
+family and not saying what it could see is assumed to have seen everything,
+which is right -- we know what the people here can see. An *outside* corpus that
+does not say is refused rather than assumed innocent, because nobody here knows
+what its authors had read. The cost of that is one word in the file, and the
+alternative is granting outsiders an independence nobody checked, which is the
+same unearned claim in a more flattering direction.
 """
 
 from __future__ import annotations
@@ -50,7 +66,7 @@ from typing import Any
 
 from ..errors import ConfigurationError
 
-__all__ = ["UNDECLARED", "Provenance", "ProvenanceError"]
+__all__ = ["NOTHING_IN_VIEW", "UNDECLARED", "Provenance", "ProvenanceError"]
 
 
 class ProvenanceError(ConfigurationError):
@@ -61,6 +77,12 @@ class ProvenanceError(ConfigurationError):
     a perfectly good thing to do -- it is how the regression floor in this
     project's CI works. What is not fine is calling the result evidence about
     documents nobody here has seen.
+
+    Also raised by :meth:`Provenance.from_payload` for a declaration that does
+    not parse, so that a caller catching this catches a corpus whose provenance
+    is broken as well as one whose provenance disqualifies it. It subclasses
+    :class:`~mamori.errors.ConfigurationError`, so anything already catching
+    that keeps working.
     """
 
 
@@ -75,6 +97,21 @@ FAMILY = frozenset({"akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi
 #: should see a word that says the field was never filled in, rather than an
 #: absence they read as "nothing to declare".
 UNDECLARED = "undeclared"
+
+#: How a file says its authors could see nobody's rules -- ``"rules_in_view":
+#: "none"`` rather than ``[]``.
+#:
+#: The empty set is the most permissive value in this module: it makes a corpus
+#: independent evidence about everybody. It is also the cheapest value to
+#: produce by accident. ``sorted(view or [])``, a generator's default argument,
+#: a hand-edit that removed the last name from a list -- all of them yield
+#: ``[]``, and in JSON ``[]`` sits one character from ``null`` while meaning its
+#: opposite.
+#:
+#: So the strongest claim in the format is spelled as a word of a different
+#: type, and a literal ``[]`` is refused with both alternatives named. None of
+#: the ways a value slips produce a string.
+NOTHING_IN_VIEW = "none"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +128,9 @@ class Provenance:
             is not.
         rules_in_view: Every project whose rules those hands could see. ``None``
             means nobody said, which is treated as "all of them" -- see the
-            module docstring on which direction the default points.
+            module docstring on which direction the default points. An empty
+            set is the strongest claim this class can carry, so the file format
+            makes it cost a word: see :data:`NOTHING_IN_VIEW`.
     """
 
     text: str = UNDECLARED
@@ -176,20 +215,13 @@ class Provenance:
         if payload is None:
             return cls()
         if not isinstance(payload, dict):
-            raise ConfigurationError(f"provenance must be an object: {origin}")
+            raise ProvenanceError(f"provenance must be an object: {origin}")
 
         unknown = sorted(set(payload) - {"text", "labels", "rules_in_view"})
         if unknown:
-            raise ConfigurationError(f"provenance has unknown keys {unknown}: {origin}")
+            raise ProvenanceError(f"provenance has unknown keys {unknown}: {origin}")
 
-        raw_view = payload.get("rules_in_view")
-        view: frozenset[str] | None
-        if raw_view is None:
-            view = None
-        elif isinstance(raw_view, list) and all(isinstance(name, str) for name in raw_view):
-            view = frozenset(raw_view)
-        else:
-            raise ConfigurationError(f"provenance.rules_in_view must be a list of names: {origin}")
+        view = _view(payload.get("rules_in_view"), origin)
 
         return cls(
             text=_hand(payload.get("text"), "text", origin),
@@ -206,9 +238,36 @@ class Provenance:
         }
 
 
+def _view(raw: object, origin: str) -> frozenset[str] | None:
+    """Read ``rules_in_view``, refusing the value that slips.
+
+    Raises:
+        ProvenanceError: The list is empty. That is the strongest claim the
+            format can make and the easiest one to write by accident, so it has
+            to be spelled as a word instead.
+    """
+    if raw is None:
+        return None
+    if raw == NOTHING_IN_VIEW:
+        return frozenset()
+    if isinstance(raw, list) and all(isinstance(name, str) and name for name in raw):
+        if not raw:
+            raise ProvenanceError(
+                f"provenance.rules_in_view is an empty list: {origin}. An empty list "
+                f"would make this corpus independent evidence about everybody, which "
+                f"is the strongest thing this file can say, so it has to be said in "
+                'words: use "none" if the authors could see no rules at all, or '
+                "omit the key if nobody has checked."
+            )
+        return frozenset(raw)
+    raise ProvenanceError(
+        f'provenance.rules_in_view must be a list of project names or "none": {origin}'
+    )
+
+
 def _hand(value: object, field_name: str, origin: str) -> str:
     if value is None:
         return UNDECLARED
     if not isinstance(value, str) or not value.strip():
-        raise ConfigurationError(f"provenance.{field_name} must be a name: {origin}")
+        raise ProvenanceError(f"provenance.{field_name} must be a name: {origin}")
     return value.strip()

@@ -12,6 +12,7 @@ from mamori.domain.policy import Action
 from mamori.domain.span import Span
 from mamori.errors import ConfigurationError
 from mamori.evaluation import (
+    NOTHING_IN_VIEW,
     Dataset,
     MatchMode,
     Provenance,
@@ -477,6 +478,36 @@ class TestProvenance:
         provenance = Provenance("external:ragtruth", "external:ragtruth", frozenset())
         assert provenance.independent_of("mamori")
         assert provenance.why_not("mamori") is None
+
+    def test_the_strongest_claim_cannot_be_made_by_accident(self) -> None:
+        """``rules_in_view: []`` is refused, and has to be spelled as a word.
+
+        Pointing the default at refusal only governs the value nobody wrote.
+        The empty set is the most permissive value here -- it makes a corpus
+        evidence about everybody -- and it is also the one that falls out of
+        ``sorted(view or [])``, of a generator's default argument, and of a
+        hand-edit that took the last name off a list. In JSON it sits one
+        character from ``null`` and means the opposite.
+        """
+        with pytest.raises(ProvenanceError, match="empty list"):
+            Provenance.from_payload(
+                {"text": "acme", "labels": "acme", "rules_in_view": []}, "<test>"
+            )
+
+    def test_nothing_in_view_is_spelled_as_a_word(self) -> None:
+        payload = {"text": "acme", "labels": "acme", "rules_in_view": NOTHING_IN_VIEW}
+        provenance = Provenance.from_payload(payload, "<test>")
+        assert provenance.rules_in_view == frozenset()
+        assert provenance.independent_of("mamori")
+
+    def test_a_broken_declaration_raises_the_same_error_as_a_disqualifying_one(
+        self,
+    ) -> None:
+        """A caller catching ProvenanceError should not miss a corrupt block."""
+        with pytest.raises(ProvenanceError):
+            Provenance.from_payload({"text": "acme", "rules_in_view": 7}, "<test>")
+        with pytest.raises(ProvenanceError):
+            Provenance.from_payload({"nonsense": 1}, "<test>")
 
     def test_an_outside_corpus_still_has_to_say_what_it_saw(self) -> None:
         """`external:` in a name is a string, not a fact about who saw what."""
