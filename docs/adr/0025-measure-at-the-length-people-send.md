@@ -99,3 +99,37 @@ fragments and is not a corpus. The sets are still invented, still written by
 the same hand as the rules, and still cannot say what mamori does on somebody
 else's inbox. What they can now do is fail when a change makes documents worse,
 which nothing could do before.
+
+## Added later: a timing measurement must record what it ran on
+
+This ADR is cited by sibling projects as the pattern for measuring latency, so
+the trap it did *not* cover belongs in it.
+
+Every per-document timing this project published for the model tier — from
+twenty seconds to three hundred and forty-five — was **CPU inference on a
+machine with an idle 16 GB GPU**. An interrupted Ollama update had removed the
+CUDA library and died partway through writing its replacement, so GPU discovery
+failed in 0.19 seconds instead of the 6.7 it takes when it succeeds. The server
+logged `library=cpu` and `total_vram="0 B"` at every start for six days, and
+nothing in the harness read that line.
+
+The number even had an explanation. The slowest model was three times the size
+of the fastest and six times slower, which was attributed to VRAM contention
+between resident models — a story that fit the effect, was checkable, and was
+not checked. **A plausible cause that accounts for the size of an effect is not
+evidence for it**, and `nvidia-smi` was one command away the whole time.
+
+So, for anything measuring elapsed time rather than counting characters:
+
+- **Record the device the work ran on, in the output**, next to the number. Not
+  in a README written afterwards from memory of what the machine had.
+- **Assert it**, where the harness can. A run that silently falls back to a
+  slower device produces numbers that look like a finding about the model.
+- **Distrust an explanation that arrives with the anomaly.** The convincing
+  ones are the expensive ones, because they end the search.
+
+What separates this from a quality measurement is worth naming: a leak rate is
+a property of the code and the corpus, and it reproduces anywhere. A duration
+is a property of the code, the corpus, **and the machine** — and the machine is
+the term nobody writes down. Everything else in this ADR survived the mistake
+untouched, because the device does not change what a model returns.
