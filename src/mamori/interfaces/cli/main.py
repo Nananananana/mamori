@@ -1197,6 +1197,23 @@ def _print_provenance(report: EvaluationReport) -> None:
         print("                      not as a probability your documents are safe.")
 
 
+def _print_unanswered(report: EvaluationReport) -> None:
+    """Say when the model never answered, because the rates cannot.
+
+    A model that returns nothing and a model that finds nothing produce
+    identical numbers. Without this line a comparison reads "contributed
+    nothing", which is a statement about the model, when the true statement is
+    that it was never heard from.
+    """
+    if not report.unanswered_samples:
+        return
+    print(
+        f"  MODEL UNREAD        {report.unanswered_samples}/{len(report.samples)}"
+        " samples -- the answer could not be read, so these rates are the"
+        " rules' alone"
+    )
+
+
 def _print_report(report: EvaluationReport, show_leaks: bool) -> None:
     print(f"{report.dataset}  ({report.locale}, {len(report.samples)} samples)")
     print(
@@ -1215,6 +1232,7 @@ def _print_report(report: EvaluationReport, show_leaks: bool) -> None:
         f"   (match: {report.match_mode.value})"
     )
     print(f"  clean samples       {report.clean_samples}/{len(report.samples)}")
+    _print_unanswered(report)
     _print_provenance(report)
     print()
 

@@ -8,6 +8,24 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Fixed
+
+- **A model that never answered scored the same as a model that found
+  nothing.** `EvaluationReport.unanswered_samples` counts the samples where a
+  detection pass could not read its model's reply, and `mamori eval` prints a
+  `MODEL UNREAD` line when there are any.
+
+  Found by benchmarking `gemma4:12b`, which is a reasoning model: it spends the
+  token budget in a `reasoning` field and returns an empty `content`. Eight
+  documents came back as **"contributed nothing" at 35 seconds each**, which is
+  exactly what a model with nothing to add looks like. The detection pass had
+  been recording it the whole time on `last_outcome` — **nothing read it**, so
+  a comparison table could call a model worthless when the honest answer was
+  that it had never been heard from.
+
+  An empty reply is also no longer reported as "response was not JSON". It is
+  not malformed output, it is absent output, and the fix for it is different.
+
 ## [0.27.0] - 2026-08-30
 
 The first release that can be installed by name, and the contract three sibling

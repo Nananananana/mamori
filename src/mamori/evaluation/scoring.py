@@ -147,6 +147,20 @@ class EvaluationReport:
     leaked_characters: int = 0
     ordinary_characters: int = 0
     over_redacted_characters: int = 0
+    #: Samples where a detection pass could not read the model's answer.
+    #:
+    #: **A model that never answered and a model that found nothing produce the
+    #: same rates.** They mean opposite things: one is a measurement of the
+    #: model, the other is a measurement of nothing, and the second costs
+    #: whatever the call cost. `gemma4:12b` is how this was found -- a thinking
+    #: model spends its token budget in a `reasoning` field and returns an
+    #: empty `content`, so eight documents came back as "contributed nothing"
+    #: at 35 seconds each.
+    #:
+    #: The pass recorded it the whole time, on ``last_outcome``. Nothing read
+    #: it, so a comparison table could report a model as worthless when the
+    #: honest answer was that it had not been asked a question it could answer.
+    unanswered_samples: int = 0
     #: Who wrote the data these numbers came from. Carried on the report rather
     #: than looked up later, so that a number and the reason it is qualified
     #: cannot be separated in transit -- which is how a leak rate measured on
@@ -297,6 +311,22 @@ def score_sample(
     )
 
 
+def _model_could_not_be_read(detectors: Sequence[Detector] | None) -> bool:
+    """Whether any pass just failed to get an answer out of its model.
+
+    Reads ``last_outcome`` off whatever passes expose one, which is where the
+    detection pass has been recording this since it was written. Duck-typed on
+    purpose: this module has no business importing an adapter, and a pass that
+    grows the same attribute later is included for free.
+    """
+    for detector in detectors or ():
+        for pass_ in getattr(detector, "passes", ()):
+            outcome = getattr(pass_, "last_outcome", None)
+            if outcome is not None and getattr(outcome, "unparsable", False):
+                return True
+    return False
+
+
 def evaluate(
     dataset: Dataset,
     *,
@@ -323,6 +353,7 @@ def evaluate(
     results: list[SampleResult] = []
     by_type: dict[str, TypeScore] = {}
     overall = TypeScore("ALL")
+    unanswered = 0
 
     for sample in dataset:
         with PrivacySession(
@@ -335,6 +366,9 @@ def evaluate(
                 for report in session.protect(sample.text).entities
                 if report.confidence >= min_confidence
             ]
+
+        if _model_could_not_be_read(detectors):
+            unanswered += 1
 
         result = score_sample(sample, predictions, match)
         results.append(result)
@@ -362,6 +396,7 @@ def evaluate(
         )
 
     return EvaluationReport(
+        unanswered_samples=unanswered,
         dataset=dataset.name,
         locale=dataset.locale,
         match_mode=match,

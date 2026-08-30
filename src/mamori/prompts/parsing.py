@@ -160,6 +160,22 @@ def parse_detection_response(
             checksum behind it, and a model reading a sentence should outrank a
             regex matching two capital letters.
     """
+    if not raw.strip():
+        # Distinct from malformed JSON, because the fix is different and the
+        # cause usually is too. An empty completion is most often a reasoning
+        # model that spent its whole token budget thinking: `gemma4:12b`
+        # returns 7,000 characters in a `reasoning` field and nothing in
+        # `content`, so every document reads as "the model found nothing".
+        return ParseOutcome(
+            unparsable=True,
+            rejected=(
+                "the model returned nothing. A reasoning model that runs out "
+                "of max_tokens before it starts answering looks like this; "
+                "raise llm.max_tokens, or use a model that answers in "
+                "'content'.",
+            ),
+        )
+
     payload = _extract_json(raw)
     if not isinstance(payload, dict):
         return ParseOutcome(unparsable=True, rejected=("response was not JSON",))

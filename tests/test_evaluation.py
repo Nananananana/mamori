@@ -618,3 +618,58 @@ class TestProvenance:
             "over mixed provenance hides exactly the difference that is worth "
             "measuring."
         )
+
+
+class TestAModelThatNeverAnswered:
+    """A model that returns nothing and a model that finds nothing produce
+    identical rates, and mean opposite things.
+
+    Found with `gemma4:12b`: a thinking model spends its token budget in a
+    `reasoning` field and returns an empty `content`, so eight documents came
+    back as "contributed nothing" at 35 seconds each. The detection pass had
+    recorded it the whole time on `last_outcome`; nothing read it, so the
+    comparison table could call a model worthless when the honest answer was
+    that it had never been heard from.
+    """
+
+    def test_rules_alone_leave_it_at_zero(self) -> None:
+        dataset = next(d for d in bundled_datasets() if d.name == "ja-core")
+        assert evaluate(dataset).unanswered_samples == 0
+
+    def test_a_pass_reporting_unparsable_is_counted(self) -> None:
+        class _Outcome:
+            unparsable = True
+
+        class _Pass:
+            last_outcome = _Outcome()
+
+        class _Pipeline:
+            passes = (_Pass(),)
+
+            def detect(self, text: str, context: object = None) -> list[object]:
+                return []
+
+        dataset = next(d for d in bundled_datasets() if d.name == "ja-core")
+        report = evaluate(dataset, detectors=[_Pipeline()])
+        assert report.unanswered_samples == len(dataset.samples)
+
+    def test_a_pass_that_answered_is_not_counted(self) -> None:
+        class _Outcome:
+            unparsable = False
+
+        class _Pass:
+            last_outcome = _Outcome()
+
+        class _Pipeline:
+            passes = (_Pass(),)
+
+            def detect(self, text: str, context: object = None) -> list[object]:
+                return []
+
+        dataset = next(d for d in bundled_datasets() if d.name == "ja-core")
+        assert evaluate(dataset, detectors=[_Pipeline()]).unanswered_samples == 0
+
+    def test_a_detector_with_no_passes_is_not_counted(self) -> None:
+        """Duck-typed on purpose, so a plain detector must not trip it."""
+        dataset = next(d for d in bundled_datasets() if d.name == "ja-core")
+        assert evaluate(dataset).unanswered_samples == 0
