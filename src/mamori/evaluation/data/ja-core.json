@@ -1,250 +1,255 @@
 {
-  "format_version": 1,
-  "name": "ja-core",
-  "locale": "ja",
-  "source": "synthetic",
-  "description": "Japanese business correspondence. Every name, address, number and identifier here is invented. Vendor-prefixed API keys are deliberately absent: a literal one in a shipped data file trips the secret scanners of everyone who clones the repository, and the credential rules are covered by tests/test_detectors.py instead. Labels mark what a competent human redactor would remove, not what the current rules happen to find.",
-  "samples": [
-    {
-      "id": "ja-001",
-      "annotated": "[[PERSON:田中太郎]]さんへ [[EMAIL:tanaka@example.com]] から連絡がありました。"
-    },
-    {
-      "id": "ja-002",
-      "annotated": "[[PERSON:佐藤花子]]様\nお世話になっております。[[COMPANY_NAME:株式会社さくら商事]]の[[PERSON:鈴木一郎]]です。"
-    },
-    {
-      "id": "ja-003",
-      "annotated": "担当は[[PERSON:高橋]]部長です。ご連絡先は[[PHONE:090-1234-5678]]。",
-      "note": "Title used as an honorific."
-    },
-    {
-      "id": "ja-004",
-      "annotated": "[[PERSON:凪沢]]さんに確認してください。",
-      "note": "Surname outside the dictionary; the honorific carries it."
-    },
-    {
-      "id": "ja-005",
-      "annotated": "本日の会議は15時からです。議題は来期の予算配分について。",
-      "note": "Negative: nothing sensitive."
-    },
-    {
-      "id": "ja-006",
-      "annotated": "請求先 〒[[POSTAL_CODE:100-0001]] [[ADDRESS:東京都千代田区千代田1-1]]"
-    },
-    {
-      "id": "ja-007",
-      "annotated": "注文番号は[[?PHONE:0312345678]]です。至急ご確認ください。",
-      "note": "An unseparated digit run is an order number to the anchored rules and a possible phone number to the wide ones. Tolerated: both readings are right for the stance that produced them."
-    },
-    {
-      "id": "ja-008",
-      "annotated": "固定電話は[[PHONE:03-1234-5678]]、携帯は[[PHONE:080-9876-5432]]です。"
-    },
-    {
-      "id": "ja-009",
-      "annotated": "生年月日: [[DATE_OF_BIRTH:1985-04-01]] / 社員番号: [[EMPLOYEE_ID:A-12345]]"
-    },
-    {
-      "id": "ja-010",
-      "annotated": "納品日は2026-03-31、検収は翌週を予定しています。",
-      "note": "Negative: a delivery date is not a date of birth."
-    },
-    {
-      "id": "ja-011",
-      "annotated": "マイナンバーは[[MY_NUMBER:123456789018]]です。取り扱いにご注意ください。"
-    },
-    {
-      "id": "ja-012",
-      "annotated": "伝票番号 [[?IDENTIFIER:123456789012]] を参照してください。",
-      "note": "Twelve digits with a failing My Number check digit. The anchored rule refuses it; the wide tier reads any long digit run as an identifier. Tolerated."
-    },
-    {
-      "id": "ja-013",
-      "annotated": "カード番号[[CREDIT_CARD:4111111111111111]]で決済しました。"
-    },
-    {
-      "id": "ja-014",
-      "annotated": "社内Wikiは[[INTERNAL_URL:https://wiki.corp.local/project]]にあります。"
-    },
-    {
-      "id": "ja-015",
-      "annotated": "公式サイトは https://example.com/ja をご覧ください。",
-      "note": "Negative: a public URL is not internal."
-    },
-    {
-      "id": "ja-016",
-      "annotated": "検証環境のホストは[[INTERNAL_IP:192.168.10.24]]です。"
-    },
-    {
-      "id": "ja-017",
-      "annotated": "バージョン 1.2.3 へのアップデートを適用しました。",
-      "note": "Negative: a version string is not an IP address."
-    },
-    {
-      "id": "ja-018",
-      "annotated": "取引先は[[COMPANY_NAME:さくら商事株式会社]]、担当は[[PERSON:井上美咲]]さんです。"
-    },
-    {
-      "id": "ja-019",
-      "annotated": "[[COMPANY_NAME:有限会社みどり]]から見積もりが届きました。"
-    },
-    {
-      "id": "ja-020",
-      "annotated": "[[COMPANY_NAME:田中商事]]への発注は完了しています。",
-      "note": "Known gap: a trading name with no legal suffix. The name rule correctly stands aside, and the company rule cannot see it -- so it leaks."
-    },
-    {
-      "id": "ja-021",
-      "annotated": "プロジェクト名: [[PROJECT_NAME:あおぞら]] の進捗を共有します。"
-    },
-    {
-      "id": "ja-022",
-      "annotated": "連絡先は[[EMAIL:ｔａｎａｋａ＠ｅｘａｍｐｌｅ．ｃｏｍ]]です。",
-      "note": "Full-width email. Detection runs on normalized text; replacement must hit the original."
-    },
-    {
-      "id": "ja-023",
-      "annotated": "[[PERSON:山田]]さんと[[PERSON:山田]]さんは同姓の別人です。",
-      "note": "Two mentions of one identity: the same placeholder must be reused."
-    },
-    {
-      "id": "ja-024",
-      "annotated": "[[PERSON:ジョン・スミス]]さんが来社されます。",
-      "note": "Katakana full name."
-    },
-    {
-      "id": "ja-025",
-      "annotated": "森林の保全について環境省の資料を確認しました。",
-      "note": "Negative: 森 and 林 are both surnames; 森林 is a forest."
-    },
-    {
-      "id": "ja-026",
-      "annotated": "原因の調査を進めています。金額は確定していません。",
-      "note": "Negative: 原 and 金 are surnames inside ordinary words."
-    },
-    {
-      "id": "ja-027",
-      "annotated": "山口県の営業所に移管しました。",
-      "note": "Negative: a place, not a person."
-    },
-    {
-      "id": "ja-028",
-      "annotated": "お客様各位\n平素より格別のご高配を賜り厚く御礼申し上げます。",
-      "note": "Negative: polite address is not a name."
-    },
-    {
-      "id": "ja-029",
-      "annotated": "パスワード: [[PASSWORD:kaigi2026spring]] でログインしてください。"
-    },
-    {
-      "id": "ja-030",
-      "annotated": "接続先は[[DATABASE_URL:postgres://appuser:s3cret@db.example.com:5432/orders]]です。"
-    },
-    {
-      "id": "ja-031",
-      "annotated": "[[PERSON:渡辺]]課長より、[[PERSON:中村]]主任へ引き継ぎ願います。"
-    },
-    {
-      "id": "ja-032",
-      "annotated": "[[COMPANY_NAME:株式会社あさひ製作所]]の[[PERSON:小林健太]]さんから[[EMAIL:kobayashi@asahi.example.jp]]宛にご返信ください。"
-    },
-    {
-      "id": "ja-033",
-      "annotated": "〒[[POSTAL_CODE:530-0001]] [[ADDRESS:大阪府大阪市北区梅田3-1-3]] へ発送しました。"
-    },
-    {
-      "id": "ja-034",
-      "annotated": "品番 [[?POSTAL_CODE:100-0001]] の在庫は十分にあります。",
-      "note": "NNN-NNNN without the postal marker is a part number to the anchored rules and a possible postal code to the wide ones. Tolerated."
-    },
-    {
-      "id": "ja-035",
-      "annotated": "[[PERSON:田中太郎]]さんの連絡先は[[EMAIL:tanaka@example.com]]、電話は[[PHONE:090-1234-5678]]、所属は[[COMPANY_NAME:株式会社さくら商事]]です。",
-      "note": "Four types in one sentence, adjacent. Tests overlap resolution."
-    },
-    {
-      "id": "ja-036",
-      "annotated": "社員番号: [[EMPLOYEE_ID:B-98765]] の[[PERSON:佐々木]]さんが退職されます。"
-    },
-    {
-      "id": "ja-037",
-      "annotated": "誕生日: [[DATE_OF_BIRTH:1990年7月15日]] のお祝いを準備します。"
-    },
-    {
-      "id": "ja-038",
-      "annotated": "承知しました。明日までに対応いたします。",
-      "note": "Negative: a complete reply with nothing to protect."
-    },
-    {
-      "id": "ja-039",
-      "annotated": "[[PERSON:清水]]様、[[PERSON:大野]]様、[[PERSON:横山]]様\n以上3名でお願いします。"
-    },
-    {
-      "id": "ja-040",
-      "annotated": "[[COMPANY_NAME:合同会社ひまわり]]との契約を更新しました。"
-    },
-    {
-      "id": "ja-041",
-      "annotated": "テスト用アカウントは[[EMAIL:qa+staging@example.co.jp]]です。"
-    },
-    {
-      "id": "ja-042",
-      "annotated": "ステージングは[[INTERNAL_URL:https://staging.internal:8443/health]]で確認できます。"
-    },
-    {
-      "id": "ja-043",
-      "annotated": "第3四半期の売上は前年比112%でした。詳細は添付をご覧ください。",
-      "note": "Negative: a percentage is not an identifier. Business-sensitive in context, which v0.1 does not model."
-    },
-    {
-      "id": "ja-044",
-      "annotated": "[[PERSON:斎藤]]先生に監修をお願いしています。"
-    },
-    {
-      "id": "ja-045",
-      "annotated": "[[PERSON:田中 太郎]]さんと[[PERSON:田中太郎]]さんは同一人物です。",
-      "note": "Spacing variant: both must resolve to one identity."
-    },
-    {
-      "id": "ja-046",
-      "annotated": "[[PERSON:凪沢]]さんへ\n\n本件は[[PERSON:凪沢]]の担当となりました。[[PERSON:凪沢]]まで直接ご連絡ください。",
-      "note": "Co-occurrence: an honorific settles the first mention, and nothing marks the rest. Only the propagation pass reaches them."
-    },
-    {
-      "id": "ja-047",
-      "annotated": "[[COMPANY_NAME:株式会社あおい技研]]と契約しました。\n[[COMPANY_NAME:株式会社あおい技研]]の窓口は営業部です。",
-      "note": "Co-occurrence for a company name repeated across lines."
-    },
-    {
-      "id": "ja-048",
-      "annotated": "件名: [[PERSON:鷲見]]様への回答\n\n[[PERSON:鷲見]]様\n平素よりお世話になっております。",
-      "note": "Co-occurrence in a subject line, where the honorific already anchors both."
-    },
-    {
-      "id": "ja-049",
-      "annotated": "担当は[[PERSON:高橋]]課長です。至急ご確認ください。",
-      "note": "Single mention: propagation must not invent extra occurrences."
-    },
-    {
-      "id": "ja-050",
-      "note": "散文中のパスワード。0.10で規則を足したが標本が無く、0.12の `mamori audit` が「一度も発火していない」と報告して発覚した。",
-      "annotated": "共有アカウントのパスワードは[[PASSWORD:kaigi2026spring]]です。ご確認ください。"
-    },
-    {
-      "id": "ja-051",
-      "note": "否定標本。パスワードの話をしているだけで、開示はしていない。ここでブロックすると普通の文でリクエストが止まる。",
-      "annotated": "パスワードは変更しましたので、再度お試しください。"
-    },
-    {
-      "id": "ja-052",
-      "note": "お客様番号。0.13で規則を足したが標本が無く、`mamori audit` が「一度も発火していない」と即座に報告した。v0.12と同じ失敗を同じ場所でやりかけた。",
-      "annotated": "お客様番号: [[EMPLOYEE_ID:C-88213]] の件でご連絡いたしました。"
-    },
-    {
-      "id": "ja-053",
-      "note": "差出人ラベル + 漢字姓。0.13以前はラベル規則がカタカナにしか届かず、ja-doc-006 で2回漏れていた。",
-      "annotated": "差出人: [[PERSON:横山]]\n宛先: サポート窓口\n\nお世話になっております。"
-    }
-  ]
+ "format_version": 1,
+ "name": "ja-core",
+ "locale": "ja",
+ "source": "synthetic",
+ "description": "Japanese business correspondence. Every name, address, number and identifier here is invented. Vendor-prefixed API keys are deliberately absent: a literal one in a shipped data file trips the secret scanners of everyone who clones the repository, and the credential rules are covered by tests/test_detectors.py instead. Labels mark what a competent human redactor would remove, not what the current rules happen to find.",
+ "samples": [
+  {
+   "id": "ja-001",
+   "annotated": "[[PERSON:田中太郎]]さんへ [[EMAIL:tanaka@example.com]] から連絡がありました。"
+  },
+  {
+   "id": "ja-002",
+   "annotated": "[[PERSON:佐藤花子]]様\nお世話になっております。[[COMPANY_NAME:株式会社さくら商事]]の[[PERSON:鈴木一郎]]です。"
+  },
+  {
+   "id": "ja-003",
+   "annotated": "担当は[[PERSON:高橋]]部長です。ご連絡先は[[PHONE:090-1234-5678]]。",
+   "note": "Title used as an honorific."
+  },
+  {
+   "id": "ja-004",
+   "annotated": "[[PERSON:凪沢]]さんに確認してください。",
+   "note": "Surname outside the dictionary; the honorific carries it."
+  },
+  {
+   "id": "ja-005",
+   "annotated": "本日の会議は15時からです。議題は来期の予算配分について。",
+   "note": "Negative: nothing sensitive."
+  },
+  {
+   "id": "ja-006",
+   "annotated": "請求先 〒[[POSTAL_CODE:100-0001]] [[ADDRESS:東京都千代田区千代田1-1]]"
+  },
+  {
+   "id": "ja-007",
+   "annotated": "注文番号は[[?PHONE:0312345678]]です。至急ご確認ください。",
+   "note": "An unseparated digit run is an order number to the anchored rules and a possible phone number to the wide ones. Tolerated: both readings are right for the stance that produced them."
+  },
+  {
+   "id": "ja-008",
+   "annotated": "固定電話は[[PHONE:03-1234-5678]]、携帯は[[PHONE:080-9876-5432]]です。"
+  },
+  {
+   "id": "ja-009",
+   "annotated": "生年月日: [[DATE_OF_BIRTH:1985-04-01]] / 社員番号: [[EMPLOYEE_ID:A-12345]]"
+  },
+  {
+   "id": "ja-010",
+   "annotated": "納品日は2026-03-31、検収は翌週を予定しています。",
+   "note": "Negative: a delivery date is not a date of birth."
+  },
+  {
+   "id": "ja-011",
+   "annotated": "マイナンバーは[[MY_NUMBER:123456789018]]です。取り扱いにご注意ください。"
+  },
+  {
+   "id": "ja-012",
+   "annotated": "伝票番号 [[?IDENTIFIER:123456789012]] を参照してください。",
+   "note": "Twelve digits with a failing My Number check digit. The anchored rule refuses it; the wide tier reads any long digit run as an identifier. Tolerated."
+  },
+  {
+   "id": "ja-013",
+   "annotated": "カード番号[[CREDIT_CARD:4111111111111111]]で決済しました。"
+  },
+  {
+   "id": "ja-014",
+   "annotated": "社内Wikiは[[INTERNAL_URL:https://wiki.corp.local/project]]にあります。"
+  },
+  {
+   "id": "ja-015",
+   "annotated": "公式サイトは https://example.com/ja をご覧ください。",
+   "note": "Negative: a public URL is not internal."
+  },
+  {
+   "id": "ja-016",
+   "annotated": "検証環境のホストは[[INTERNAL_IP:192.168.10.24]]です。"
+  },
+  {
+   "id": "ja-017",
+   "annotated": "バージョン 1.2.3 へのアップデートを適用しました。",
+   "note": "Negative: a version string is not an IP address."
+  },
+  {
+   "id": "ja-018",
+   "annotated": "取引先は[[COMPANY_NAME:さくら商事株式会社]]、担当は[[PERSON:井上美咲]]さんです。"
+  },
+  {
+   "id": "ja-019",
+   "annotated": "[[COMPANY_NAME:有限会社みどり]]から見積もりが届きました。"
+  },
+  {
+   "id": "ja-020",
+   "annotated": "[[COMPANY_NAME:田中商事]]への発注は完了しています。",
+   "note": "Known gap: a trading name with no legal suffix. The name rule correctly stands aside, and the company rule cannot see it -- so it leaks."
+  },
+  {
+   "id": "ja-021",
+   "annotated": "プロジェクト名: [[PROJECT_NAME:あおぞら]] の進捗を共有します。"
+  },
+  {
+   "id": "ja-022",
+   "annotated": "連絡先は[[EMAIL:ｔａｎａｋａ＠ｅｘａｍｐｌｅ．ｃｏｍ]]です。",
+   "note": "Full-width email. Detection runs on normalized text; replacement must hit the original."
+  },
+  {
+   "id": "ja-023",
+   "annotated": "[[PERSON:山田]]さんと[[PERSON:山田]]さんは同姓の別人です。",
+   "note": "Two mentions of one identity: the same placeholder must be reused."
+  },
+  {
+   "id": "ja-024",
+   "annotated": "[[PERSON:ジョン・スミス]]さんが来社されます。",
+   "note": "Katakana full name."
+  },
+  {
+   "id": "ja-025",
+   "annotated": "森林の保全について環境省の資料を確認しました。",
+   "note": "Negative: 森 and 林 are both surnames; 森林 is a forest."
+  },
+  {
+   "id": "ja-026",
+   "annotated": "原因の調査を進めています。金額は確定していません。",
+   "note": "Negative: 原 and 金 are surnames inside ordinary words."
+  },
+  {
+   "id": "ja-027",
+   "annotated": "山口県の営業所に移管しました。",
+   "note": "Negative: a place, not a person."
+  },
+  {
+   "id": "ja-028",
+   "annotated": "お客様各位\n平素より格別のご高配を賜り厚く御礼申し上げます。",
+   "note": "Negative: polite address is not a name."
+  },
+  {
+   "id": "ja-029",
+   "annotated": "パスワード: [[PASSWORD:kaigi2026spring]] でログインしてください。"
+  },
+  {
+   "id": "ja-030",
+   "annotated": "接続先は[[DATABASE_URL:postgres://appuser:s3cret@db.example.com:5432/orders]]です。"
+  },
+  {
+   "id": "ja-031",
+   "annotated": "[[PERSON:渡辺]]課長より、[[PERSON:中村]]主任へ引き継ぎ願います。"
+  },
+  {
+   "id": "ja-032",
+   "annotated": "[[COMPANY_NAME:株式会社あさひ製作所]]の[[PERSON:小林健太]]さんから[[EMAIL:kobayashi@asahi.example.jp]]宛にご返信ください。"
+  },
+  {
+   "id": "ja-033",
+   "annotated": "〒[[POSTAL_CODE:530-0001]] [[ADDRESS:大阪府大阪市北区梅田3-1-3]] へ発送しました。"
+  },
+  {
+   "id": "ja-034",
+   "annotated": "品番 [[?POSTAL_CODE:100-0001]] の在庫は十分にあります。",
+   "note": "NNN-NNNN without the postal marker is a part number to the anchored rules and a possible postal code to the wide ones. Tolerated."
+  },
+  {
+   "id": "ja-035",
+   "annotated": "[[PERSON:田中太郎]]さんの連絡先は[[EMAIL:tanaka@example.com]]、電話は[[PHONE:090-1234-5678]]、所属は[[COMPANY_NAME:株式会社さくら商事]]です。",
+   "note": "Four types in one sentence, adjacent. Tests overlap resolution."
+  },
+  {
+   "id": "ja-036",
+   "annotated": "社員番号: [[EMPLOYEE_ID:B-98765]] の[[PERSON:佐々木]]さんが退職されます。"
+  },
+  {
+   "id": "ja-037",
+   "annotated": "誕生日: [[DATE_OF_BIRTH:1990年7月15日]] のお祝いを準備します。"
+  },
+  {
+   "id": "ja-038",
+   "annotated": "承知しました。明日までに対応いたします。",
+   "note": "Negative: a complete reply with nothing to protect."
+  },
+  {
+   "id": "ja-039",
+   "annotated": "[[PERSON:清水]]様、[[PERSON:大野]]様、[[PERSON:横山]]様\n以上3名でお願いします。"
+  },
+  {
+   "id": "ja-040",
+   "annotated": "[[COMPANY_NAME:合同会社ひまわり]]との契約を更新しました。"
+  },
+  {
+   "id": "ja-041",
+   "annotated": "テスト用アカウントは[[EMAIL:qa+staging@example.co.jp]]です。"
+  },
+  {
+   "id": "ja-042",
+   "annotated": "ステージングは[[INTERNAL_URL:https://staging.internal:8443/health]]で確認できます。"
+  },
+  {
+   "id": "ja-043",
+   "annotated": "第3四半期の売上は前年比112%でした。詳細は添付をご覧ください。",
+   "note": "Negative: a percentage is not an identifier. Business-sensitive in context, which v0.1 does not model."
+  },
+  {
+   "id": "ja-044",
+   "annotated": "[[PERSON:斎藤]]先生に監修をお願いしています。"
+  },
+  {
+   "id": "ja-045",
+   "annotated": "[[PERSON:田中 太郎]]さんと[[PERSON:田中太郎]]さんは同一人物です。",
+   "note": "Spacing variant: both must resolve to one identity."
+  },
+  {
+   "id": "ja-046",
+   "annotated": "[[PERSON:凪沢]]さんへ\n\n本件は[[PERSON:凪沢]]の担当となりました。[[PERSON:凪沢]]まで直接ご連絡ください。",
+   "note": "Co-occurrence: an honorific settles the first mention, and nothing marks the rest. Only the propagation pass reaches them."
+  },
+  {
+   "id": "ja-047",
+   "annotated": "[[COMPANY_NAME:株式会社あおい技研]]と契約しました。\n[[COMPANY_NAME:株式会社あおい技研]]の窓口は営業部です。",
+   "note": "Co-occurrence for a company name repeated across lines."
+  },
+  {
+   "id": "ja-048",
+   "annotated": "件名: [[PERSON:鷲見]]様への回答\n\n[[PERSON:鷲見]]様\n平素よりお世話になっております。",
+   "note": "Co-occurrence in a subject line, where the honorific already anchors both."
+  },
+  {
+   "id": "ja-049",
+   "annotated": "担当は[[PERSON:高橋]]課長です。至急ご確認ください。",
+   "note": "Single mention: propagation must not invent extra occurrences."
+  },
+  {
+   "id": "ja-050",
+   "note": "散文中のパスワード。0.10で規則を足したが標本が無く、0.12の `mamori audit` が「一度も発火していない」と報告して発覚した。",
+   "annotated": "共有アカウントのパスワードは[[PASSWORD:kaigi2026spring]]です。ご確認ください。"
+  },
+  {
+   "id": "ja-051",
+   "note": "否定標本。パスワードの話をしているだけで、開示はしていない。ここでブロックすると普通の文でリクエストが止まる。",
+   "annotated": "パスワードは変更しましたので、再度お試しください。"
+  },
+  {
+   "id": "ja-052",
+   "note": "お客様番号。0.13で規則を足したが標本が無く、`mamori audit` が「一度も発火していない」と即座に報告した。v0.12と同じ失敗を同じ場所でやりかけた。",
+   "annotated": "お客様番号: [[EMPLOYEE_ID:C-88213]] の件でご連絡いたしました。"
+  },
+  {
+   "id": "ja-053",
+   "note": "差出人ラベル + 漢字姓。0.13以前はラベル規則がカタカナにしか届かず、ja-doc-006 で2回漏れていた。",
+   "annotated": "差出人: [[PERSON:横山]]\n宛先: サポート窓口\n\nお世話になっております。"
+  },
+  {
+   "id": "ja-054",
+   "note": "一文字の姓に名がついた形。林・森・原・岡は姓であり、同時に木立・森・原因・丘でもある。名がなければ名詞のほうが多いので、0.25から一文字姓は名を必須とし、敬称・ラベル・名のいずれかが要る。",
+   "annotated": "打ち合わせには[[PERSON:森健太]]が出席します。"
+  }
+ ]
 }

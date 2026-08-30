@@ -154,9 +154,26 @@ class TestKatakanaNeedsAnAnchor:
     def test_a_postal_code_without_its_marker_is_now_found(self) -> None:
         assert "POSTAL_CODE" in wide_types("住所 100-0001 東京", "ja")
 
-    def test_an_organisation_name_is_now_read_as_a_person_too(self) -> None:
-        """The stated cost: the wide rule drops the organisation guard."""
-        assert "PERSON" in wide_types("田中商事に発注しました", "ja")
+    def test_an_organisation_is_not_read_as_a_person(self) -> None:
+        """It was, until 0.25, and that was written here as a stated cost.
+
+        It stopped being a defensible cost when the same corpus showed what it
+        was hiding: 田中商事 was labelled COMPANY_NAME, the wide tier reported
+        it as a *person*, the spans overlapped, and the evaluation counted the
+        company as covered. The company rule had never been able to read a
+        trading name with no legal form in it -- a documented gap since 0.9 --
+        and an over-detection was standing in front of it.
+
+        The guard is structural rather than a word list: 商事 ends a company
+        and 県 ends a prefecture, whatever the characters before them are.
+        """
+        assert "PERSON" not in wide_types("田中商事に発注しました", "ja")
+        assert "COMPANY_NAME" in wide_types("田中商事に発注しました", "ja")
+
+    def test_a_trading_name_with_no_legal_form(self) -> None:
+        """What the fix above bought, rather than what it cost."""
+        for text in ("さくら製作所と契約しました", "あおい技研の担当者に確認します"):
+            assert "COMPANY_NAME" in types_in(text, "ja")
 
 
 class TestWideChineseRules:

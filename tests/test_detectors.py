@@ -239,3 +239,70 @@ class TestAnAddressHeldApart:
 
     def test_it_does_not_reach_across_a_line(self) -> None:
         assert "EMAIL" not in types_in("ends here jane\n@ example.com")
+
+
+class TestAOneCharacterSurnameOnItsOwn:
+    """林, 森, 原, 岡 are surnames. They are also a wood, a forest, a cause and
+    a hill, and with no given name the noun is commoner than the person.
+
+    0.25 made a given name required for those four. What a name still has, when
+    it is one, is an honorific, a label, or a given name of its own -- and
+    27 spurious detections in three hundred adversarial documents went away.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "林の手入れは来月です",
+            "森の手前で道が細くなります",
+            "岡の上に建てる予定です",
+        ],
+    )
+    def test_a_bare_one_character_surname_is_not_a_person(self, text: str) -> None:
+        assert "PERSON" not in ja_types(text)
+
+    @pytest.mark.parametrize(
+        ("text", "name"),
+        [
+            ("森さんに確認します", "森"),
+            ("担当: 森", "森"),
+            ("森健太が対応します", "森健太"),
+            ("林部長にご相談ください", "林"),
+        ],
+    )
+    def test_an_anchor_or_a_given_name_still_finds_it(self, text: str, name: str) -> None:
+        assert name in ja_values(text, "PERSON")
+
+    def test_a_two_character_surname_still_stands_alone(self) -> None:
+        """田中の資料 is about a person, and 田中 is unambiguous in a way that
+        森 is not."""
+        assert "田中" in ja_values("田中の資料を見ました", "PERSON")
+
+
+class TestATradingNameWithNoLegalForm:
+    """田中商事, さくら製作所 -- how a Japanese company is written in a sentence.
+
+    A documented gap since 0.9, and hidden until 0.25 by an accident: the wide
+    tier read 田中商事 as a person, the span overlapped the COMPANY_NAME label,
+    and the evaluation counted the company as covered. An over-detection can
+    stand in front of a miss.
+    """
+
+    @pytest.mark.parametrize(
+        ("text", "company"),
+        [
+            ("田中商事への発注は完了しています。", "田中商事"),
+            ("さくら製作所と契約しました", "さくら製作所"),
+            ("あおい技研の担当者に確認します", "あおい技研"),
+        ],
+    )
+    def test_it_is_found(self, text: str, company: str) -> None:
+        assert company in ja_values(text, "COMPANY_NAME")
+
+    @pytest.mark.parametrize("text", ["商事部門の予算", "製作所の見学に行きます"])
+    def test_the_suffix_alone_is_not_a_company(self, text: str) -> None:
+        assert "COMPANY_NAME" not in ja_types(text)
+
+    def test_it_is_not_also_a_person(self) -> None:
+        """The whole point: the person reading was the bug."""
+        assert "PERSON" not in ja_types("田中商事への発注は完了しています。")

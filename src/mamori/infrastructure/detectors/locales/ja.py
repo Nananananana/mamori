@@ -101,6 +101,12 @@ _NOT_NAME_ALT = "|".join(_NOT_A_NAME_AFTER)
 _SURNAME_ALT = "|".join(sorted(COMMON_SURNAMES, key=len, reverse=True))
 
 
+#: Split by length, because the two behave differently. A two-character
+#: surname on its own is a name; a one-character surname on its own is usually
+#: the ordinary word it is spelled like.
+_SINGLE_SURNAME_ALT = "|".join(s for s in COMMON_SURNAMES if len(s) == 1)
+_MULTI_SURNAME_ALT = "|".join(s for s in COMMON_SURNAMES if len(s) > 1)
+
 #: Particles a name cannot end in.
 #:
 #: 0.17 let a given name be written in hiragana, because さくら, ゆき and あおい
@@ -124,6 +130,18 @@ def _not_stopword(value: str) -> bool:
     if candidate in _HONORIFIC_STOPWORDS:
         return False
     return not (candidate and candidate[-1] in _PARTICLES)
+
+
+def _not_an_organisation(value: str) -> bool:
+    """The wide tier's only filter: a place or a company is not a person.
+
+    Structural rather than a vocabulary, which is what makes it usable at this
+    tier. 山口県 ends in 県 and 田中商事 in 商事, and no list of words needs
+    consulting to know that a prefecture is not somebody. The wide tier keeps
+    reporting 森林 and 原因, because a word list is the wrong instrument here
+    for the reason ADR 0031 gives: the tier exists to over-report.
+    """
+    return not value.strip().endswith(_NOT_A_NAME_AFTER)
 
 
 def _plausible_name(value: str) -> bool:
@@ -188,6 +206,22 @@ RULES: tuple[PatternRule, ...] = (
         + _COMPANY_BODY
         + r"(?:株式|有限|合同|合名|合資)会社)",
         HIGH,
+    ),
+    # 田中商事, さくら製作所. A trading name with no legal form in it, which is
+    # how a Japanese company is usually written in a sentence.
+    #
+    # This was a documented gap from 0.9 and it was hidden by an accident: the
+    # wide tier read 田中商事 as a *person*, the span overlapped the label, and
+    # the evaluation counted it as covered. Tightening the wide rule in 0.25
+    # made it a leak, which is what it had been all along. An over-detection
+    # can hide a miss, and only removing it shows you.
+    #
+    # MEDIUM rather than HIGH: 商事 and 工業 end company names and also end
+    # ordinary words, so this is weaker evidence than a legal form.
+    compile_rule(
+        t.COMPANY_NAME,
+        _COMPANY_BODY + r"(?:商事|工業|産業|製作所|建設|電機|運輸|物産|技研|設計|興業)",
+        MEDIUM,
     ),
     # 社員番号は入社時にA-44881を付与予定です -- the label, a clause, then the
     # value. Exactly the Chinese 工号预留为 fix from 0.15, in the other
@@ -254,15 +288,40 @@ RULES: tuple[PatternRule, ...] = (
     ),
     # 田中太郎, 田中. Rejected when followed by an organisation or place suffix,
     # so 田中商事 is left for the company rule.
+    #
+    # Surnames of two characters or more only. The given name stays optional
+    # here because 田中 alone is a name and 田中の資料 is about a person.
     compile_rule(
         t.PERSON,
-        r"(?<![一-鿿])(?:" + _SURNAME_ALT + r")"
+        r"(?<![一-鿿])(?:" + _MULTI_SURNAME_ALT + r")"
         r"(?!" + _NOT_NAME_ALT + r")"
         # The given name may not run into an honorific, and the match may end
         # where one begins. Without both halves, 佐藤花子様 comes back as a
         # four-character name ending in 様, and the model is asked to write to
         # somebody called "Hanako-sama-san".
         r"(?:[ 　]?(?:(?!" + _HONORIFIC_ALT + r")[一-鿿]){1,3})?"
+        r"(?=" + _HONORIFIC_ALT + r"|[^一-鿿]|$)",
+        MEDIUM,
+        validator=_plausible_name,
+    ),
+    # 森太郎, 林一郎. The same rule for the four one-character surnames, with
+    # the given name **required**.
+    #
+    # 林, 森, 原 and 岡 are surnames and they are also a wood, a forest, a
+    # cause and a hill, and on their own the noun is commoner than the person:
+    # 林の手入れ, 森の手前, 原因, 静岡. Twenty-seven spurious detections in
+    # three hundred adversarial documents, all four of these characters.
+    #
+    # A name still reaches the anchored rules when it has an honorific
+    # (森さん), a label (担当: 森) or a given name (森健太). What is given up
+    # is a bare 森 in running prose, which is the case a rule cannot tell from
+    # the noun -- and which ADR 0031 measured a morphological analyser on and
+    # found it could not tell either.
+    compile_rule(
+        t.PERSON,
+        r"(?<![一-鿿])(?:" + _SINGLE_SURNAME_ALT + r")"
+        r"(?!" + _NOT_NAME_ALT + r")"
+        r"[ 　]?(?:(?!" + _HONORIFIC_ALT + r")[一-鿿]){1,3}"
         r"(?=" + _HONORIFIC_ALT + r"|[^一-鿿]|$)",
         MEDIUM,
         validator=_plausible_name,
@@ -342,6 +401,7 @@ WIDE_RULES: tuple[PatternRule, ...] = (
         r"(?<![一-鿿])(?:" + _SURNAME_ALT + r")[一-鿿]{1,3}(?![一-鿿])",
         LOW,
         tier=RuleTier.WIDE,
+        validator=_not_an_organisation,
     ),
     # NNN-NNNN without the 〒 marker.
     compile_rule(
