@@ -929,6 +929,30 @@ it cost in ordinary text. Neither number means anything alone: a tool that
 redacts everything has a perfect leak rate and destroys every answer, and a
 privacy layer people stop using has a real-world leak rate of 1.0.
 
+### Who wrote the documents these numbers come from
+
+**We did.** Every bundled dataset and every generated corpus in this project was
+written by the people who wrote the rules, and that is the most important thing
+to know about the figures above.
+
+It is not a small caveat. A corpus written alongside the rules contains the
+cases its authors thought of, in the phrasings they had in mind, and a leak
+rate measured on it is a statement about internal consistency before it is a
+statement about the world. The adversarial corpus in `0.25` was built
+specifically to attack that — and it still could only refuse what its own
+generator could produce, which is why three of its findings were resolved by
+deciding what the generator should have been able to write.
+
+So read the leak rate as **a regression floor that has never been allowed to
+rise**, which it genuinely is, and not as a measured probability that your
+documents are safe. The number that would mean the second thing has to come
+from documents nobody here has seen, and borrowing a corpus from a sibling
+project does not produce it: a sister project that reused this one's corpus
+found itself reporting a 1.0% miss rate that its own unseen data did not
+support at all.
+
+That measurement is worth commissioning and does not exist yet.
+
 Entity-level precision and recall are reported too, per type, because they are
 how you find a rule that is missing rather than merely imprecise. But they are
 not the headline. A detector that finds `田中` inside `田中太郎` scores as a hit
@@ -999,8 +1023,18 @@ over-redacted. Every stance table in this README describes a trade between
 those two numbers, and a model of this size is the first thing that has moved
 both in the same direction.
 
-**It costs 345 seconds per document on this hardware.** Fine for a batch,
-impossible for a chat, and the reason this stays off by default.
+**The seconds-per-document figure that stood here has been withdrawn.** It was
+measured with an interrupted Ollama update on the machine, which had left no
+CUDA library at all: GPU discovery was failing in a fifth of a second instead
+of the near-seven it takes when it succeeds, and every run was on the processor
+with a 16 GB card sitting idle. The accuracy figures are unaffected — a model
+returns the same tokens whichever device multiplies the matrices — but the
+timing was measuring the wrong machine.
+
+The tier stays off by default regardless, and for a reason that was never the
+stopwatch: it needs a model you have to run, on hardware that decides which
+model, and it is orders of magnitude slower than a regular expression whatever
+it runs on.
 
 **At 8B, on fragments, at the balanced stance**, which is what earlier versions
 of this section reported. `llama3.1:8b`:

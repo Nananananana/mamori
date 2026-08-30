@@ -217,9 +217,13 @@ Over-redaction does not move anywhere, which is what did not happen at 8B, and
 two of the three languages reach zero. What closes in English is the anchorless
 name, the largest measured gap in this project since 0.9. The Chinese row read
 2.37% -> 2.37% until 0.24, when this library started accepting the type names
-the model actually uses. It costs **345 seconds per document** on the hardware these
-numbers come from, which is why the tier is off by default and why "measure it
-on your own hardware" is not a formality.
+the model actually uses. The **345 seconds per document** this line used to
+report has been withdrawn: an interrupted Ollama update had left no CUDA
+library on the machine, so every run was CPU inference with a 16 GB card idle.
+The accuracy above is unaffected, since the device does not change what a model
+returns. The tier is off by default for a reason the stopwatch was never
+carrying — it needs a model you have to run, on hardware that decides which
+one — and "measure it on your own hardware" is still not a formality.
 
 **Why this took sixteen releases.** Every attempt since 0.7 reported that the
 model timed out, and every write-up repeated it. `LLMRequest.timeout` defaulted
