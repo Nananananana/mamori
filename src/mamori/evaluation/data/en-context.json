@@ -3,6 +3,11 @@
  "name": "en-context",
  "locale": "en",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "Assembled prompts, in the shape a retrieval layer renders one. Three kinds of thing share a document: prose passages, headers carrying a file path (a home directory names its owner), and structure -- ids, hashes, offsets -- which is a negative set. Anything replaced there is a bug: a redacted hash is a package whose id no longer verifies. Smaller than the document sets on purpose; the large corpus of these lives in the development repository.",
  "samples": [
   {

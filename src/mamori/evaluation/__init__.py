@@ -13,6 +13,12 @@ improves one language and quietly wrecks another does not land.
 Read ``leak_rate`` first. It is the fraction of labelled sensitive characters
 that were not covered by any detection -- the share of the secret that would
 have left the machine.
+
+Then read the report's ``provenance``, which says whose hand wrote the data. The
+bundled datasets were written by the people who wrote the rules, so their numbers
+are **a regression floor that has never been allowed to rise** and not a measured
+probability that anybody's documents are safe. ``report.as_evidence_for(...)``
+enforces that distinction rather than trusting anyone to remember it.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from .dataset import (
     bundled_datasets,
     parse_annotated,
 )
+from .provenance import Provenance, ProvenanceError
 from .scoring import (
     EvaluationReport,
     MatchMode,
@@ -44,6 +51,8 @@ __all__ = [
     "Dataset",
     "EvaluationReport",
     "MatchMode",
+    "Provenance",
+    "ProvenanceError",
     "Sample",
     "SampleChange",
     "SampleResult",

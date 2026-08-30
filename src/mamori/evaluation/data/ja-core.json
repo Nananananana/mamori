@@ -3,6 +3,11 @@
  "name": "ja-core",
  "locale": "ja",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "Japanese business correspondence. Every name, address, number and identifier here is invented. Vendor-prefixed API keys are deliberately absent: a literal one in a shipped data file trips the secret scanners of everyone who clones the repository, and the credential rules are covered by tests/test_detectors.py instead. Labels mark what a competent human redactor would remove, not what the current rules happen to find.",
  "samples": [
   {

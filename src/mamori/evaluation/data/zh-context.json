@@ -3,6 +3,11 @@
  "name": "zh-context",
  "locale": "zh",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "组装出来的提示词。同一份文档里有三种东西：散文段落、带文件路径的条目头部（家目录点名了它的所有者），以及不能碰的结构——条目 ID、内容哈希、字符偏移量。结构是负例：那里出现任何替换都是缺陷，因为被涂掉的哈希意味着这份包的 ID 不再校验。",
  "samples": [
   {

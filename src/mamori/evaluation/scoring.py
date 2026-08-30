@@ -23,6 +23,14 @@ The two also disagree in a useful direction. A detection with the wrong *type*
 but the right span is an entity-level miss and a character-level success -- the
 value was still removed. When those numbers diverge, the labels or the taxonomy
 need looking at, not the rules.
+
+**Neither family says what the numbers are evidence about.** That is a property
+of the corpus, not of the arithmetic, so every report carries the corpus's
+:class:`~mamori.evaluation.provenance.Provenance` and will refuse
+:meth:`EvaluationReport.as_evidence_for` when the hand that wrote the data could
+see the rules being scored. Scoring itself never refuses: measuring against data
+we wrote is exactly how the regression floor works. What refuses is calling the
+result a measurement of anything else.
 """
 
 from __future__ import annotations
@@ -37,6 +45,7 @@ from ..domain.policy import PrivacyPolicy
 from ..domain.span import Span
 from ..ports.detector import Detector
 from .dataset import Annotation, Dataset, Sample
+from .provenance import Provenance, ProvenanceError
 
 __all__ = [
     "EvaluationReport",
@@ -138,6 +147,46 @@ class EvaluationReport:
     leaked_characters: int = 0
     ordinary_characters: int = 0
     over_redacted_characters: int = 0
+    #: Who wrote the data these numbers came from. Carried on the report rather
+    #: than looked up later, so that a number and the reason it is qualified
+    #: cannot be separated in transit -- which is how a leak rate measured on
+    #: home ground ends up quoted as a miss rate about the world.
+    provenance: Provenance = field(default_factory=Provenance)
+
+    def independent_of(self, subject: str) -> bool:
+        """Whether these numbers are evidence *about* ``subject``."""
+        return self.provenance.independent_of(subject)
+
+    def as_evidence_for(self, subject: str) -> EvaluationReport:
+        """This report, if it may be quoted as a measurement of ``subject``.
+
+        Scoring never refuses -- running the detectors over data we wrote is
+        how the regression floor in CI works, and it is a good thing to do.
+        What refuses is the *claim*. Call this at the point where a number
+        stops being an internal check and starts being told to somebody, and
+        it will decline rather than let a home-ground figure travel as though
+        it described unseen documents.
+
+            >>> from mamori.evaluation import bundled_datasets, evaluate
+            >>> report = evaluate(bundled_datasets("ja")[0])
+            >>> report.independent_of("mamori")
+            False
+            >>> report.independent_of("iriguchi")  # borrowing does not launder it
+            False
+
+        Raises:
+            ProvenanceError: The corpus was written by ``subject``, or by
+                somebody who could see ``subject``'s rules, or by a hand
+                nobody recorded.
+        """
+        reason = self.provenance.why_not(subject)
+        if reason is not None:
+            raise ProvenanceError(
+                f"{self.dataset} cannot be evidence about {subject}: {reason}. "
+                f"The numbers are still a regression floor, which is what they "
+                f"have always been. Report them as one."
+            )
+        return self
 
     @property
     def leak_rate(self) -> float:
@@ -316,6 +365,7 @@ def evaluate(
         dataset=dataset.name,
         locale=dataset.locale,
         match_mode=match,
+        provenance=dataset.provenance,
         overall=overall,
         by_type=dict(sorted(by_type.items())),
         samples=tuple(results),

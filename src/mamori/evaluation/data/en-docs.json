@@ -3,6 +3,11 @@
   "name": "en-docs",
   "locale": "en",
   "source": "synthetic",
+  "provenance": {
+    "text": "mamori",
+    "labels": "mamori",
+    "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+  },
   "description": "English business documents, at the length people actually send. The core set measures sentence fragments -- a median of 44 characters -- and this one measures things with paragraphs, quoted replies, signatures and log excerpts. The difference is not cosmetic: over-redaction on a 44-character sample has a denominator of 44, propagation across a thread has nowhere to happen, and a document long enough to be windowed never appears at all. Every name, address, number and identifier here is invented, and vendor-prefixed credentials are deliberately absent so that cloning this repository does not trip a secret scanner. Labels mark what a competent human redactor would remove.",
   "samples": [
     {
