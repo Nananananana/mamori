@@ -27,7 +27,15 @@ pytest && ruff check . && ruff format --check . && mypy
 ```
 
 CI runs the same four on Python 3.10 through 3.13, on Linux and Windows, plus a
-`pip-audit` pass.
+`pip-audit` pass and a job that installs the built wheel and uses it from
+outside the source tree.
+
+**Run them on `.`, not on the paths you touched.** `ruff` formats the Python
+inside markdown fences too, so `ruff format --check src tests` passes while the
+READMEs drift — which is exactly what happened, to two people on the same day,
+and main was red for three commits before either noticed. The scope of a check
+has to match the scope of what it protects, and a narrower spelling of it fails
+silently by construction.
 
 ## The rules that are not negotiable
 

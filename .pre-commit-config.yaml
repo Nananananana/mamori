@@ -4,9 +4,17 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.5
     hooks:
+      # `types_or` on both, because the hooks default to Python files and CI
+      # runs `ruff check .` / `ruff format --check .`, which also read the
+      # Python inside markdown fences. Two mechanisms in this repository
+      # disagreeing about what "the checks" cover is how three READMEs drifted
+      # and main went red with nobody noticing: the narrower one runs first and
+      # says nothing, so the wider one looks like it changed its mind.
       - id: ruff
         args: [--fix]
+        types_or: [python, pyi, jupyter, markdown]
       - id: ruff-format
+        types_or: [python, pyi, jupyter, markdown]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
