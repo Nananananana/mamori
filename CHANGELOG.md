@@ -8,6 +8,60 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-08-30
+
+Japanese names and Japanese companies, and the first honest answer to "which
+model should I run".
+
+### Fixed
+
+- **A one-character surname needs a given name.** 林, 森, 原 and 岡 are
+  surnames. They are also a wood, a forest, a cause and a hill, and on their own
+  the noun is commoner than the person: 林の手入れ, 森の手前, 原因, 静岡. Those
+  four now require a given name; two-character surnames do not, because 田中の
+  資料 is about a person and 田中 is unambiguous in a way 森 is not.
+
+  A name still reaches the anchored rules when it has an honorific (森さん), a
+  label (担当: 森) or a given name (森健太). What is given up is a bare 森 in
+  running prose — the case a rule cannot tell from the noun, and which
+  [ADR 0031](docs/adr/0031-the-morphological-adapter-measured-and-declined.md)
+  measured an analyser on a release ago and found it could not tell either.
+
+- **A trading name with no legal form.** 田中商事, さくら製作所, あおい技研 —
+  how a Japanese company is usually written in a sentence, and a documented gap
+  since 0.9. Now a MEDIUM rule over ten trading suffixes.
+
+  It stayed open that long because **an over-detection was standing in front of
+  it**. The wide tier read 田中商事 as a *person*, that span overlapped the
+  COMPANY_NAME label, and the evaluation counted the company as covered. The
+  miss only appeared once the over-detection was removed — so `test_stance.py`
+  now asserts the opposite of what it asserted for sixteen releases, with the
+  reason written down.
+
+### Changed
+
+| dataset | leak | over-redaction |
+|---|---|---|
+| `ja-core` | 0.00% | 2.78% → **2.47%** |
+| `ja-adversarial` | 0.00% | 0.99% → **0.81%** |
+
+### Documented
+
+- **[Which model, and at what quantisation](README.md#which-model-and-at-what-quantisation).**
+  Four models against `en-docs` and `ja-docs`. Every one of them finds the same
+  values — the leak falls by the same 2.29 points from a 4.7 GB model as from a
+  9 GB one. What differs is what else they add, so **quantisation costs
+  precision, not recall**. For 16 GB of VRAM the recommendation is
+  `qwen2.5:7b-instruct-q8_0`, which adds no over-redaction at all.
+
+  The timings taken alongside those numbers were withdrawn rather than
+  published: an interrupted Ollama update had left no CUDA library, GPU
+  discovery had been failing in 0.19 seconds instead of 6.7, and every run was
+  on the processor with the GPU idle. The 345 seconds one model took had been
+  attributed to VRAM contention — a story that fit the number, was checkable,
+  and had not been checked. The accuracy figures are unaffected: a model returns
+  the same tokens whichever device multiplies the matrices.
+
 ## [0.25.0] - 2026-08-30
 
 Two things 1.0 needs: a public surface that is a contract, and a corpus of text
@@ -2005,7 +2059,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/Nananananana/mamori/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/Nananananana/mamori/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/Nananananana/mamori/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Nananananana/mamori/compare/v0.22.0...v0.23.0

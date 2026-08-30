@@ -734,6 +734,30 @@ host named in `trusted_hosts` is admitted under all of them, because an
 operator naming a host is making a decision. See
 [ADR 0015](docs/adr/0015-a-trust-boundary-not-a-localhost-check.md).
 
+### Which model, and at what quantisation
+
+The tier is off by default because the right model is the one your hardware
+has room for. Measured against `en-docs` and `ja-docs`, the answer was not the
+one "bigger is better" predicts:
+
+| model | size | en leak | over-redaction added |
+|---|---|---|---|
+| `qwen2.5:7b-instruct-q8_0` | 8.1 GB | 3.50 → **1.21%** | **none** |
+| `qwen2.5:7b-instruct-q4_K_M` | 4.7 GB | 3.50 → 1.21% | +0.20 en / +0.84 ja |
+| `llama3.1:8b` | 4.9 GB | 3.50 → 1.21% | +0.44 en / +1.24 ja |
+| `qwen2.5:14b-instruct-q4_K_M` | 9.0 GB | 3.50 → **0.36%** | **none** |
+
+**Every one of them finds the same values.** The leak falls by the same 2.29
+points whatever the size or the quantisation. What differs is what else they
+add — so **quantisation costs precision, not recall**. A 4-bit model can see a
+name perfectly well; it just calls rather more of the surrounding text one.
+
+For a 16 GB card, `qwen2.5:7b-instruct-q8_0` leaves half the card free and adds
+nothing that is not a value. Drop to `q4_K_M` when the memory matters more than
+the last point of precision — for this library over-redaction is the cheaper
+failure of the two, which is exactly why the smaller model is a reasonable
+choice and not a compromised one.
+
 ### Any model, any client library
 
 Switching models is a field. Switching *how* the model is reached is one line,
