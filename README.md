@@ -289,8 +289,8 @@ Three hundred generated answers, all three hundred exact.
 
 ```python
 result = session.protect(package)
-result.reversible      # False if anything was masked rather than replaced
-result.masked_types    # ('PHONE',) — types, never values
+result.reversible  # False if anything was masked rather than replaced
+result.masked_types  # ('PHONE',) — types, never values
 ```
 
 `<PERSON_001>` and `[REDACTED]` look equally replaced in the text, and only one
@@ -419,7 +419,7 @@ it, and a model asked to edit the document is being shown a tag rather than a
 token.
 
 ```python
-MamoriConfig(placeholder_style="square")   # [PERSON_001]
+MamoriConfig(placeholder_style="square")  # [PERSON_001]
 ```
 
 Restoration accepts every form whatever this is set to, so a document protected
