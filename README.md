@@ -42,10 +42,10 @@ The mapping from `<PERSON_001>` back to `田中太郎` never leaves your machine
 
 ## See it work
 
-Nothing to install, nothing to configure:
+Nothing to configure:
 
 ```bash
-pip install mamori
+pip install git+https://github.com/Nananananana/mamori.git
 mamori demo
 ```
 
@@ -107,8 +107,24 @@ hosted API with `--api-key-env`.
 
 ## Install
 
+**Not on PyPI yet.** Install from the repository:
+
 ```bash
-pip install mamori
+pip install git+https://github.com/Nananananana/mamori.git
+```
+
+`pip install mamori` is what this section said for twenty-five releases, and it
+has never once worked: there is no package under that name on PyPI, and this
+project has never had a job that would publish one. A sibling depending on
+`mamori>=0.14` had a CI step that could not install it, wrapped in
+`continue-on-error`, so the seam it was supposed to cover had never run and
+nothing had gone red. The instruction was found by somebody checking it rather
+than reading it.
+
+Releases are tagged, so a specific version works too:
+
+```bash
+pip install git+https://github.com/Nananananana/mamori.git@v0.25.0
 ```
 
 No model, no GPU, no network. The default detectors are pattern rules that run

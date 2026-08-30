@@ -40,10 +40,10 @@ English: [README.md](README.md) ／ 日本語: [README.ja.md](README.ja.md)
 
 ## 先跑起来看看
 
-除了安装之外什么都不需要：
+不需要任何配置：
 
 ```bash
-pip install mamori
+pip install git+https://github.com/Nananananana/mamori.git
 mamori demo
 ```
 
@@ -102,8 +102,22 @@ restored into your own words
 
 ## 安装
 
+**尚未发布到 PyPI。** 从仓库安装：
+
 ```bash
-pip install mamori
+pip install git+https://github.com/Nananananana/mamori.git
+```
+
+这一节写了二十五个版本的 `pip install mamori`，而它**从来没有成功过**：
+PyPI 上没有这个名字的包，本项目也从未有过发布它的任务。一个依赖
+`mamori>=0.14` 的兄弟项目，其 CI 步骤根本装不上它，却被 `continue-on-error`
+包着，于是它本该覆盖的接缝一次都没跑过，也从未变红。**发现它的不是读的人，
+是试的人。**
+
+发布都打了标签，也可以指定版本：
+
+```bash
+pip install git+https://github.com/Nananananana/mamori.git@v0.25.0
 ```
 
 不需要模型，不需要 GPU，不联网。默认检测器是微秒级的模式规则。
