@@ -278,5 +278,8 @@ package, and `iriguchi` gets the record its README already promises when it
 escalates a prompt. The `Restorer` Protocol stays exactly as it is: **stating
 what happened becomes a document; doing the thing stays an interface.**
 
+**It is not frozen yet**, and what would freeze it is in
+[docs/open-questions.md](../open-questions.md).
+
 The cost is a second frozen surface. It is smaller than the Python API, and
 unlike the Python API it is frozen on purpose.

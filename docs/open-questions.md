@@ -100,6 +100,45 @@ to `2b197a3`, with what each outcome would mean written down before the run.
 
 ---
 
+## When does `mamori.protection-scope/1` freeze?
+
+Three sibling projects read it. One has it implemented and verified against
+real emitted bytes. Nobody has asked for it to be frozen, which under the
+family's own rule — *a contract freezes because a consumer needed it to, not
+because we want to freeze it* — is already an answer.
+
+What stops it being frozen anyway is that **it changed twice on the day it was
+written, and both changes came from the producer side**: the mixed mode, found
+by writing the emitter and discovering that surrogates are enabled per entity
+type; and the split contract identifier, found by realising a rule for
+consumers could be carried by a name instead. Neither was visible while it was
+only a design.
+
+**The first condition proposed for it was wrong, and it is worth saying why.**
+
+It was: *another project produces these records, and it works.* The reasoning
+was sound — a contract with one producer has not finished finding out what
+producers need. The problem is that no such project exists or is likely to.
+`iriguchi`, `akashi` and `tsumugi` all consume; `musubi` was the one candidate
+on anybody's roadmap and it turns out to be outside the contract entirely,
+because it does not protect anything, so it never has a scope to describe.
+
+A condition nothing can satisfy is a refusal wearing a condition's clothes —
+which is this file's own rule about settling conditions, applied to a decision
+instead of to a concern.
+
+**Settled by** somebody writing a second emitter **from the document alone**,
+without reading `mamori.provenance`, and its output validating against the
+shipped schema in all three modes. That tests the thing the original condition
+was reaching for — whether the document says enough to produce from — without
+requiring anybody to have a reason to adopt it. It is an afternoon's work for
+whoever does it, and it can be anybody.
+
+Until then the contract is versioned, published, and free to change with a
+version bump.
+
+---
+
 ## `pip install mamori` still does not work
 
 The README now says so and gives the install that does. The package has never
