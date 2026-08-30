@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import inspect
+import pathlib
 import pkgutil
 
 import pytest
@@ -222,3 +223,85 @@ def _every_module() -> list[object]:
         except ImportError:  # pragma: no cover - an optional adapter
             continue
     return modules
+
+
+class TestEveryExportedErrorIsRaisedSomewhere:
+    """An exception nobody raises is a documented failure mode that does not
+    exist.
+
+    `except SomethingError:` then reads as handling and is a branch that never
+    runs -- the same defect as a check that cannot fail, arriving through the
+    error hierarchy instead of through a test.
+
+    Two of these were removed in 0.28 by hand: `AnonymizationError` and
+    `RestorationError`, exported and documented and never raised in any commit.
+    Doing it by hand does not stop a third, so this is the mechanism. Found by
+    tsumugi, whose version had a sharper cause -- the only layer that could
+    raise its dead error was forbidden by its own layering rules from importing
+    the module defining it.
+
+    A base class is exempt **only when something actually inherits from it**,
+    checked through the class hierarchy rather than by the name looking like a
+    base. That distinction matters: "it is called MamoriError so it is
+    obviously a base" is the same reasoning that lets a dead class survive.
+    """
+
+    @staticmethod
+    def _raised_names() -> set[str]:
+        """Every name appearing as `raise Name(...)` anywhere in the package.
+
+        AST rather than a grep, so `raise` inside a string or a comment does
+        not count, and so a name that is only *mentioned* does not either.
+        """
+        import ast
+
+        root = pathlib.Path(mamori.__file__).parent
+        names: set[str] = set()
+        for path in root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Raise) or node.exc is None:
+                    continue
+                target = node.exc
+                if isinstance(target, ast.Call):
+                    target = target.func
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+                elif isinstance(target, ast.Attribute):
+                    names.add(target.attr)
+        return names
+
+    def test_nothing_in_the_hierarchy_is_dead(self) -> None:
+        exported = {
+            name: getattr(mamori.errors, name)
+            for name in mamori.errors.__all__
+            if isinstance(getattr(mamori.errors, name), type)
+        }
+        raised = self._raised_names()
+
+        dead = []
+        for name, cls in exported.items():
+            if name in raised:
+                continue
+            inherited = any(
+                other is not cls and issubclass(other, cls) for other in exported.values()
+            )
+            if not inherited:
+                dead.append(name)
+
+        assert not dead, (
+            f"exported but never raised, and nothing inherits from them: {sorted(dead)}. "
+            "Wire them or remove them: an exception nobody raises is a failure "
+            "mode a caller will write a branch for and never enter."
+        )
+
+    def test_the_base_class_is_exempt_because_something_inherits_it(self) -> None:
+        """Stated separately so the exemption is a fact rather than a habit."""
+        children = [
+            getattr(mamori.errors, name)
+            for name in mamori.errors.__all__
+            if isinstance(getattr(mamori.errors, name), type)
+            and getattr(mamori.errors, name) is not mamori.errors.MamoriError
+        ]
+        assert children, "MamoriError is exempt only while something inherits from it"
+        assert all(issubclass(child, mamori.errors.MamoriError) for child in children)
