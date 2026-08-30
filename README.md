@@ -1214,9 +1214,15 @@ Two things are wanted and deliberately have no version number, because giving
 them one a third time would be a way of not admitting they keep losing to
 whatever the corpus turned up that week: the optional Japanese morphological
 adapter, and an encrypted store for deployments that cannot hold mappings in
-memory alone. The oldest open question is still whether a model above 8B changes
-the model-tier table; the harness to settle it exists and the hardware here times
-out.
+memory alone. The morphological adapter has since been measured and declined
+([ADR 0031](docs/adr/0031-the-morphological-adapter-measured-and-declined.md));
+the encrypted store is still wanted.
+
+Questions that are open rather than planned — a known gap with no good fix yet,
+a number nobody has, a decision that is owed — are in
+[docs/open-questions.md](docs/open-questions.md). Each one names what would
+settle it, because a concern that cannot say what would close it is a worry,
+and a file of worries stops being read.
 
 Language priority is Japanese and English first, Chinese second. The Chinese
 rules exist and are measured; the design for making them good is written up in
