@@ -138,7 +138,20 @@ class PrivacySession:
         return self._protection.protect(text, self._scope)
 
     def restore(self, text: str) -> RestorationResult:
-        """Replace this session's placeholders in ``text`` with real values."""
+        """Replace this session's placeholders in ``text`` with real values.
+
+        A placeholder stands for a **value**, not for a site. When one value is
+        written two ways that NFKC folds together -- ``Y0@a.example.com`` and
+        ``Ｙ0@a.example.com``, or ``株式会社ABC`` and ``㍿ABC`` -- both sites get
+        the same token, and both come back spelled the way the first one was.
+
+        That is the intended half working: they are the same address and the
+        same company, and one token for both is what lets a model treat them as
+        one thing. The consequence is that restoration returns the value's
+        spelling and not each site's, and there is no fixing it from here --
+        what comes back from a model is an answer, not the document, so there
+        is no site to match a token to.
+        """
         return self._restoration.restore(text, self._scope)
 
     def external_system_prompt(self) -> str:
