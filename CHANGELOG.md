@@ -8,6 +8,23 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Fixed
+
+- **Three of the twelve figures in `SECURITY.md` were out of date**, and three
+  sample counts with them. `ja-core` was the worst: over-redaction published as
+  2.78% against a real 2.44%, precision 0.925 against 0.955. Nothing was broken
+  — the document had simply stopped being true, at some release nobody can
+  name, because the table is written by hand and the rules keep improving.
+
+  Proposal 0002 makes *"the figures in `SECURITY.md` have data behind them
+  worth the word measured"* a condition of 1.0. Two of that clause's three
+  parts were already met; this was the part of the third that waits on nobody.
+
+  `tests/test_security_figures.py` parses the table and compares every row
+  against a live `evaluate()`, so the drift is now a build failure. **A
+  published number that no longer holds is the same defect as a check that
+  cannot fail**: it reads as evidence and is a memory of evidence.
+
 ### Removed
 
 - **`AnonymizationError` and `RestorationError`.** Both were exported, both

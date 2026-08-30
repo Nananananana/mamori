@@ -96,16 +96,16 @@ Detection is measured against bundled labelled datasets, at two scales. Run
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
-| `en-core` | 52 fragments | 0.64% | 0.72% | 0.980 / 0.980 |
-| `ja-core` | 53 fragments | 0.00% | 2.78% | 0.925 / 0.984 |
+| `en-core` | 53 fragments | 0.62% | 0.71% | 0.980 / 0.980 |
+| `ja-core` | 54 fragments | 0.00% | 2.44% | 0.955 / 1.000 |
 | `zh-core` | 27 fragments | 0.00% | 2.94% | 0.875 / 1.000 |
 | `en-docs` | 8 documents | **3.50%** | 0.90% | 0.946 / 0.883 |
 | `ja-docs` | 8 documents | **0.33%** | 1.06% | 0.938 / 0.984 |
-| `zh-docs` | 6 documents | **2.37%** | 1.20% | 0.900 / 0.978 |
+| `zh-docs` | 6 documents | **2.37%** | 1.12% | 0.900 / 0.978 |
 | `en-context` | 2 packages | **6.31%** | 0.92% | 1.000 / 0.900 |
 | `ja-context` | 2 packages | **0.00%** | 0.00% | 1.000 / 1.000 |
 | `zh-context` | 1 package | **0.00%** | 0.53% | 0.889 / 1.000 |
-| `en-agent` | 2 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
+| `en-agent` | 3 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
 | `ja-agent` | 2 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
 | `zh-agent` | 1 payload | **0.00%** | 0.00% | 1.000 / 1.000 |
 
