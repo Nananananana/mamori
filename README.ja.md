@@ -122,7 +122,7 @@ pip install git+https://github.com/Nananananana/mamori.git
 リリースにはタグがあるので、版を指定してもよい:
 
 ```bash
-pip install git+https://github.com/Nananananana/mamori.git@v0.25.0
+pip install git+https://github.com/Nananananana/mamori.git@v0.27.0
 ```
 
 モデル不要、GPU不要、通信なし。既定の検出器はマイクロ秒で動くパターン規則。
@@ -281,8 +281,8 @@ IDは検証できなくなる**——下流から見れば、改竄されたも�
 
 ```python
 result = session.protect(package)
-result.reversible      # マスクされたものがあれば False
-result.masked_types    # ('PHONE',) — 型だけ。値は決して出さない
+result.reversible  # マスクされたものがあれば False
+result.masked_types  # ('PHONE',) — 型だけ。値は決して出さない
 ```
 
 テスト上、`<PERSON_001>` と `[REDACTED]` は同じくらい「置換済み」に見えるが、
@@ -403,7 +403,7 @@ HTML文書の中の `<PERSON_001>` は未知の要素である。ブラウザは
 文書を編集せよと言われたモデルは、トークンではなくタグを見せられていることになる。
 
 ```python
-MamoriConfig(placeholder_style="square")   # [PERSON_001]
+MamoriConfig(placeholder_style="square")  # [PERSON_001]
 ```
 
 この設定が何であっても復元はすべての形式を受け付ける。ある形式で保護した文書を、

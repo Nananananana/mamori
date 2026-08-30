@@ -117,7 +117,7 @@ PyPI 上没有这个名字的包，本项目也从未有过发布它的任务。
 发布都打了标签，也可以指定版本：
 
 ```bash
-pip install git+https://github.com/Nananananana/mamori.git@v0.25.0
+pip install git+https://github.com/Nananananana/mamori.git@v0.27.0
 ```
 
 不需要模型，不需要 GPU，不联网。默认检测器是微秒级的模式规则。
@@ -265,8 +265,8 @@ Met with <PERSON_002> from <COMPANY_NAME_001> on Tuesday.
 
 ```python
 result = session.protect(package)
-result.reversible      # 只要有内容被掩码，就是 False
-result.masked_types    # ('PHONE',) —— 只有类型，永远不含值
+result.reversible  # 只要有内容被掩码，就是 False
+result.masked_types  # ('PHONE',) —— 只有类型，永远不含值
 ```
 
 在文本里，`<PERSON_001>` 和 `[REDACTED]` 看起来同样是「被替换了」，但只有
@@ -378,7 +378,7 @@ HTML 文档里的 `<PERSON_001>` 是一个未知元素：浏览器会把它丢�
 文档的模型，看到的是一个标签而不是一个记号。
 
 ```python
-MamoriConfig(placeholder_style="square")   # [PERSON_001]
+MamoriConfig(placeholder_style="square")  # [PERSON_001]
 ```
 
 无论这个设置是什么，还原都接受所有形式，所以用一种风格保护的文档，可以在配置为

@@ -524,8 +524,32 @@ _WIDE_DIGIT_RUN = compile_rule(
     tier=RuleTier.WIDE,
 )
 
+# A Japanese mobile number, here rather than in the `ja` pack, because a
+# language pack only runs where its script appears and this pattern has no
+# script in it at all.
+#
+# `Please call our Tokyo office at 090-1234-5678` has no Japanese character in
+# it, so the pack never ran and the number left the machine. So did a CSV row
+# with a `phone` column right beside it, and a JSON value under a key the key
+# rules do not list. Script evidence is the right gate for a rule that reads
+# names or addresses; for a rule made of digits it gates on something the rule
+# never uses.
+#
+# **Only the mobile prefix comes up here.** The landline half of the `ja` rule
+# is `0\d{1,3}-\d{1,4}-\d{4}`, which without Japanese around it also matches
+# `05-12-2024`, `Invoice 01-2345-6789`, `Version 02-1000-0001` and an ISBN --
+# measured, not guessed. That half carries no evidence of its own and stays
+# gated, where the surrounding script is the evidence. `070`, `080` and `090`
+# followed by four and four is a shape that means one thing.
+_PHONE_JP_MOBILE = compile_rule(
+    t.PHONE,
+    r"(?<![\d\-])0[789]0[\-\s]?\d{4}[\-\s]?\d{4}(?![\d\-])",
+    MEDIUM,
+)
+
 #: Rules that hold whatever language the text is written in.
 UNIVERSAL_RULES: tuple[PatternRule, ...] = (
+    _PHONE_JP_MOBILE,
     _EMAIL,
     _SPACED_EMAIL,
     _PHONE_E164,

@@ -13,11 +13,18 @@ import json
 
 import pytest
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 
 from mamori import PrivacySession
 from mamori.domain.policy import Action, PrivacyPolicy
 from mamori.errors import ConfigurationError
-from mamori.provenance import CONTRACT, SCHEMA, policy_hash, protection_record
+from mamori.provenance import (
+    CONTRACT,
+    CONTRACT_WITH_SURROGATES,
+    SCHEMA,
+    policy_hash,
+    protection_record,
+)
 
 JA = "田中太郎さんのメールは tanaka@example.com、電話は 090-1234-5678 です。"
 EN = "Contact Jane Doe at jane.doe@example.com or on 555-0142."
@@ -251,7 +258,11 @@ class TestAScopeMayNotQuoteTheDocument:
 class TestTheContractIsFrozen:
     def test_the_identifier_is_the_one_consumers_pin(self) -> None:
         assert CONTRACT == "mamori.protection-scope/1"
-        assert SCHEMA["properties"]["contract"]["const"] == CONTRACT
+        assert CONTRACT_WITH_SURROGATES == "mamori.protection-scope/1+surrogate"
+        assert SCHEMA["properties"]["contract"]["enum"] == [
+            CONTRACT,
+            CONTRACT_WITH_SURROGATES,
+        ]
 
     def test_the_record_declares_it(self) -> None:
         out = emitted(PrivacySession(locales=["en"]), EN)
@@ -278,3 +289,55 @@ class TestTheContractIsFrozen:
         Draft202012Validator(SCHEMA).validate(json.loads(json.dumps(record)))
         assert record["by"] == "iriguchi/0.1.0"
         assert "recall" not in record  # Absent, not defaulted.
+
+
+class TestSurrogatesGetTheirOwnContract:
+    """The rule a consumer had to remember, turned into a check it already has.
+
+    "A consumer that understands only placeholders must refuse the other modes"
+    is obeyed once per consumer, per version, forever. A different contract
+    identifier is obeyed zero times: refusing an unrecognised contract is the
+    first thing any consumer of this document already does.
+    """
+
+    def test_tokens_only_declares_the_plain_contract(self) -> None:
+        out = emitted(PrivacySession(locales=["ja", "en"]), JA)
+        assert out["record"]["contract"] == CONTRACT
+
+    @pytest.mark.parametrize("surrogate_types", [["PERSON"], ["PERSON", "EMAIL"]])
+    def test_any_surrogate_declares_the_other_one(self, surrogate_types: list[str]) -> None:
+        session = PrivacySession(locales=["ja"], surrogate_types=surrogate_types)
+        out = emitted(session, JA)
+        assert out["record"]["contract"] == CONTRACT_WITH_SURROGATES
+        Draft202012Validator(SCHEMA).validate(out["record"])
+
+    def test_the_schema_refuses_a_plain_contract_carrying_surrogates(self) -> None:
+        """This is invariant 3 moved out of the documentation. Splitting the
+        identifier turned a comparison of two properties -- which JSON Schema
+        2020-12 cannot do -- into two discrete cases, which it can."""
+        forged = {
+            "contract": CONTRACT,
+            "by": "someone/1.0",
+            "scope": "s",
+            "reversible": True,
+            "mode": "mixed",
+            "placeholders": [],
+            "protected": [{"kind": "PERSON", "count": 1}],
+            "masked": [],
+        }
+        with pytest.raises(ValidationError):
+            Draft202012Validator(SCHEMA).validate(forged)
+
+    def test_the_schema_refuses_the_surrogate_contract_with_no_surrogates(self) -> None:
+        forged = {
+            "contract": CONTRACT_WITH_SURROGATES,
+            "by": "someone/1.0",
+            "scope": "s",
+            "reversible": True,
+            "mode": "placeholder",
+            "placeholders": [{"token": "<PERSON_001>", "kind": "PERSON"}],
+            "protected": [],
+            "masked": [],
+        }
+        with pytest.raises(ValidationError):
+            Draft202012Validator(SCHEMA).validate(forged)

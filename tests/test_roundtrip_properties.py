@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import unicodedata
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from mamori import PrivacySession
@@ -60,6 +60,11 @@ def sensitive_text(draw: st.DrawFn) -> str:
 
 
 @SETTINGS
+# Pinned rather than left to the database. A hypothesis database is keyed on a
+# digest of the test function, so editing this body -- which investigating a
+# failure always does -- silently orphans every counterexample it stored, with
+# no warning and a green run. An @example survives that.
+@example(text="Y0@a.example.com:Ｙ0@a.example.com")
 @given(text=sensitive_text())
 def test_restore_undoes_protect(text: str) -> None:
     """Exact, except where one placeholder legitimately stands for two spellings.
