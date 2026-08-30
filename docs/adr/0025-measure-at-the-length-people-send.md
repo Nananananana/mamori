@@ -132,4 +132,13 @@ What separates this from a quality measurement is worth naming: a leak rate is
 a property of the code and the corpus, and it reproduces anywhere. A duration
 is a property of the code, the corpus, **and the machine** — and the machine is
 the term nobody writes down. Everything else in this ADR survived the mistake
-untouched, because the device does not change what a model returns.
+untouched — **except that the last clause of that sentence was itself an
+assertion.** "The device does not change what a model returns" was written
+here, and in five other places, as the reason the accuracy figures survived the
+mix-up. It was never measured. A GPU re-run moved two rows of a five-model
+comparison and left the rest alone, and the surviving artifacts cannot say
+whether the device or an intervening change to the rules did it.
+
+Which is this ADR's own lesson landing on this ADR: **the convincing
+explanation is the expensive one, because it ends the search.** The one here
+ended it for the accuracy column.

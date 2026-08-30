@@ -8,6 +8,20 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Corrected
+
+- **"The device does not change what a model returns" is withdrawn.** It was
+  written into six documents in `0.27.0` as the reason the accuracy figures
+  survived the CPU-inference mix-up, and it was asserted rather than measured —
+  the same mistake as the timing it was used to excuse. A GPU re-run moves two
+  rows of a five-model comparison and leaves the rest alone; whether the device
+  or an intervening change to the rules did it cannot be told from the
+  surviving artifacts. See
+  [docs/open-questions.md](docs/open-questions.md).
+
+  The seconds themselves are now measured on a GPU, with the device recorded on
+  every row. The 345 seconds a document that were withdrawn are really **4.6**.
+
 ### Fixed
 
 - **A model that never answered scored the same as a model that found

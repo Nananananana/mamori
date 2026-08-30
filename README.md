@@ -752,27 +752,39 @@ operator naming a host is making a decision. See
 
 ### Which model, and at what quantisation
 
-The tier is off by default because the right model is the one your hardware
-has room for. Measured against `en-docs` and `ja-docs`, the answer was not the
-one "bigger is better" predicts:
+The tier is off by default because the right model is the one your hardware has
+room for. Measured against `en-docs` and `ja-docs` on a 16 GB card, with the
+device recorded on every row:
 
-| model | size | en leak | over-redaction added |
-|---|---|---|---|
-| `qwen2.5:7b-instruct-q8_0` | 8.1 GB | 3.50 → **1.21%** | **none** |
-| `qwen2.5:7b-instruct-q4_K_M` | 4.7 GB | 3.50 → 1.21% | +0.20 en / +0.84 ja |
-| `llama3.1:8b` | 4.9 GB | 3.50 → 1.21% | +0.44 en / +1.24 ja |
-| `qwen2.5:14b-instruct-q4_K_M` | 9.0 GB | 3.50 → **0.36%** | **none** |
+| model | VRAM | s/doc | en leak | over-redaction added | precision |
+|---|---|---|---|---|---|
+| `qwen2.5:7b-instruct-q8_0` | 8.1 GB | 3.6 | 3.50 → 1.21% | **none** | **+0.004** |
+| `qwen2.5:14b-instruct-q4_K_M` | 9.0 GB | 4.6 | 3.50 → **0.36%** | **none** | −0.011 |
+| `qwen2.5:7b-instruct-q4_K_M` | 4.7 GB | **3.2** | 3.50 → 1.21% | +0.20 | −0.011 |
+| `llama3.1:8b` | 4.9 GB | 6.9 | 3.50 → 0.84% | +0.44 | −0.025 |
 
-**Every one of them finds the same values.** The leak falls by the same 2.29
-points whatever the size or the quantisation. What differs is what else they
-add — so **quantisation costs precision, not recall**. A 4-bit model can see a
-name perfectly well; it just calls rather more of the surrounding text one.
+**The 14B does not find more things. It finds more of each thing.** Entity
+recall is identical across the 14B and both 7Bs — `+0.083` in English, to three
+decimal places, for all three — and all three close the same three documents.
+What separates `0.36%` from `1.21%` is characters, not entities: the larger
+model covers more of each span it already found.
 
-For a 16 GB card, `qwen2.5:7b-instruct-q8_0` leaves half the card free and adds
-nothing that is not a value. Drop to `q4_K_M` when the memory matters more than
-the last point of precision — for this library over-redaction is the cheaper
-failure of the two, which is exactly why the smaller model is a reasonable
-choice and not a compromised one.
+**Quantisation costs precision, not recall.** The two 7Bs have identical recall
+and identical leak rates; q4 pays for it in over-redaction where q8 pays
+nothing.
+
+And a leak rate ordered on its own hides how it was bought. `llama3.1:8b` has
+the best entity recall on the page and the worst precision by a factor of two,
+which is a question about your stance rather than about the model.
+
+For a 16 GB card, **`qwen2.5:7b-instruct-q8_0`** unless 9 GB is free: it is the
+only model here that adds nothing wrong, and the 0.85 points of leak it gives
+up against the 14B are span boundaries on values it already found. The 14B when
+the card is otherwise idle.
+
+The whole measurement, including a reasoning model that read as "contributed
+nothing" for 35 seconds a document because it never answered at all, is in
+[docs/choosing-a-model.md](docs/choosing-a-model.md).
 
 ### Any model, any client library
 
@@ -1043,9 +1055,15 @@ both in the same direction.
 measured with an interrupted Ollama update on the machine, which had left no
 CUDA library at all: GPU discovery was failing in a fifth of a second instead
 of the near-seven it takes when it succeeds, and every run was on the processor
-with a 16 GB card sitting idle. The accuracy figures are unaffected — a model
-returns the same tokens whichever device multiplies the matrices — but the
-timing was measuring the wrong machine.
+with a 16 GB card sitting idle.
+
+**Whether the accuracy figures survived that is an open question, not a fact.**
+This section said they did — "a model returns the same tokens whichever device
+multiplies the matrices" — and that was asserted rather than measured, which is
+the same mistake as the timing it was used to excuse. Re-running on the GPU
+moved two rows and left the rest alone. Sampling is ruled out; a change in
+mamori between the two runs is not. See
+[docs/open-questions.md](docs/open-questions.md).
 
 The tier stays off by default regardless, and for a reason that was never the
 stopwatch: it needs a model you have to run, on hardware that decides which

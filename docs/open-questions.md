@@ -77,19 +77,42 @@ detection and will never be extended, or a per-type folding rule with the
 
 ---
 
-## The model tier has never been timed on a GPU
+## Does the device change the accuracy figures?
 
-Every per-document figure this project ever published for the model tier was
-CPU inference, because an interrupted Ollama update had left no CUDA library on
-the machine. The numbers are withdrawn rather than corrected
-([ADR 0025](adr/0025-measure-at-the-length-people-send.md) carries the lesson).
+**Closed, and replaced by a sharper question.** The model tier has now been
+timed on a GPU: the install was repaired and the seconds are in
+[docs/choosing-a-model.md](choosing-a-model.md). The 345 seconds a
+document that were withdrawn are really 4.6.
 
-The accuracy figures are unaffected — the device does not change what a model
-returns — so what is missing is only the cost side of the trade the README asks
-readers to make.
+What that re-run opened is worse than what it closed. **"The device does not
+change what a model returns" was written into six documents** as the reason the
+accuracy column survived the CPU/GPU mix-up — README, SECURITY.md, ADR 0025,
+the CHANGELOG, the model guide, and this file. It was never measured.
 
-**Settled by** repairing the install and re-running the benchmark, which is
-somebody's decision to run an installer and not a code change.
+Re-running on the GPU moved two rows of a five-model comparison and left the
+rest alone:
+
+| | CPU | GPU |
+|---|---|---|
+| `7b-q4_K_M` ja over-redaction | +0.84 | +0.26 |
+| `llama3.1:8b` en leak | 1.21% | 0.84% |
+| `7b-q8_0`, `14b-q4_K_M`, both languages | — | unchanged |
+
+Sampling is ruled out: at `temperature=0.0` one device returns a
+byte-identical answer three times running. **What is not ruled out is that
+mamori changed between the two runs** — the morning's per-model outputs were
+overwritten by the evening's, so no surviving artifact can separate the two.
+
+That the artifacts cannot answer it is its own finding. The retraction removed
+the wrong thing: **withdrawing the claim "345 seconds is a property of this
+model" was right; deleting the measurement "this machine produced 345 seconds
+on this day" took the comparison baseline with it.**
+
+**Settled by** running one model against one dataset twice on a fixed version
+of mamori, changing only the device, and comparing the full JSON rather than
+the rates — two corpora can reach the same leak rate by covering different
+characters. Being measured now by the benchmark session, from a checkout pinned
+to `2b197a3`, with what each outcome would mean written down before the run.
 
 ---
 
