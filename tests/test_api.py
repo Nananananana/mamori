@@ -51,12 +51,10 @@ PUBLIC = {
     "LLMSettings",
     # Errors
     "MamoriError",
-    "AnonymizationError",
     "ConfigurationError",
     "DetectionError",
     "PolicyViolationError",
     "ProviderError",
-    "RestorationError",
     "StorageError",
     # Metadata
     "__version__",

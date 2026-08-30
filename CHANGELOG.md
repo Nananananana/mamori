@@ -8,6 +8,27 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Removed
+
+- **`AnonymizationError` and `RestorationError`.** Both were exported, both
+  documented a failure mode, and **neither has been raised in any release** —
+  not once in the history of the repository.
+
+  Neither failure exists. Protection fails as a detector failing, a policy
+  blocking, or a configuration error, and each has its own class. Restoration
+  does not fail: a placeholder in an answer that was never allocated, and an
+  allocated one the answer did not use, are **reported** on `RestorationResult`
+  as `unknown` and `missing`, because a caller needs the restored text and the
+  account of what was incomplete rather than an exception instead of both.
+
+  An exported exception that nothing raises is worse than a missing one: it
+  reads as a documented failure mode, so `except AnonymizationError` is dead
+  code that its author believes is handling something. Found by a sibling
+  project which had the same defect for a structural reason — the only layer
+  that could raise its unused error was forbidden by its own layering rules
+  from importing it. mamori's case is simpler: the layer can import it, and the
+  failure never happens.
+
 ### Corrected
 
 - **"The device does not change what a model returns" is false, and measured.** It was

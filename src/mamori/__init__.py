@@ -25,13 +25,11 @@ from .domain.entity_types import Category, EntityType, register_type
 from .domain.placeholder import Placeholder, PlaceholderStyle
 from .domain.policy import Action, PrivacyPolicy, Uncertain
 from .errors import (
-    AnonymizationError,
     ConfigurationError,
     DetectionError,
     MamoriError,
     PolicyViolationError,
     ProviderError,
-    RestorationError,
     StorageError,
 )
 from .llm_settings import LLMSettings
@@ -47,7 +45,6 @@ __version__ = "0.27.0"
 #: so adding a name is now a deliberate act and removing one fails a test.
 __all__ = [
     "Action",
-    "AnonymizationError",
     "Category",
     "ConfigurationError",
     "Conversation",
@@ -65,7 +62,6 @@ __all__ = [
     "PrivacySession",
     "ProtectionResult",
     "ProviderError",
-    "RestorationError",
     "RestorationResult",
     "StorageError",
     "StreamSummary",

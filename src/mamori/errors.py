@@ -10,19 +10,36 @@ only. This is enforced by tests in ``tests/test_security_leakage.py``.
 from __future__ import annotations
 
 __all__ = [
-    "AnonymizationError",
     "ConfigurationError",
     "DetectionError",
     "MamoriError",
     "PolicyViolationError",
     "ProviderError",
-    "RestorationError",
     "StorageError",
 ]
 
 
 class MamoriError(Exception):
-    """Base class for every error raised by mamori."""
+    """Base class for every error raised by mamori.
+
+    Every class below is raised somewhere in this package. Two that were not --
+    ``AnonymizationError`` and ``RestorationError`` -- were removed in 0.28
+    rather than left as names to catch.
+
+    They had never been raised in any release, and the reason is that neither
+    failure exists. Protection fails as a detector failing, a policy blocking,
+    or a configuration error, each of which has its own class. Restoration does
+    not fail at all: a placeholder in an answer that was never allocated, or an
+    allocated one the answer did not use, are **reported** on
+    :class:`~mamori.RestorationResult` as ``unknown`` and ``missing``, because a
+    caller needs the restored text and the account of what was incomplete, not
+    an exception instead of both.
+
+    An exported exception that nothing raises is worse than a missing one. It
+    reads as a documented failure mode, and a caller who writes ``except
+    AnonymizationError`` has written dead code and believes they have handled
+    something.
+    """
 
 
 class ConfigurationError(MamoriError):
@@ -59,14 +76,6 @@ class PolicyViolationError(MamoriError):
         super().__init__(detail)
         self.violations = violations
         self.reason = reason
-
-
-class AnonymizationError(MamoriError):
-    """The protected text could not be produced."""
-
-
-class RestorationError(MamoriError):
-    """The original text could not be restored from a response."""
 
 
 class StorageError(MamoriError):
