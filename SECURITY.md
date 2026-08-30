@@ -220,9 +220,12 @@ name, the largest measured gap in this project since 0.9. The Chinese row read
 the model actually uses. The **345 seconds per document** this line used to
 report has been withdrawn: an interrupted Ollama update had left no CUDA
 library on the machine, so every run was CPU inference with a 16 GB card idle.
-Whether the accuracy above is affected is **not settled**: that it could not
-be was asserted here rather than measured, and a GPU re-run moved two rows of a
-five-model comparison. See `docs/open-questions.md`. The tier is off by default for a reason the stopwatch was never
+The accuracy above is unaffected **for these numbers**, and that is now
+measured rather than assumed: changing only the device leaves the leak rate and
+the entity recall byte-identical. It does not leave everything identical — one
+model redacts 44% more on CPU than on GPU — so "the device cannot change what a
+model returns" is not a claim this file makes. See
+`docs/choosing-a-model.md`. The tier is off by default for a reason the stopwatch was never
 carrying — it needs a model you have to run, on hardware that decides which
 one — and "measure it on your own hardware" is still not a formality.
 

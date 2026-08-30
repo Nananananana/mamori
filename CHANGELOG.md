@@ -10,14 +10,21 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Corrected
 
-- **"The device does not change what a model returns" is withdrawn.** It was
+- **"The device does not change what a model returns" is false, and measured.** It was
   written into six documents in `0.27.0` as the reason the accuracy figures
   survived the CPU-inference mix-up, and it was asserted rather than measured —
   the same mistake as the timing it was used to excuse. A GPU re-run moves two
-  rows of a five-model comparison and leaves the rest alone; whether the device
-  or an intervening change to the rules did it cannot be told from the
-  surviving artifacts. See
-  [docs/open-questions.md](docs/open-questions.md).
+  rows of a five-model comparison and leaves the rest alone, and a controlled
+  run — one model, one dataset, one pinned version, only the device changed,
+  twice — reproduces it exactly: `7b-q4_K_M` on Japanese redacts **44% more on
+  CPU than on GPU**, with different hashes over the full result.
+
+  **What the sentence was defending held.** In the row that moves, the leak rate
+  is `0.00000` on both devices and entity recall is unchanged — the model finds
+  everything either way and merely redacts more besides. So withdrawing "345
+  seconds is a property of this model" was right, and generalising it to "so the
+  accuracy is fine" was not, and happened to be true for the numbers it covered.
+  See [docs/choosing-a-model.md](docs/choosing-a-model.md).
 
   The seconds themselves are now measured on a GPU, with the device recorded on
   every row. The 345 seconds a document that were withdrawn are really **4.6**.

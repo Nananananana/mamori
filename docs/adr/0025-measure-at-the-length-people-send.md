@@ -135,10 +135,15 @@ the term nobody writes down. Everything else in this ADR survived the mistake
 untouched — **except that the last clause of that sentence was itself an
 assertion.** "The device does not change what a model returns" was written
 here, and in five other places, as the reason the accuracy figures survived the
-mix-up. It was never measured. A GPU re-run moved two rows of a five-model
-comparison and left the rest alone, and the surviving artifacts cannot say
-whether the device or an intervening change to the rules did it.
+mix-up. It was never measured.
+
+It has been now, and it is false: changing only the device, on a pinned version,
+one model redacts 44% more on CPU than on GPU and reproduces exactly. What did
+hold is the narrower thing this ADR actually needed — the leak rate and the
+entity recall are byte-identical across devices, so the numbers being defended
+were fine and the sentence defending them was not.
 
 Which is this ADR's own lesson landing on this ADR: **the convincing
-explanation is the expensive one, because it ends the search.** The one here
-ended it for the accuracy column.
+explanation is the expensive one, because it ends the search.** This one ended
+it for the accuracy column, and the fix was to run four hours of measurement
+rather than to write a better sentence.

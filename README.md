@@ -1057,13 +1057,14 @@ CUDA library at all: GPU discovery was failing in a fifth of a second instead
 of the near-seven it takes when it succeeds, and every run was on the processor
 with a 16 GB card sitting idle.
 
-**Whether the accuracy figures survived that is an open question, not a fact.**
-This section said they did — "a model returns the same tokens whichever device
-multiplies the matrices" — and that was asserted rather than measured, which is
-the same mistake as the timing it was used to excuse. Re-running on the GPU
-moved two rows and left the rest alone. Sampling is ruled out; a change in
-mamori between the two runs is not. See
-[docs/open-questions.md](docs/open-questions.md).
+This section used to add that the accuracy figures were unaffected, because
+"a model returns the same tokens whichever device multiplies the matrices".
+**That was asserted rather than measured, and measuring it found a
+counterexample**: one model on one dataset redacts 44% more on CPU than on GPU,
+reproducibly, at `temperature=0.0`. The leak rate did not move — it found
+everything either way — so the figures this section was protecting held, and
+the sentence protecting them did not.
+[docs/choosing-a-model.md](docs/choosing-a-model.md) has the measurement.
 
 The tier stays off by default regardless, and for a reason that was never the
 stopwatch: it needs a model you have to run, on hardware that decides which

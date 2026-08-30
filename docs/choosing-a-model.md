@@ -132,24 +132,64 @@ including `51%/49% CPU/GPU` — a partially offloaded model, which on a 16 GB
 card running a 9 GB model is not a hypothetical, and which the position-counting
 version could never have produced.
 
-## An open question about these numbers
+## The device can change the answer, and it is not the leak rate that moves
 
-**Whether the device changes the accuracy figures is not settled.**
+This page used to say the accuracy figures were unaffected by which device ran
+the model. That was written into six documents as the reason the withdrawn
+timings did not take the accuracy column with them, and it was **asserted, not
+measured** — the same mistake as the number it was excusing.
 
-This page's earlier CPU run and this GPU run disagree on two rows —
-`7b-q4_K_M` Japanese over-redaction (+0.84 against +0.26) and `llama3.1:8b`
-English leak (1.21% against 0.84%) — while the other rows match. Sampling is
-ruled out: at `temperature=0.0` the same prompt returns a byte-identical answer
-three times on one device.
+It has now been measured. One model, one dataset, one pinned version of mamori,
+changing nothing but the device, run twice:
 
-What is not ruled out is that mamori changed between the two runs. The morning's
-per-model outputs were overwritten by the evening's, so the surviving artifacts
-cannot separate the two explanations.
+| run | leak | over-redaction | precision | sha256 of the full result |
+|---|---|---|---|---|
+| `7b-q4` ja, **GPU** | 0.00000 | 0.01318 | 0.9242 | `ff6341fce2dcd32d` |
+| `7b-q4` ja, **CPU** | 0.00000 | **0.01904** | **0.9104** | `1900d4bbd19a62b5` |
+| `7b-q4` en, both | 0.01206 | 0.01104 | 0.9355 | identical |
+| `14b-q4`, both languages, both devices | — | — | — | identical, all four |
 
-Until it is settled, **"the device does not change what a model returns" is not
-a claim this page makes.** It was made, repeatedly, as the reason the accuracy
-figures survived the CPU/GPU mix-up — asserted rather than measured, which is
-the same shape as the 345 seconds it was used to excuse.
+**The general claim is false.** One reproducible counterexample is enough, and
+this one reproduced exactly on a second pass. Sampling is excluded: at
+`temperature=0.0` a single device returns a byte-identical answer three times.
+
+**The specific claim it was used to defend held.** In the row that moved, the
+leak rate did not: `0.00000` on both devices, entity recall unchanged. On CPU
+the model found everything it found on GPU **and redacted more besides** — 44%
+more over-redaction, and the precision to match.
+
+That distinction is the whole of what can be said honestly:
+
+> **Withdrawing "345 seconds is a property of this model" was right.
+> Generalising "so the accuracy is fine" was not, and it happened to be true
+> for the numbers it was actually protecting.**
+
+Two smaller things worth keeping.
+
+**It is the smaller model that moves.** All four 14B runs are byte-identical
+across devices. There is an explanation — larger models leave more distance
+between competing tokens, so floating-point differences flip fewer of them —
+and it is **an explanation, not a measurement**. It is recorded here as an
+untested hypothesis rather than as a cause, because a story that fits an effect
+and has not been checked is exactly what produced the 345 seconds.
+
+**Reporting only the leak rate would have hidden this.** `0.00000` on both
+devices reads as proof of device-independence. What moved was the other half of
+the pair, which is why every rate on this page is reported with what it cost.
+
+## Timing on a CPU also distorts the comparison between models
+
+Measured alongside the above, on the same pinned version:
+
+| | GPU | CPU |
+|---|---|---|
+| 14B against 7B, English | 1.46× | 2.40× |
+| 14B against 7B, Japanese | 1.59× | 2.45× |
+
+**A CPU measurement makes the larger model look about 60% more expensive than
+it is.** Which is the same finding as the withdrawn 345 seconds seen from the
+other side: the earlier CPU numbers put the 14B at seventeen times the 7B, and
+on the hardware anyone would actually run it on, it is half again.
 
 ## Anything OpenAI-compatible
 

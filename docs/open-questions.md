@@ -77,23 +77,7 @@ detection and will never be extended, or a per-type folding rule with the
 
 ---
 
-## Does the device change the accuracy figures?
-
-**Closed, and replaced by a sharper question.** The model tier has now been
-timed on a GPU: the install was repaired and the seconds are in
-[docs/choosing-a-model.md](choosing-a-model.md). The 345 seconds a
-document that were withdrawn are really 4.6.
-
-What that re-run opened is worse than what it closed. **"The device does not
-change what a model returns" was written into six documents** as the reason the
-accuracy column survived the CPU/GPU mix-up — README, SECURITY.md, ADR 0025,
-the CHANGELOG, the model guide, and this file. It was never measured.
-
-Re-running on the GPU moved two rows of a five-model comparison and left the
-rest alone:
-
-| | CPU | GPU |
-|---|---|---|
+--|---|
 | `7b-q4_K_M` ja over-redaction | +0.84 | +0.26 |
 | `llama3.1:8b` en leak | 1.21% | 0.84% |
 | `7b-q8_0`, `14b-q4_K_M`, both languages | — | unchanged |
