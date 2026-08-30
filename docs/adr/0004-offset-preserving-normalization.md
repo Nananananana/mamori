@@ -46,3 +46,24 @@ character-level offset map ambiguous. Detectors must not rely on that merging,
 and `NormalizedText` says so.
 
 Two extra integer tuples per protected text. Irrelevant at prompt sizes.
+
+## Found later: folding decides identity, and identity decides restoration
+
+A property test turned up `Y0@a.example.com:Ｙ0@a.example.com` — one address
+written twice, once with a full-width `Ｙ`. NFKC folds them together, so they
+share an identity key, so they share a **placeholder**, so restoration puts the
+first spelling at both sites and `restore(protect(x)) == x` is false.
+
+Every step of that is this ADR working. Folding is what makes the two spellings
+one address, and one address is what should get one token — a model shown two
+different tokens for one mailbox has lost exactly what the placeholder was for.
+
+What has to be given up instead is the exact spelling at each site, and it
+cannot be recovered later: restoration reads a model's **answer**, where a
+token may appear anywhere, more than once, or not at all. There is no site to
+match it to. A mapping therefore holds one surface per value, and the honest
+statement of the round trip is that it returns the value's spelling rather than
+each site's.
+
+The same shape reaches further than mailboxes. `㍿ABC` and `株式会社ABC` are one
+company, and a document using both comes back using whichever came first.

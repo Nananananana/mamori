@@ -41,10 +41,10 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 
 ## 動かして見る
 
-インストール以外に何も要らない。
+設定は何も要らない。
 
 ```bash
-pip install mamori
+pip install git+https://github.com/Nananananana/mamori.git
 mamori demo
 ```
 
@@ -106,8 +106,23 @@ OpenAI互換エンドポイントなら何でもよい（Ollama、vLLM、LM Stud
 
 ## インストール
 
+**PyPI にはまだ無い。** リポジトリから入れる:
+
 ```bash
-pip install mamori
+pip install git+https://github.com/Nananananana/mamori.git
+```
+
+この節は25リリースにわたって `pip install mamori` と書いていて、**一度も
+動いたことがない**。その名前のパッケージは PyPI に存在せず、公開する仕事も
+このプロジェクトには一度も無かった。`mamori>=0.14` に依存する兄弟プロジェクト
+では、インストールできない CI ステップが `continue-on-error` に包まれていて、
+覆っているはずの継ぎ目が一度も走らないまま赤も出なかった。**読んだ人ではなく、
+試した人が見つけた。**
+
+リリースにはタグがあるので、版を指定してもよい:
+
+```bash
+pip install git+https://github.com/Nananananana/mamori.git@v0.25.0
 ```
 
 モデル不要、GPU不要、通信なし。既定の検出器はマイクロ秒で動くパターン規則。
