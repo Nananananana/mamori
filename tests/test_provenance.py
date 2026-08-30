@@ -10,6 +10,7 @@ genuine bug. A schema is a claim about output; check the output.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -341,3 +342,63 @@ class TestSurrogatesGetTheirOwnContract:
         }
         with pytest.raises(ValidationError):
             Draft202012Validator(SCHEMA).validate(forged)
+
+
+class TestTheIdentifiersAndTheSchemaNameTheSameThing:
+    """Five places carry the version of this contract, and they are joined by
+    convention.
+
+    `CONTRACT`, the schema's `title`, the filename in its `$id`, the filename
+    on disk, and the `enum` a record is validated against. Only the last pair
+    was checked. Bumping the contract to `/2` would leave four of them saying
+    `1`, every other test would pass -- the emitter validates its output
+    against the schema, the schema is internally consistent, and neither knows
+    the identifier is written down anywhere else.
+
+    A sibling project found this shape in its own contract and put it as: the
+    two halves are joined by convention, and this is the only place they meet.
+
+    The comparison rule has to be written per project, because each joins them
+    differently. Here there are two identifiers over one schema, so there is a
+    second thing to say: `+surrogate` is a **variant of the same version**, not
+    an identifier of its own. If that ever stops being true it needs its own
+    schema, and this test is where that argument has to be had.
+    """
+
+    @staticmethod
+    def _version(text: str) -> str:
+        match = re.search(r"protection-scope[-/](\d+)", text)
+        assert match, f"no contract version in {text!r}"
+        return match.group(1)
+
+    def test_every_place_that_names_a_version_names_the_same_one(self) -> None:
+        from mamori.provenance import _SCHEMA_FILE
+
+        versions = {
+            "CONTRACT": self._version(CONTRACT),
+            "CONTRACT_WITH_SURROGATES": self._version(CONTRACT_WITH_SURROGATES),
+            "schema title": self._version(SCHEMA["title"]),
+            "schema $id": self._version(SCHEMA["$id"]),
+            "filename": self._version(_SCHEMA_FILE),
+        }
+        assert len(set(versions.values())) == 1, (
+            f"the contract version is written in five places and they disagree: "
+            f"{versions}. All five move together or none of them do."
+        )
+
+    def test_the_surrogate_contract_is_a_variant_and_not_a_second_contract(self) -> None:
+        """One schema serves both identifiers, and nothing else says so."""
+        assert CONTRACT_WITH_SURROGATES.startswith(CONTRACT + "+"), (
+            f"{CONTRACT_WITH_SURROGATES!r} no longer reads as a variant of "
+            f"{CONTRACT!r}. Two contracts that are not variants of each other "
+            "should not be sharing one schema file."
+        )
+        assert SCHEMA["properties"]["contract"]["enum"] == [
+            CONTRACT,
+            CONTRACT_WITH_SURROGATES,
+        ], "the schema admits a different set of identifiers than the module exports"
+
+    def test_the_title_is_the_plain_contract(self) -> None:
+        """Checked here as well as in CI, because a check that only runs on a
+        runner is a check a local run cannot fail."""
+        assert SCHEMA["title"] == CONTRACT
