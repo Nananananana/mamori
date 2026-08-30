@@ -16,45 +16,61 @@ the chance of a leak; it does not eliminate it.
 
 from __future__ import annotations
 
+from .application.conversations import Conversation, ConversationRegistry
 from .application.results import EntityReport, ProtectionResult, RestorationResult
 from .application.session import PrivacySession
 from .application.streaming import StreamingRestorer, StreamSummary
 from .config import MamoriConfig, load_config_file
 from .domain.entity_types import Category, EntityType, register_type
-from .domain.placeholder import Placeholder
-from .domain.policy import Action, PrivacyPolicy
+from .domain.placeholder import Placeholder, PlaceholderStyle
+from .domain.policy import Action, PrivacyPolicy, Uncertain
 from .errors import (
     AnonymizationError,
     ConfigurationError,
     DetectionError,
     MamoriError,
     PolicyViolationError,
+    ProviderError,
     RestorationError,
     StorageError,
 )
+from .llm_settings import LLMSettings
 
-__version__ = "0.24.0"
+__version__ = "0.25.0"
 
+#: The public API. Everything here is what this package promises; anything
+#: reachable only by a deeper import is not, however useful it looks.
+#:
+#: Audited in 0.25, when nine releases of features turned out to be reachable
+#: only by deep import -- `ConversationRegistry` and `LLMSettings` among them,
+#: both of which the README tells people to use. `test_api.py` pins this list,
+#: so adding a name is now a deliberate act and removing one fails a test.
 __all__ = [
     "Action",
     "AnonymizationError",
     "Category",
     "ConfigurationError",
+    "Conversation",
+    "ConversationRegistry",
     "DetectionError",
     "EntityReport",
     "EntityType",
+    "LLMSettings",
     "MamoriConfig",
     "MamoriError",
     "Placeholder",
+    "PlaceholderStyle",
     "PolicyViolationError",
     "PrivacyPolicy",
     "PrivacySession",
     "ProtectionResult",
+    "ProviderError",
     "RestorationError",
     "RestorationResult",
     "StorageError",
     "StreamSummary",
     "StreamingRestorer",
+    "Uncertain",
     "__version__",
     "load_config_file",
     "register_type",

@@ -120,8 +120,22 @@ _SURNAME_ALT = "|".join((*COMPOUND_SURNAMES, *COMMON_SURNAMES))
 
 
 def _not_a_closed_set_word(value: str) -> bool:
-    """The wide tier's only filter. See _NEVER_A_NAME for why it is this small."""
-    return value not in _NEVER_A_NAME
+    """The wide tier's filter. See _NEVER_A_NAME for why it is this small.
+
+    Plus one structural check that is not a vocabulary at all: a name does not
+    **end** in a function word. 联系方式是 gives 方式是 and 金额为 gives 金额为,
+    both of which the wide rule builds legitimately -- surname plus two
+    characters, ending at a non-Han boundary -- and neither of which anybody is
+    called. Sixty spurious detections in three hundred adversarial documents
+    were these two shapes.
+
+    The set is narrower than the one that stops a name running *into* the
+    grammar after it, and the difference was measured rather than assumed: the
+    wider list holds 和, 与, 为 and 若, which are ordinary given-name
+    characters, and using it here cost 0.55 points of leak to buy 1.6 points of
+    over-redaction. See _NEVER_ENDS_A_NAME.
+    """
+    return value not in _NEVER_A_NAME and value[-1] not in _NEVER_ENDS_A_NAME
 
 
 def _plausible_name(value: str) -> bool:
@@ -130,9 +144,19 @@ def _plausible_name(value: str) -> bool:
     The lookahead in the rule only inspects the character straight after the
     surname, so it catches 王氏 but not 江苏省, where the giveaway sits two
     characters later. Checking the whole match covers both.
+
+    The first two characters are checked as well as the whole run, and that is
+    a repair of 0.15 rather than a new idea. Relaxing the right edge let a
+    match run to three characters -- 联系方式是 gives 方式是 -- and the
+    stoplist holds two-character words, so 方式 was in it and 方式是 was not.
+    Fifty-two spurious detections in three hundred adversarial documents came
+    from that one mismatch between what the list holds and what the rule now
+    produces.
     """
     candidate = value.strip()
-    if candidate in _NOT_NAMES:
+    if candidate in _NOT_NAMES or candidate[:2] in _NOT_NAMES:
+        return False
+    if candidate and candidate[-1] in _NEVER_ENDS_A_NAME:
         return False
     return not candidate.endswith(_NOT_A_NAME_AFTER)
 
@@ -154,6 +178,19 @@ _COMPANY_BODY = r"(?:(?![" + _STOP + r"])[一-鿿A-Za-z0-9]){2,20}"
 #: list would not be -- nobody coins a new particle.
 _ENDS_A_NAME = "的了是和与及或在这那给从到由向对把被让为称也都就还已请于至如若"
 
+#: Characters that end a *word* and never a name.
+#:
+#: A subset of _ENDS_A_NAME, and the difference is the whole point. That list
+#: exists to stop a name running into the grammar after it, and it can afford
+#: to hold 和, 与, 为, 也, 于, 如 and 若 because it is only ever consulted about
+#: the character *after* a name. Asking the same list whether a name may *end*
+#: in one of those is a different question with a different answer: 李和,
+#: 王也, 张若 are people, and treating the list as symmetric cost 0.55 points
+#: of leak on a thousand documents to buy 1.6 points of over-redaction.
+#:
+#: These eleven are grammar all the way down. Nobody is called 方式是.
+_NEVER_ENDS_A_NAME = "是的了在这那把被就都还已"
+
 #: Surnames that are also prepositions. The relaxed right edge is not offered
 #: after these, because a preposition is followed by a Han character in almost
 #: every sentence it appears in and a surname is not.
@@ -174,7 +211,13 @@ _PREPOSITION_SURNAMES = "于向从由对与和"
 #: 张伟汇, which is one character too many. Over-redaction rather than a leak
 #: is the direction this library errs in.
 _GIVEN_NAME = (
-    r"(?:[一-鿿]{1,2}(?![一-鿿])"
+    # The strict alternative excludes function words from the name itself, not
+    # only from the character after it. 发给王强了 gave 王强了 -- two
+    # characters ending at the comma, with 了 read as part of the name -- which
+    # was invisible while it was merely over-redaction and became a leak in
+    # 0.25, when a validator started refusing candidates that end in grammar.
+    # Excluding them here gives 王强, which is what the sentence says.
+    r"(?:(?:(?![" + _ENDS_A_NAME + r"])[一-鿿]){1,2}(?![一-鿿])"
     # Two guards, both on the relaxed alternative only -- the strict one never
     # needed either, because a Han character after the name was already enough
     # to reject it.

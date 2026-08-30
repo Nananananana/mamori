@@ -101,8 +101,29 @@ _NOT_NAME_ALT = "|".join(_NOT_A_NAME_AFTER)
 _SURNAME_ALT = "|".join(sorted(COMMON_SURNAMES, key=len, reverse=True))
 
 
+#: Particles a name cannot end in.
+#:
+#: 0.17 let a given name be written in hiragana, because さくら, ゆき and あおい
+#: are ordinary names and every rule wanted Han or katakana. The cost showed up
+#: in a corpus of deliberately awkward text: 値引きは部長決裁 gives 値引き + は
+#: with 部長 read as the honorific, ten times in three hundred documents.
+#:
+#: A closed set, and the same argument as everywhere else in this package: な
+#: and ら end plenty of names, は and を end none.
+_PARTICLES = "はがをにでともへやのかねよ"
+
+
 def _not_stopword(value: str) -> bool:
-    return value.strip() not in _HONORIFIC_STOPWORDS
+    """Reject an honorific-anchored run that is not a name.
+
+    Two checks: the run is not itself a polite word (皆様, 各位), and it does
+    not end in a particle, which means the hiragana tail is grammar rather than
+    a given name.
+    """
+    candidate = value.strip()
+    if candidate in _HONORIFIC_STOPWORDS:
+        return False
+    return not (candidate and candidate[-1] in _PARTICLES)
 
 
 def _plausible_name(value: str) -> bool:

@@ -217,3 +217,25 @@ class TestDetectorContract:
         detector = RegexDetector("universal", UNIVERSAL_RULES)
         assert len(detector.rules) == len(UNIVERSAL_RULES)
         assert len(JAPANESE.rules) >= 8
+
+
+class TestAnAddressHeldApart:
+    """`jane.doe @ example.com`, which 0.25 found as the last leak class in
+    English: 22 of 300 adversarially written documents."""
+
+    def test_it_is_found(self) -> None:
+        assert "EMAIL" in types_in("Sent to jane.doe @ example.co.jp this morning.")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "write to us @ the office tomorrow",
+            "meet @ 3pm at the cafe",
+            "follow @example on the site",
+        ],
+    )
+    def test_an_at_sign_alone_is_not_an_address(self, text: str) -> None:
+        assert "EMAIL" not in types_in(text)
+
+    def test_it_does_not_reach_across_a_line(self) -> None:
+        assert "EMAIL" not in types_in("ends here jane\n@ example.com")

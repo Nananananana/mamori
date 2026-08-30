@@ -8,6 +8,102 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-08-30
+
+Two things 1.0 needs: a public surface that is a contract, and a corpus of text
+written to be got wrong.
+
+### Added
+
+- **`tests/test_api.py`** — the names `import mamori` offers, written out
+  rather than derived, so adding one is a line in that file and removing one
+  fails. `test_promises.py` pins what this library will not do; this pins what
+  it *is*.
+
+  Writing it found that **nine releases of features were reachable only by a
+  deep import**: `ConversationRegistry` and `LLMSettings` among them, both of
+  which the README tells people to use, and `ProviderError`, which was missing
+  from an otherwise complete error hierarchy — so a caller catching mamori's
+  errors from the top level would have missed one.
+
+- **900 adversarial documents** — text built to be got wrong in the three ways
+  nothing had looked at: hard negatives (`Mark` the verb, `May` the month,
+  川 the river, 高兴 the adjective), values written in forms NFKC has to fold,
+  and documents whose paragraphs change language. Two thirds carry no labels at
+  all, so a placeholder there is over-redaction with a location attached.
+
+### Fixed
+
+The corpus leaked 3.18% / 5.18% / 3.35% on first contact and found four things.
+
+- **An address with the `@` held apart.** `jane.doe @ example.com` — not valid
+  and a perfectly ordinary way for one to appear: a line wrapped, a word
+  processor tidying up, somebody spacing it out deliberately. It was the only
+  remaining leak class in English, 22 documents in 300. Both sides must still
+  be address-shaped and one space at most, so "write to us @ the office" does
+  not match.
+
+- **Chinese: a name does not end in grammar.** `联系方式是` gave `方式是`
+  fifty-two times. The relaxed right edge of 0.15 lets a match run past the
+  name into the words after it, and eleven characters — 是, 的, 了, 在, 这 —
+  are grammar all the way down.
+
+  The first attempt used the existing function-word list and **cost 0.55 points
+  of leak to buy 1.6 points of over-redaction**, because that list holds 和, 与,
+  为 and 若, which are ordinary given-name characters. The list that stops a
+  name running *into* the grammar after it is not the list of characters a name
+  may not *end* with; treating them as symmetric loses 李和 and 王也.
+
+- **Chinese: the name inside the grammar.** `发给王强了` was matching `王强了`,
+  two characters ending at the comma with 了 read as part of the name. Harmless
+  while it was over-redaction, and a **leak** the moment a validator started
+  refusing candidates that end in grammar — the whole candidate went, and the
+  name inside it with it. Function words are excluded from the given name
+  itself now, which gives 王强.
+
+- **Japanese: a given name does not end in a particle.** 0.17 let a given name
+  be written in hiragana, because さくら and あおい are ordinary names. In
+  `値引きは部長決裁` that produces 値引き + は with 部長 read as the honorific,
+  ten times in three hundred documents.
+
+- **English: a place is not a person.** `Rose Room` and `Fourth Street` are two
+  capitalised words, which is all the wide rule asks, and Rose and Fourth are
+  both given names. What settles it is the word after — a closed set of
+  building words, so it costs no name, unlike a list of given names.
+
+### Changed
+
+| adversarial | leak | over-redaction |
+|---|---|---|
+| `ja` | 3.18% → **0.00%** | 1.31% → **0.99%** |
+| `en` | 5.18% → **0.00%** | 1.33% → **0.57%** |
+| `zh` | 3.35% → **0.00%** | 2.59% → **1.21%** |
+
+Every existing set is unmoved or better and the thousand-document prose corpora
+did not move at all. On the bundled sets the gain is small — `zh-docs`
+over-redaction 1.20% to 1.12% at the recall-first default, `zh-core` 2.94%
+unchanged, and at the balanced stance `zh-core` 1.63% to 0.65% and `zh-docs`
+0.40% to 0.32%. The adversarial corpus is where these shapes are dense, which
+is the point of having built it: the bundled sets contain one 联系方式是 and it
+contains fifty-two.
+
+### Measured, and it did not help
+
+The 14B model against **assembled prompts** and **agent payloads**: no change
+to any number. What still leaks in `en-context` is `E-45033` — an employee
+number whose label stayed behind in the part of the document that was not
+selected — and the model does not recover it either. It closes the anchorless
+*name* and not the anchorless *identifier*, which is a sharper statement of
+what a model is for than "it helps with documents".
+
+### Left alone, and why
+
+`林`, `森` and `原因` are still reported as people in Japanese: a one-character
+surname used as an ordinary noun. Fixing it needs the sentence, which is what
+[ADR 0031](docs/adr/0031-the-morphological-adapter-measured-and-declined.md)
+measured and declined a release ago. The honest place for it is `mamori
+correct`, where a person decides.
+
 ## [0.24.0] - 2026-08-30
 
 The model tier, in every language this library speaks — and the last item on
@@ -1909,7 +2005,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/Nananananana/mamori/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/Nananananana/mamori/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Nananananana/mamori/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/Nananananana/mamori/compare/v0.21.0...v0.22.0

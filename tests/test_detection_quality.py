@@ -74,7 +74,7 @@ FLOORS = (
     # text, so these are the flattering numbers.
     Floor("en-core", _RECALL, 0.015, 0.020, 0.950, 0.900),
     Floor("ja-core", _RECALL, 0.005, 0.040, 0.970, 0.880),
-    Floor("zh-core", _RECALL, 0.020, 0.035, 0.950, 0.860),
+    Floor("zh-core", _RECALL, 0.020, 0.030, 0.950, 0.860),
     # Documents. The same rules on text at the length people actually send:
     # headings, signature blocks, attendee lists, quoted replies. Leak rates
     # are several times higher and these are the honest ones.
@@ -101,7 +101,7 @@ FLOORS = (
     Floor("zh-context", _BALANCED, 0.020, 0.010, 0.950, 0.950),
     Floor("en-core", _BALANCED, 0.035, 0.010, 0.940, 0.970),
     Floor("ja-core", _BALANCED, 0.015, 0.020, 0.970, 0.950),
-    Floor("zh-core", _BALANCED, 0.020, 0.020, 0.950, 0.900),
+    Floor("zh-core", _BALANCED, 0.020, 0.010, 0.950, 0.950),
     # en-docs at 20% is not a typo and not a regression. A fifth of the
     # sensitive characters in an English document have no anchor near them --
     # a name in an attendee list, a name under a sign-off, a name after

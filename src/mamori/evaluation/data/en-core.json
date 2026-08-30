@@ -1,249 +1,254 @@
 {
-  "format_version": 1,
-  "name": "en-core",
-  "locale": "en",
-  "source": "synthetic",
-  "description": "English business correspondence. Every name, address, number and identifier here is invented. Vendor-prefixed API keys are deliberately absent: a literal one in a shipped data file trips the secret scanners of everyone who clones the repository. Labels mark what a competent human redactor would remove, which for personal names includes many that the anchored rules cannot reach -- that gap is the point of measuring.",
-  "samples": [
-    {
-      "id": "en-001",
-      "annotated": "Dear [[PERSON:Jane Doe]],\n\nThanks for your note. I will follow up on Friday."
-    },
-    {
-      "id": "en-002",
-      "annotated": "Mr. [[PERSON:John Smith]] will attend on behalf of [[COMPANY_NAME:Acme Inc.]]",
-      "note": "Title-anchored name; the title itself is not part of the value."
-    },
-    {
-      "id": "en-003",
-      "annotated": "Hi [[PERSON:Sarah]],\nplease review the attached before Thursday."
-    },
-    {
-      "id": "en-004",
-      "annotated": "Thanks for your help.\n\nRegards,\n[[PERSON:Michael Chen]]",
-      "note": "Sign-off anchored."
-    },
-    {
-      "id": "en-005",
-      "annotated": "Full name: [[PERSON:Priya Raman]]\nDepartment: Engineering"
-    },
-    {
-      "id": "en-006",
-      "annotated": "I spoke to [[PERSON:Jane Doe]] about the migration yesterday.",
-      "note": "Known gap: an unanchored name. Expected to leak until the model tier lands."
-    },
-    {
-      "id": "en-007",
-      "annotated": "The Quarterly Business Review is scheduled for Monday.",
-      "note": "Negative: capitalised phrase, not a name."
-    },
-    {
-      "id": "en-008",
-      "annotated": "Monday works for me. Tuesday does not.",
-      "note": "Negative: sentence openers."
-    },
-    {
-      "id": "en-009",
-      "annotated": "Reach me at [[EMAIL:jane.doe@example.com]] or [[PHONE:(415) 555-0198]]."
-    },
-    {
-      "id": "en-010",
-      "annotated": "Call [[PHONE:415-555-0198]] before noon.",
-      "note": "NANP with hyphens."
-    },
-    {
-      "id": "en-011",
-      "annotated": "Order [[?PHONE:4155550198]] shipped this morning.",
-      "note": "Ten bare digits are an order number to the anchored rules and a possible phone number to the wide ones. Tolerated."
-    },
-    {
-      "id": "en-012",
-      "annotated": "International line: [[PHONE:+1 415 555 0198]]",
-      "note": "E.164, matched by the universal rule."
-    },
-    {
-      "id": "en-013",
-      "annotated": "SSN [[SSN:123-45-6789]] is on file for the new hire."
-    },
-    {
-      "id": "en-014",
-      "annotated": "Social Security Number: [[SSN:123456789]]",
-      "note": "Unhyphenated form behind a label."
-    },
-    {
-      "id": "en-015",
-      "annotated": "Ticket 666-45-6789 was closed last week.",
-      "note": "Negative: area 666 is never issued."
-    },
-    {
-      "id": "en-016",
-      "annotated": "Ship to [[ADDRESS:1600 Pennsylvania Avenue]], Washington, ZIP code: [[POSTAL_CODE:20500]]"
-    },
-    {
-      "id": "en-017",
-      "annotated": "Springfield, IL [[POSTAL_CODE:62704-1234]]",
-      "note": "ZIP+4 stands on its own."
-    },
-    {
-      "id": "en-018",
-      "annotated": "Part 62704 is back in stock.",
-      "note": "Negative: five bare digits need a label. The wide ZIP rule needs a state abbreviation in front, so this stays a true negative under both stances."
-    },
-    {
-      "id": "en-019",
-      "annotated": "Our London office is at [[POSTAL_CODE:SW1A 1AA]]."
-    },
-    {
-      "id": "en-020",
-      "annotated": "We shipped 1600 Widgets Today.",
-      "note": "Negative: a number followed by capitalised words is not an address."
-    },
-    {
-      "id": "en-021",
-      "annotated": "Date of birth: [[DATE_OF_BIRTH:March 4, 1985]]"
-    },
-    {
-      "id": "en-022",
-      "annotated": "Shipped on 1985-04-01 and delivered a week later.",
-      "note": "Negative: a shipping date is not a date of birth."
-    },
-    {
-      "id": "en-023",
-      "annotated": "Card [[CREDIT_CARD:5500005555555559]] was declined."
-    },
-    {
-      "id": "en-024",
-      "annotated": "Reference [[?IDENTIFIER:1234567812345678]] in the ledger.",
-      "note": "Sixteen digits failing Luhn. Not a card; the wide tier still reads it as an identifier, which is the trade. Tolerated."
-    },
-    {
-      "id": "en-025",
-      "annotated": "The contract is with [[COMPANY_NAME:Globex Corporation]] until March."
-    },
-    {
-      "id": "en-026",
-      "annotated": "[[COMPANY_NAME:Initech LLC]] and [[COMPANY_NAME:Umbrella Ltd]] have both signed."
-    },
-    {
-      "id": "en-027",
-      "annotated": "The contract is with [[COMPANY_NAME:Acme]].",
-      "note": "Known gap: a trading name with no legal suffix."
-    },
-    {
-      "id": "en-028",
-      "annotated": "Employee ID: [[EMPLOYEE_ID:A-12345]] starts on the 3rd."
-    },
-    {
-      "id": "en-029",
-      "annotated": "Project: [[PROJECT_NAME:Nightingale]] is on track for Q3."
-    },
-    {
-      "id": "en-030",
-      "annotated": "Runbook: [[INTERNAL_URL:https://wiki.corp.local/runbook]]"
-    },
-    {
-      "id": "en-031",
-      "annotated": "Docs are at https://example.com/docs for anyone who needs them.",
-      "note": "Negative: a public URL."
-    },
-    {
-      "id": "en-032",
-      "annotated": "The staging box is [[INTERNAL_IP:10.0.4.17]]; production is behind the LB."
-    },
-    {
-      "id": "en-033",
-      "annotated": "Resolver is 8.8.8.8 in that environment.",
-      "note": "Negative: a public IP."
-    },
-    {
-      "id": "en-034",
-      "annotated": "password: [[PASSWORD:hunter2spring]] for the shared account"
-    },
-    {
-      "id": "en-035",
-      "annotated": "Connection string: [[DATABASE_URL:mysql://svc:pw@db.internal.example.com/app]]"
-    },
-    {
-      "id": "en-036",
-      "annotated": "Dear [[PERSON:Mary Smith-Jones]],\n\nyour appointment is confirmed.",
-      "note": "Hyphenated surname."
-    },
-    {
-      "id": "en-037",
-      "annotated": "Attn: [[PERSON:Robert Lang]] -- invoice attached."
-    },
-    {
-      "id": "en-038",
-      "annotated": "Please confirm receipt by end of day. Thanks.",
-      "note": "Negative: an entire message with nothing to protect."
-    },
-    {
-      "id": "en-039",
-      "annotated": "Dear [[PERSON:Jane Doe]],\n\nCC [[EMAIL:john.smith@example.org]] and [[EMAIL:ops@example.org]].\n\nRegards,\n[[PERSON:Michael Chen]]",
-      "note": "Several types across a whole message."
-    },
-    {
-      "id": "en-040",
-      "annotated": "Dr. [[PERSON:Alan Turing]] reviewed the draft.",
-      "note": "Title-anchored, two words."
-    },
-    {
-      "id": "en-041",
-      "annotated": "Contact: [[PERSON:Yuki Tanaka]] (Tokyo office)",
-      "note": "Label-anchored, romanised Japanese name."
-    },
-    {
-      "id": "en-042",
-      "annotated": "Revenue was up 12% year on year; headcount is unchanged.",
-      "note": "Negative for v0.1: business-sensitive in context, which is not modelled."
-    },
-    {
-      "id": "en-043",
-      "annotated": "Ping [[EMAIL:a.b+tag@mail.corp.example.co.uk]] if the build breaks."
-    },
-    {
-      "id": "en-044",
-      "annotated": "Retry step 2 after error_404 on line 17.",
-      "note": "Negative: placeholder-shaped noise that must not be mistaken for one."
-    },
-    {
-      "id": "en-045",
-      "annotated": "Hello [[PERSON:Tom]],\n\nthe invoice for [[COMPANY_NAME:Acme Inc.]] is attached. Employee ID: [[EMPLOYEE_ID:C-4477]]."
-    },
-    {
-      "id": "en-046",
-      "annotated": "Dear [[PERSON:Priya Raman]],\n\n[[PERSON:Priya Raman]] is leading the migration. Please loop [[PERSON:Priya Raman]] in.",
-      "note": "Co-occurrence: the salutation settles the first mention, and nothing marks the other two."
-    },
-    {
-      "id": "en-047",
-      "annotated": "Mr. [[PERSON:John Smith]] called.\n[[PERSON:John Smith]] wants the report by Friday.",
-      "note": "Co-occurrence across lines from a title anchor."
-    },
-    {
-      "id": "en-048",
-      "annotated": "Dear [[PERSON:Ann]],\n\nthe announcement goes out Monday. Announcements are drafted already.",
-      "note": "Propagation must respect word boundaries: Ann is a seed, Announcement is not an occurrence of it."
-    },
-    {
-      "id": "en-049",
-      "annotated": "Dear [[PERSON:Jane Doe]],\n\nplease confirm by Friday.",
-      "note": "Single mention: propagation must not invent extra occurrences."
-    },
-    {
-      "id": "en-050",
-      "note": "A password written in prose. Added in 0.12 after `mamori audit` reported that the rule for it, shipped in 0.10, had never fired on any sample.",
-      "annotated": "The staging password is [[PASSWORD:hunter2spring]], can you check the deploy?"
-    },
-    {
-      "id": "en-051",
-      "note": "Negative: talking about a password is not disclosing one. Blocking this would stop a request over an ordinary sentence, which is the most disruptive false positive this library can produce.",
-      "annotated": "My password is fine, I just cannot reach the gateway."
-    },
-    {
-      "id": "en-052",
-      "note": "A UK-style number: leading zero, space separated. en.PHONE.2 existed for this and had no sample until 0.12.",
-      "annotated": "Reach the London office on [[PHONE:020 7946 0958]]."
-    }
-  ]
+ "format_version": 1,
+ "name": "en-core",
+ "locale": "en",
+ "source": "synthetic",
+ "description": "English business correspondence. Every name, address, number and identifier here is invented. Vendor-prefixed API keys are deliberately absent: a literal one in a shipped data file trips the secret scanners of everyone who clones the repository. Labels mark what a competent human redactor would remove, which for personal names includes many that the anchored rules cannot reach -- that gap is the point of measuring.",
+ "samples": [
+  {
+   "id": "en-001",
+   "annotated": "Dear [[PERSON:Jane Doe]],\n\nThanks for your note. I will follow up on Friday."
+  },
+  {
+   "id": "en-002",
+   "annotated": "Mr. [[PERSON:John Smith]] will attend on behalf of [[COMPANY_NAME:Acme Inc.]]",
+   "note": "Title-anchored name; the title itself is not part of the value."
+  },
+  {
+   "id": "en-003",
+   "annotated": "Hi [[PERSON:Sarah]],\nplease review the attached before Thursday."
+  },
+  {
+   "id": "en-004",
+   "annotated": "Thanks for your help.\n\nRegards,\n[[PERSON:Michael Chen]]",
+   "note": "Sign-off anchored."
+  },
+  {
+   "id": "en-005",
+   "annotated": "Full name: [[PERSON:Priya Raman]]\nDepartment: Engineering"
+  },
+  {
+   "id": "en-006",
+   "annotated": "I spoke to [[PERSON:Jane Doe]] about the migration yesterday.",
+   "note": "Known gap: an unanchored name. Expected to leak until the model tier lands."
+  },
+  {
+   "id": "en-007",
+   "annotated": "The Quarterly Business Review is scheduled for Monday.",
+   "note": "Negative: capitalised phrase, not a name."
+  },
+  {
+   "id": "en-008",
+   "annotated": "Monday works for me. Tuesday does not.",
+   "note": "Negative: sentence openers."
+  },
+  {
+   "id": "en-009",
+   "annotated": "Reach me at [[EMAIL:jane.doe@example.com]] or [[PHONE:(415) 555-0198]]."
+  },
+  {
+   "id": "en-010",
+   "annotated": "Call [[PHONE:415-555-0198]] before noon.",
+   "note": "NANP with hyphens."
+  },
+  {
+   "id": "en-011",
+   "annotated": "Order [[?PHONE:4155550198]] shipped this morning.",
+   "note": "Ten bare digits are an order number to the anchored rules and a possible phone number to the wide ones. Tolerated."
+  },
+  {
+   "id": "en-012",
+   "annotated": "International line: [[PHONE:+1 415 555 0198]]",
+   "note": "E.164, matched by the universal rule."
+  },
+  {
+   "id": "en-013",
+   "annotated": "SSN [[SSN:123-45-6789]] is on file for the new hire."
+  },
+  {
+   "id": "en-014",
+   "annotated": "Social Security Number: [[SSN:123456789]]",
+   "note": "Unhyphenated form behind a label."
+  },
+  {
+   "id": "en-015",
+   "annotated": "Ticket 666-45-6789 was closed last week.",
+   "note": "Negative: area 666 is never issued."
+  },
+  {
+   "id": "en-016",
+   "annotated": "Ship to [[ADDRESS:1600 Pennsylvania Avenue]], Washington, ZIP code: [[POSTAL_CODE:20500]]"
+  },
+  {
+   "id": "en-017",
+   "annotated": "Springfield, IL [[POSTAL_CODE:62704-1234]]",
+   "note": "ZIP+4 stands on its own."
+  },
+  {
+   "id": "en-018",
+   "annotated": "Part 62704 is back in stock.",
+   "note": "Negative: five bare digits need a label. The wide ZIP rule needs a state abbreviation in front, so this stays a true negative under both stances."
+  },
+  {
+   "id": "en-019",
+   "annotated": "Our London office is at [[POSTAL_CODE:SW1A 1AA]]."
+  },
+  {
+   "id": "en-020",
+   "annotated": "We shipped 1600 Widgets Today.",
+   "note": "Negative: a number followed by capitalised words is not an address."
+  },
+  {
+   "id": "en-021",
+   "annotated": "Date of birth: [[DATE_OF_BIRTH:March 4, 1985]]"
+  },
+  {
+   "id": "en-022",
+   "annotated": "Shipped on 1985-04-01 and delivered a week later.",
+   "note": "Negative: a shipping date is not a date of birth."
+  },
+  {
+   "id": "en-023",
+   "annotated": "Card [[CREDIT_CARD:5500005555555559]] was declined."
+  },
+  {
+   "id": "en-024",
+   "annotated": "Reference [[?IDENTIFIER:1234567812345678]] in the ledger.",
+   "note": "Sixteen digits failing Luhn. Not a card; the wide tier still reads it as an identifier, which is the trade. Tolerated."
+  },
+  {
+   "id": "en-025",
+   "annotated": "The contract is with [[COMPANY_NAME:Globex Corporation]] until March."
+  },
+  {
+   "id": "en-026",
+   "annotated": "[[COMPANY_NAME:Initech LLC]] and [[COMPANY_NAME:Umbrella Ltd]] have both signed."
+  },
+  {
+   "id": "en-027",
+   "annotated": "The contract is with [[COMPANY_NAME:Acme]].",
+   "note": "Known gap: a trading name with no legal suffix."
+  },
+  {
+   "id": "en-028",
+   "annotated": "Employee ID: [[EMPLOYEE_ID:A-12345]] starts on the 3rd."
+  },
+  {
+   "id": "en-029",
+   "annotated": "Project: [[PROJECT_NAME:Nightingale]] is on track for Q3."
+  },
+  {
+   "id": "en-030",
+   "annotated": "Runbook: [[INTERNAL_URL:https://wiki.corp.local/runbook]]"
+  },
+  {
+   "id": "en-031",
+   "annotated": "Docs are at https://example.com/docs for anyone who needs them.",
+   "note": "Negative: a public URL."
+  },
+  {
+   "id": "en-032",
+   "annotated": "The staging box is [[INTERNAL_IP:10.0.4.17]]; production is behind the LB."
+  },
+  {
+   "id": "en-033",
+   "annotated": "Resolver is 8.8.8.8 in that environment.",
+   "note": "Negative: a public IP."
+  },
+  {
+   "id": "en-034",
+   "annotated": "password: [[PASSWORD:hunter2spring]] for the shared account"
+  },
+  {
+   "id": "en-035",
+   "annotated": "Connection string: [[DATABASE_URL:mysql://svc:pw@db.internal.example.com/app]]"
+  },
+  {
+   "id": "en-036",
+   "annotated": "Dear [[PERSON:Mary Smith-Jones]],\n\nyour appointment is confirmed.",
+   "note": "Hyphenated surname."
+  },
+  {
+   "id": "en-037",
+   "annotated": "Attn: [[PERSON:Robert Lang]] -- invoice attached."
+  },
+  {
+   "id": "en-038",
+   "annotated": "Please confirm receipt by end of day. Thanks.",
+   "note": "Negative: an entire message with nothing to protect."
+  },
+  {
+   "id": "en-039",
+   "annotated": "Dear [[PERSON:Jane Doe]],\n\nCC [[EMAIL:john.smith@example.org]] and [[EMAIL:ops@example.org]].\n\nRegards,\n[[PERSON:Michael Chen]]",
+   "note": "Several types across a whole message."
+  },
+  {
+   "id": "en-040",
+   "annotated": "Dr. [[PERSON:Alan Turing]] reviewed the draft.",
+   "note": "Title-anchored, two words."
+  },
+  {
+   "id": "en-041",
+   "annotated": "Contact: [[PERSON:Yuki Tanaka]] (Tokyo office)",
+   "note": "Label-anchored, romanised Japanese name."
+  },
+  {
+   "id": "en-042",
+   "annotated": "Revenue was up 12% year on year; headcount is unchanged.",
+   "note": "Negative for v0.1: business-sensitive in context, which is not modelled."
+  },
+  {
+   "id": "en-043",
+   "annotated": "Ping [[EMAIL:a.b+tag@mail.corp.example.co.uk]] if the build breaks."
+  },
+  {
+   "id": "en-044",
+   "annotated": "Retry step 2 after error_404 on line 17.",
+   "note": "Negative: placeholder-shaped noise that must not be mistaken for one."
+  },
+  {
+   "id": "en-045",
+   "annotated": "Hello [[PERSON:Tom]],\n\nthe invoice for [[COMPANY_NAME:Acme Inc.]] is attached. Employee ID: [[EMPLOYEE_ID:C-4477]]."
+  },
+  {
+   "id": "en-046",
+   "annotated": "Dear [[PERSON:Priya Raman]],\n\n[[PERSON:Priya Raman]] is leading the migration. Please loop [[PERSON:Priya Raman]] in.",
+   "note": "Co-occurrence: the salutation settles the first mention, and nothing marks the other two."
+  },
+  {
+   "id": "en-047",
+   "annotated": "Mr. [[PERSON:John Smith]] called.\n[[PERSON:John Smith]] wants the report by Friday.",
+   "note": "Co-occurrence across lines from a title anchor."
+  },
+  {
+   "id": "en-048",
+   "annotated": "Dear [[PERSON:Ann]],\n\nthe announcement goes out Monday. Announcements are drafted already.",
+   "note": "Propagation must respect word boundaries: Ann is a seed, Announcement is not an occurrence of it."
+  },
+  {
+   "id": "en-049",
+   "annotated": "Dear [[PERSON:Jane Doe]],\n\nplease confirm by Friday.",
+   "note": "Single mention: propagation must not invent extra occurrences."
+  },
+  {
+   "id": "en-050",
+   "note": "A password written in prose. Added in 0.12 after `mamori audit` reported that the rule for it, shipped in 0.10, had never fired on any sample.",
+   "annotated": "The staging password is [[PASSWORD:hunter2spring]], can you check the deploy?"
+  },
+  {
+   "id": "en-051",
+   "note": "Negative: talking about a password is not disclosing one. Blocking this would stop a request over an ordinary sentence, which is the most disruptive false positive this library can produce.",
+   "annotated": "My password is fine, I just cannot reach the gateway."
+  },
+  {
+   "id": "en-052",
+   "note": "A UK-style number: leading zero, space separated. en.PHONE.2 existed for this and had no sample until 0.12.",
+   "annotated": "Reach the London office on [[PHONE:020 7946 0958]]."
+  },
+  {
+   "id": "en-055",
+   "note": "An address with the @ held apart by spaces. Not a valid address and a perfectly ordinary way for one to appear: a line wrapped, a word processor tidying up, somebody spacing it out on purpose.",
+   "annotated": "Reach me at [[EMAIL:jane.doe @ example.com]] before Friday."
+  }
+ ]
 }

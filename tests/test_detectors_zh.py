@@ -160,6 +160,41 @@ class TestANameRunsIntoTheNextWord:
         assert "PERSON" not in zh_types("发给王氏集团办理")
 
 
+class TestAWordIsNotAName:
+    """0.25, from three hundred deliberately awkward documents.
+
+    The relaxed right edge of 0.15 let a match run past the name into the
+    grammar after it, which was invisible while it was merely over-redaction:
+    联系方式是 gave 方式是 fifty-two times in three hundred documents.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        ["联系方式是13812345678", "金额为1200元", "原因是配置错误", "本次评审的方案已确认"],
+    )
+    def test_grammar_is_not_a_person(self, text: str) -> None:
+        found = zh_values(text, "PERSON")
+        assert not any(value.endswith(("是", "的", "了")) for value in found), found
+
+    @pytest.mark.parametrize(
+        ("text", "name"),
+        [
+            ("我已经把材料发给王强了，", "王强"),
+            ("张伟汇报了进度。", "张伟"),
+            ("李明的报告已经收到", "李明"),
+            ("昨天和王强，我们谈过", "王强"),
+        ],
+    )
+    def test_the_name_stops_before_the_grammar(self, text: str, name: str) -> None:
+        """`发给王强了` is 王强 followed by 了, not a three-character name.
+
+        This one was a *leak* rather than over-redaction the moment a validator
+        started refusing candidates that end in grammar: the whole candidate
+        went, and with it the name inside it.
+        """
+        assert name in zh_values(text, "PERSON")
+
+
 class TestUniversalRulesStillApply:
     def test_email(self) -> None:
         assert zh_values("邮箱是 zhang@example.com", "EMAIL") == {"zhang@example.com"}

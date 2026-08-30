@@ -218,8 +218,49 @@ _NOT_NAME_WORDS = frozenset({
 # fmt: on
 
 
+#: Words that make the phrase before them a place rather than a person.
+#:
+#: `Rose Room` and `Fourth Street` are two capitalised words, which is all the
+#: wide rule asks for, and Rose and Fourth are both perfectly good given names.
+#: What settles it is the word after: a room, a street and a floor are places,
+#: and nobody's surname is Street. Twelve spurious detections in three hundred
+#: adversarial documents were exactly this shape.
+#:
+#: A closed set of building words, so it costs no name -- unlike a list of
+#: given names, which is open and would.
+_PLACE_WORDS = frozenset(
+    {
+        "Room",
+        "Street",
+        "Avenue",
+        "Road",
+        "Lane",
+        "Drive",
+        "Court",
+        "Building",
+        "Floor",
+        "Suite",
+        "Hall",
+        "Wing",
+        "Block",
+        "Tower",
+        "Plaza",
+        "Square",
+        "Bridge",
+        "Station",
+        "Airport",
+        "Hotel",
+        "Centre",
+        "Center",
+    }
+)
+
+
 def _plausible_latin_name(value: str) -> bool:
-    return not (set(value.split()) & _NOT_NAME_WORDS)
+    words = value.split()
+    if set(words) & _NOT_NAME_WORDS:
+        return False
+    return words[-1] not in _PLACE_WORDS if words else False
 
 
 WIDE_RULES: tuple[PatternRule, ...] = (

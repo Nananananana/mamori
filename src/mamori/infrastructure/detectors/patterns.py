@@ -128,6 +128,25 @@ _EMAIL = compile_rule(
     CERTAIN,
 )
 
+#: The same address with the ``@`` held apart by spaces.
+#:
+#: ``jane.doe @ example.com`` is not a valid address and is a perfectly ordinary
+#: way for one to appear in a document: a line wrapped, a word processor tidying
+#: up, somebody spacing it out on purpose. A corpus of adversarially written
+#: text found it as the only remaining leak class in English, at 22 documents in
+#: 300.
+#:
+#: MEDIUM rather than CERTAIN, and both sides are required to be address-shaped
+#: -- a local part with no spaces in it, a domain with a real suffix -- so that
+#: "write to us @ the office" cannot match. One space each side at most: two
+#: would let this reach across a line break into an unrelated word.
+_SPACED_EMAIL = compile_rule(
+    t.EMAIL,
+    r"[A-Za-z0-9._%+\-]+[^\S\r\n]@[^\S\r\n][A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,24}",
+    MEDIUM,
+)
+
 # E.164 with an explicit country code. Locale packs add their own national
 # formats; this catches the internationalised form wherever it appears.
 _PHONE_E164 = compile_rule(
@@ -508,6 +527,7 @@ _WIDE_DIGIT_RUN = compile_rule(
 #: Rules that hold whatever language the text is written in.
 UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     _EMAIL,
+    _SPACED_EMAIL,
     _PHONE_E164,
     _CREDIT_CARD,
     *_CREDENTIAL_RULES,
