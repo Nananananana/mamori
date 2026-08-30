@@ -117,7 +117,7 @@ PyPI 上没有这个名字的包，本项目也从未有过发布它的任务。
 发布都打了标签，也可以指定版本：
 
 ```bash
-pip install git+https://github.com/Nananananana/mamori.git@v0.25.0
+pip install git+https://github.com/Nananananana/mamori.git@v0.27.0
 ```
 
 不需要模型，不需要 GPU，不联网。默认检测器是微秒级的模式规则。

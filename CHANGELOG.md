@@ -8,6 +8,11 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-08-30
+
+The first release that can be installed by name, and the contract three sibling
+projects were waiting for.
+
 ### Added
 
 - **`mamori.protection-scope/1`** — a record of what was protected, carrying no
@@ -2120,7 +2125,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/Nananananana/mamori/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/Nananananana/mamori/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/Nananananana/mamori/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/Nananananana/mamori/compare/v0.23.0...v0.24.0

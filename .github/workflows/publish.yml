@@ -1,0 +1,76 @@
+name: Publish
+
+# Fires only on a GitHub Release that a person creates. Not on a tag push, and
+# not on a merge to main: publishing to a public index is a decision, and the
+# trigger should be an act somebody performed rather than a side effect of one.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: build, check, publish to PyPI
+    runs-on: ubuntu-latest
+
+    # Trusted Publishing: PyPI verifies this workflow's identity through OIDC
+    # and hands it a short-lived token. There is no API token in this
+    # repository's secrets, so there is none to leak, rotate, or forget.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mamori
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: python -m pip install --upgrade pip build twine && python -m build
+
+      - name: Check the metadata PyPI will check
+        run: python -m twine check dist/*
+
+      # The version in the tag and the version in the package have to be the
+      # same thing. They are set in two places by two hands, and the failure
+      # when they disagree is a release that claims to be something it is not.
+      - name: The tag must be the version that was built
+        run: |
+          python - <<'PY'
+          import os, pathlib, re
+          tag = os.environ["GITHUB_REF_NAME"]
+          built = [p.name for p in pathlib.Path("dist").glob("*.whl")]
+          assert len(built) == 1, f"expected one wheel, got {built}"
+          version = re.match(r"mamori-([^-]+)-", built[0]).group(1)
+          assert tag == f"v{version}", f"tag {tag} does not match built version {version}"
+          print(f"ok: {tag} == v{version}")
+          PY
+
+      # The same end-to-end check the CI `distribution` job runs, repeated here
+      # because this is the last point at which not publishing is still cheap.
+      - name: Use the built wheel from outside the source tree
+        run: |
+          python -m pip install dist/*.whl
+          cd /tmp
+          python - <<'PY'
+          import json
+          import mamori
+          from mamori.provenance import CONTRACT, SCHEMA, protection_record
+
+          assert SCHEMA["title"] == CONTRACT, "the schema did not ship as package data"
+          session = mamori.PrivacySession(locales=["ja", "en"])
+          result = session.protect("Contact Jane Doe at jane.doe@example.com")
+          record = protection_record(result, session=session)
+          assert record["placeholders"], "nothing was protected; the rules did not ship"
+          assert b"Jane Doe" not in json.dumps(record).encode()
+          print("ok:", mamori.__version__)
+          PY
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
