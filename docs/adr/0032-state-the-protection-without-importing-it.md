@@ -1,6 +1,7 @@
 # 32. State the protection without importing it
 
-**Status:** accepted. The document is decided here; the implementation follows.
+**Status:** accepted, and implemented in 0.27. Two sections below are
+amendments the implementation forced — the mixed mode, and the scope.
 
 ## Context
 
@@ -91,6 +92,32 @@ The conservative option is therefore not a global fallback. It is the correct
 answer for one mode and the wrong answer for the other, and a record that does
 not say which mode it describes cannot be read safely at all.
 
+### Amended while implementing: the mode is a summary, not a switch
+
+This ADR first said a record carries `placeholders` **or** `protected`, never
+both. Writing the emitter showed that to be wrong, because surrogates are
+enabled **per entity type** (ADR 0026). A surrogated `PERSON` beside a
+tokenised `EMAIL` is not an edge case; it is the ordinary configuration. A
+`PERSON` can even land on both sides of one document, when one locale has a
+surrogate pool and another does not.
+
+So the two arrays are **both always present**, and disjoint by construction: a
+token goes in one, a surrogate is counted in the other, and no surrogate string
+appears anywhere. `mode` summarises which of the three shapes resulted.
+
+Making `mode` a switch would have forced a mixed document down to counts for
+everything, losing the token enumeration that is the reason akashi wants this —
+and it would have made every consumer branch on key presence, which is the
+shape of a bug rather than of a contract.
+
+What replaces the old invariant is sharper, and is about the consumer rather
+than about the producer:
+
+> **A consumer that understands only `placeholder` must refuse `surrogate` and
+> `mixed`** — not read `placeholders` and conclude the document is fully
+> enumerated. Reading a partial list as a complete one is exactly the quiet
+> failure this contract exists to prevent.
+
 ### The precedent was already here
 
 `ProtectionResult.masked_types` — *"Types whose values were masked, in
@@ -113,6 +140,53 @@ unverifiable. This ADR generalises a decision this library already made.
 `policy_hash` is admissible because it is a hash of **configuration**, and must
 be computed over the policy alone. A hash mixing in anything from the document
 turns the record into an oracle for guessing at content.
+
+### Why the offset rule is absolute *here*, for anybody borrowing the test
+
+The list above is what this test yields **in this domain**. It is not part of
+the test, and reading it as though it were would be a mistake worth heading
+off, because the test is meant to be borrowed.
+
+`musubi` borrowed it for its trace-map and landed somewhere else: it kept the
+spans of *removals* and dropped the spans and lengths of *findings*. That is
+not a weaker application of the rule. It is the same rule, and what separates
+the two cases is **whether the thing the record points at is still live**. A
+removal points at a tracking parameter that is gone; the span is what lets the
+owner appeal it. A finding points at a credential still sitting in the owner's
+file, and an offset with a length turns the manifest into "a twenty-character
+AWS key at byte 44 of `notes/setup.md`" — which the owner does not need, and
+which is exactly the targeting an attacker does.
+
+mamori has no such split because **protected text is always live**. The
+original still exists somewhere, and so does a mapping that reaches it. The
+absence of an exception here is a property of the domain, not a sign that this
+ADR is stricter than musubi's.
+
+So: borrow the test, and re-derive the prohibitions. Carrying this list across
+unexamined would give a domain with dead records a rule harsher than its own
+reasoning supports — and, worse, might let a domain with live ones think the
+list is exhaustive when its own derivation would have found more.
+
+## The scope identifier, and the oracle moving one field over
+
+Asked after this was accepted, and the right question: `policy_hash` is
+computed over settings alone, but **what is `scope` derived from?**
+
+mamori's own is `session-` and twelve hex characters of a random UUID, with no
+input from any document. But a caller may supply one, and
+`scope="tanaka-invoice"` puts the value straight back into every place the
+record was safe to send — the same defect as hashing a document into
+`policy_hash`, moved one field over.
+
+Documenting the obligation is not enough, because the caller who names a scope
+after its subject is not reading the documentation that says not to. **mamori
+refuses at protect time when a value it detected occurs in the scope.** The
+check is where the original values still exist, which is the only place it can
+be made; by the time a record is emitted they are gone by design.
+
+Values under three characters are exempt. A one-character collision with an
+ordinary identifier is common and means nothing, and a check that fires on
+noise teaches callers to route around it.
 
 ## The record is not safe to log
 
@@ -154,8 +228,9 @@ are invariants for the consumer's documentation, not for the validator:
    only within one, so two scopes merged into a single record make
    `<PERSON_001>` ambiguous — and ambiguous in the direction that restores the
    wrong person's name.
-3. **`mode` decides which of `placeholders` and `protected` is present.** Never
-   both.
+3. **`mode` is `surrogate` or `mixed` if and only if `protected` is
+   non-empty.** A consumer that reads only `placeholders` on such a record
+   will believe the document fully enumerated when it is not.
 
 ## Validate against emitted bytes
 

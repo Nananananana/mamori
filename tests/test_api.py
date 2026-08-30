@@ -122,6 +122,7 @@ class TestTheShapesBehindTheNames:
                     "source",
                     "preview",
                     "placeholder",
+                    "surrogate",
                 },
             ),
             (mamori.Placeholder, {"entity_type_name", "index"}),

@@ -58,6 +58,15 @@ ALLOWED: dict[str, frozenset[str]] = {
     # vocabulary they resolve to, and nothing else -- a report that ran a
     # detector or opened a socket would be doing rather than describing.
     "report": frozenset({"domain", "config", "llm_settings"}),
+    # A description of one protected text, for downstreams that need to say a
+    # protection happened without importing the thing that performed one. Same
+    # arrangement as ``report``: it reads the application and the application
+    # cannot reach it, so stating what happened can never become part of doing
+    # it. See ADR 0032.
+    "provenance": frozenset({"domain", "application"}),
+    # Frozen contract documents shipped as package data. No code in it, so
+    # nothing to import: the emptiness here is the point.
+    "schemas": frozenset(),
     # The outside edge. Nothing imports it.
     "interfaces": frozenset(
         {
@@ -70,6 +79,7 @@ ALLOWED: dict[str, frozenset[str]] = {
             "config",
             "llm_settings",
             "report",
+            "provenance",
         }
     ),
     # Exceptions are shared by everything and import nothing.

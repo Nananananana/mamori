@@ -30,6 +30,9 @@ dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
     "hypothesis>=6.90",
+    # Only to check that what mamori emits validates against the schema it
+    # ships. Not a runtime dependency: the promise of zero of those holds.
+    "jsonschema>=4.0",
     "ruff>=0.6",
     "mypy>=1.10",
 ]

@@ -118,6 +118,16 @@ class PrivacySession:
     def policy(self) -> PrivacyPolicy:
         return self._policy
 
+    @property
+    def surrogate_types(self) -> frozenset[str]:
+        """Types a plausible value stands in for, rather than a token."""
+        return self._protection.surrogate_types
+
+    @property
+    def placeholder_style(self) -> PlaceholderStyle:
+        """Which brackets go into the protected text."""
+        return self._protection.placeholder_style
+
     def protect(self, text: str) -> ProtectionResult:
         """Detect sensitive values in ``text`` and replace them.
 

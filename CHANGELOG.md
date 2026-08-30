@@ -8,6 +8,37 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Added
+
+- **`mamori.protection-scope/1`** — a record of what was protected, carrying no
+  protected value, so that a downstream needing only to *describe* a protection
+  stops needing to import the thing that performed one. `mamori.provenance`
+  emits it; the JSON Schema ships as package data; restoration still needs
+  mamori and always will.
+
+  The rule that decides what may go in is a test rather than a field list
+  ([ADR 0032](docs/adr/0032-state-the-protection-without-importing-it.md)):
+  **a record may state anything derivable from the artifact it describes, and
+  nothing else.** That gives opposite answers for the two substitution modes.
+  A token is in the protected text, recoverable with one regular expression, so
+  listing tokens discloses nothing — and it is what lets a consumer tell a token
+  mamori minted from one a user typed. A surrogate is deliberately *not*
+  announced by the text, so naming one would say which values are invented and
+  by elimination which are real; surrogates contribute a kind and a count.
+
+- **`EntityReport.surrogate`** — whether a plausible value went into the text
+  instead of the token. The caller could not see this from the protected text,
+  which is the point of a surrogate and also the reason it had to be said.
+
+### Fixed
+
+- **A scope identifier may not quote the document.** `scope` is repeated into
+  every place a protection is described, on the grounds that it carries no
+  content — so `scope="tanaka-invoice"` puts the value back into all of them.
+  Refused at protect time, where the original values still exist. Values under
+  three characters are exempt, because a check that fires on noise teaches
+  callers to route around it.
+
 ## [0.26.0] - 2026-08-30
 
 Japanese names and Japanese companies, and the first honest answer to "which

@@ -43,6 +43,13 @@ class EntityReport:
     preview: str
     #: Set when the action was ``ANONYMIZE``.
     placeholder: str | None = None
+    #: Whether a plausible value went into the text instead of the token.
+    #:
+    #: The caller cannot see this from the protected text -- which is the whole
+    #: point of a surrogate -- and it decides what may be said about the
+    #: entity elsewhere. A token may be named, because it is in the text; a
+    #: surrogate may only be counted. See :mod:`mamori.provenance`.
+    surrogate: bool = False
 
 
 @dataclass(frozen=True, slots=True)

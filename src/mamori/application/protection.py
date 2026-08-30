@@ -20,7 +20,7 @@ from ..domain.script import scripts_in
 from ..domain.sensitive_entity import SensitiveEntity
 from ..domain.span import Span
 from ..domain.surrogate import pool_for, surrogate_for
-from ..errors import DetectionError, PolicyViolationError
+from ..errors import ConfigurationError, DetectionError, PolicyViolationError
 from ..ports.detector import Detector
 from ..ports.mapping_store import MappingStore
 from .results import EntityReport, ProtectionResult, mask_preview
@@ -62,6 +62,16 @@ class ProtectionService:
         self._detectors = tuple(detectors)
         self._policy = policy
         self._store = store
+
+    @property
+    def surrogate_types(self) -> frozenset[str]:
+        """Types a plausible value stands in for. Read by provenance."""
+        return self._surrogate_types
+
+    @property
+    def placeholder_style(self) -> PlaceholderStyle:
+        """Which brackets go into the text. Read by provenance."""
+        return self._placeholder_style
 
     def protect(self, text: str, scope: str) -> ProtectionResult:
         """Protect ``text``, allocating placeholders within ``scope``.
@@ -159,6 +169,39 @@ class ProtectionService:
         return found
 
     @staticmethod
+    def _refuse_a_scope_that_quotes_the_document(
+        decided: Sequence[tuple[SensitiveEntity, Action]], scope: str
+    ) -> None:
+        """A scope identifier may not contain a value from the document.
+
+        The scope travels everywhere the protection is described -- into
+        provenance records, manifests, audit logs -- precisely because it
+        carries no content. mamori's own scopes are a random UUID and cannot,
+        but a caller may supply one, and ``scope="tanaka-invoice"`` puts the
+        value back into every place the record was safe to send.
+
+        It is the same defect that would follow from hashing a document into
+        ``policy_hash``, moved one field over, and it is worth refusing rather
+        than documenting: the caller who names a scope after its subject is
+        not reading this docstring.
+
+        Values under three characters are not checked. A one-character value
+        colliding with an ordinary identifier is common and means nothing,
+        and refusing on it would teach callers to route around the check.
+        """
+        for entity, action in decided:
+            if action is Action.ALLOW:
+                continue  # In the text either way; the scope adds no exposure.
+            if len(entity.value) >= 3 and entity.value in scope:
+                raise ConfigurationError(
+                    f"scope contains a detected {entity.entity_type.name}. "
+                    "A scope identifier is quoted in provenance records and logs, "
+                    "so it must not be derived from the document. Use the "
+                    "generated default, or an identifier of your own that names "
+                    "the request rather than its subject."
+                )
+
+    @staticmethod
     def _detect_placeholder_literals(text: str) -> list[SensitiveEntity]:
         """Treat placeholder-shaped text in the *input* as an entity.
 
@@ -184,12 +227,15 @@ class ProtectionService:
         scope: str,
         trace: DecisionTrace | None = None,
     ) -> ProtectionResult:
+        self._refuse_a_scope_that_quotes_the_document(decided, scope)
+
         reports: list[EntityReport] = []
         pieces: list[str] = []
         cursor = 0
 
         for entity, action in decided:
             placeholder: Placeholder | None = None
+            mapping: Mapping | None = None
             if action is Action.ALLOW:
                 replacement = text[entity.span.start : entity.span.end]
             elif action is Action.MASK:
@@ -216,6 +262,7 @@ class ProtectionService:
                     source=entity.source,
                     preview=mask_preview(entity.value),
                     placeholder=placeholder.token if placeholder else None,
+                    surrogate=mapping is not None and mapping.is_surrogate,
                 )
             )
 
