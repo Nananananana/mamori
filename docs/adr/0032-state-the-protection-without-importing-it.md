@@ -118,6 +118,32 @@ than about the producer:
 > enumerated. Reading a partial list as a complete one is exactly the quiet
 > failure this contract exists to prevent.
 
+### Amended again: carried, not stated
+
+That paragraph was still a rule somebody has to obey. A sibling session put the
+distinction better than the ADR had:
+
+> An operational rule has to be kept once per transfer. A property carried on
+> the object is kept zero times.
+
+Written as a rule, "refuse the other modes" has to be remembered by every
+consumer, in every version, forever, and the cost of forgetting is silent. So
+it is not a rule any more. **A record holding any surrogate declares a
+different contract identifier**, `mamori.protection-scope/1+surrogate`, and a
+consumer written for tokens refuses it through the check it already performs —
+refusing a contract it does not recognise, which is the first thing any reader
+of this document does.
+
+Reading surrogate records becomes an explicit opt-in, which is the right shape:
+knowing they exist is the whole of what makes them safe to read.
+
+It also moved the invariant into the validator. JSON Schema 2020-12 cannot
+compare two properties of one object, but splitting the identifier turned that
+comparison into **two discrete cases**, and `if`/`then` states those: the plain
+contract requires `protected` to be empty, and the `+surrogate` one requires it
+not to be. A record that claims to hold only tokens while carrying surrogates
+now fails validation rather than a code review.
+
 ### The precedent was already here
 
 `ProtectionResult.masked_types` — *"Types whose values were masked, in
@@ -228,9 +254,12 @@ are invariants for the consumer's documentation, not for the validator:
    only within one, so two scopes merged into a single record make
    `<PERSON_001>` ambiguous — and ambiguous in the direction that restores the
    wrong person's name.
-3. **`mode` is `surrogate` or `mixed` if and only if `protected` is
-   non-empty.** A consumer that reads only `placeholders` on such a record
-   will believe the document fully enumerated when it is not.
+~~3. `mode` is `surrogate` or `mixed` if and only if `protected` is
+   non-empty.~~ **No longer here.** Splitting the contract identifier moved
+   this into the schema, where `if`/`then` enforces it. It is listed struck
+   through rather than deleted because the useful thing about it is that it
+   left: an invariant a consumer had to be trusted with became one the
+   validator checks, and the move was available the whole time.
 
 ## Validate against emitted bytes
 

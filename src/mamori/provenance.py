@@ -72,14 +72,32 @@ if TYPE_CHECKING:  # pragma: no cover
 
 __all__ = [
     "CONTRACT",
+    "CONTRACT_WITH_SURROGATES",
     "SCHEMA",
     "policy_hash",
     "protection_record",
 ]
 
-#: The frozen contract identifier. A consumer that does not recognise it must
+#: The frozen contract identifier, for a record whose values were **all**
+#: replaced by tokens. A consumer that does not recognise a contract must
 #: refuse the record rather than read the fields it happens to know.
 CONTRACT = "mamori.protection-scope/1"
+
+#: The identifier for a record that contains at least one **surrogate**.
+#:
+#: A separate name, rather than a flag inside the same one, because the danger
+#: it guards against is a consumer reading ``placeholders`` and believing the
+#: document fully enumerated when part of it was replaced by plausible values
+#: instead. Stated as a rule -- "a consumer that understands only placeholders
+#: must refuse the other modes" -- that has to be obeyed once per consumer,
+#: per version, forever. Stated as a different contract identifier it is
+#: obeyed **zero** times: the check every consumer already has, refusing a
+#: contract it does not recognise, does the work.
+#:
+#: Handling surrogate records therefore becomes an explicit opt-in, which is
+#: the right shape: knowing they exist is the whole of what makes them safe to
+#: read.
+CONTRACT_WITH_SURROGATES = "mamori.protection-scope/1+surrogate"
 
 _SCHEMA_FILE = "protection-scope-1.json"
 
@@ -161,6 +179,10 @@ def protection_record(
         A JSON-serialisable dict. Every value in it is derivable from
         ``result.protected_text`` by somebody holding that text.
 
+    The contract identifier differs when any surrogate is present, so a
+    consumer pinned to :data:`CONTRACT` refuses such a record through the check
+    it already has instead of through a rule it has to remember.
+
     The mode is a **summary, not a switch.** Implementing this found that
     surrogates are enabled per entity type, so one document routinely carries
     both -- a surrogated ``PERSON`` beside a tokenised ``EMAIL``, and even a
@@ -202,7 +224,7 @@ def protection_record(
         mode = "placeholder"
 
     record: dict[str, Any] = {
-        "contract": CONTRACT,
+        "contract": CONTRACT_WITH_SURROGATES if surrogated else CONTRACT,
         "by": by,
         "scope": result.scope,
         "reversible": result.reversible,

@@ -26,6 +26,19 @@ While the version is below `1.0.0`, the public API may change in a minor release
   announced by the text, so naming one would say which values are invented and
   by elimination which are real; surrogates contribute a kind and a count.
 
+- **A record holding surrogates declares a different contract**,
+  `mamori.protection-scope/1+surrogate`. The rule it replaces — "a consumer
+  that understands only placeholders must refuse the other modes" — had to be
+  obeyed once per consumer, per version, forever, and the cost of forgetting
+  was silent. A different identifier is obeyed **zero** times: refusing an
+  unrecognised contract is the first thing any reader already does.
+
+  It also moved the invariant into the validator. JSON Schema 2020-12 cannot
+  compare two properties of one object, but splitting the identifier turned
+  that comparison into two discrete cases, and `if`/`then` states those. A
+  record claiming to hold only tokens while carrying surrogates now fails
+  validation instead of a code review.
+
 - **`EntityReport.surrogate`** — whether a plausible value went into the text
   instead of the token. The caller could not see this from the protected text,
   which is the point of a surrogate and also the reason it had to be said.

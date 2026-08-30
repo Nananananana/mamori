@@ -2,14 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Nananananana/mamori/schemas/protection-scope-1.json",
   "title": "mamori.protection-scope/1",
-  "description": "What was protected in one scope, carrying no protected value. See ADR 0032. Three invariants below cannot be expressed here and must be enforced by the consumer.",
+  "description": "What was protected in one scope, carrying no protected value. See ADR 0032. Two invariants in the $comment below cannot be expressed here and must be enforced by the consumer; a third used to be there and is now in the schema itself.",
   "type": "object",
-  "required": ["contract", "by", "scope", "reversible", "mode", "placeholders", "protected", "masked"],
+  "required": [
+    "contract",
+    "by",
+    "scope",
+    "reversible",
+    "mode",
+    "placeholders",
+    "protected",
+    "masked"
+  ],
   "additionalProperties": false,
   "properties": {
     "contract": {
-      "description": "Frozen contract identifier. A consumer that does not recognise it must refuse the record rather than read the fields it happens to know.",
-      "const": "mamori.protection-scope/1"
+      "description": "Frozen contract identifier. A consumer that does not recognise one must refuse the record rather than read the fields it happens to know. A record containing any surrogate declares '+surrogate' instead, so that a consumer written only for tokens refuses it through the check it already has, rather than through a rule it has to remember every time. Reading surrogate records is an opt-in, because knowing they exist is the whole of what makes them safe to read.",
+      "enum": [
+        "mamori.protection-scope/1",
+        "mamori.protection-scope/1+surrogate"
+      ]
     },
     "by": {
       "description": "Producer, as name/version. The version matters: it says which rules and which placeholder grammar were in force.",
@@ -27,31 +39,48 @@
       "type": "boolean"
     },
     "mode": {
-      "description": "A summary of how values were substituted, not a switch selecting which array to read. Surrogates are enabled per entity type, so one document routinely carries both. A consumer that understands only 'placeholder' must REFUSE 'surrogate' and 'mixed' rather than read 'placeholders' and conclude the document is fully enumerated.",
-      "enum": ["placeholder", "surrogate", "mixed"]
+      "description": "A summary of how values were substituted, not a switch selecting which array to read. Surrogates are enabled per entity type, so one document routinely carries both. The contract identifier, not this field, is what stops a token-only consumer from reading half a record and believing it whole.",
+      "enum": [
+        "placeholder",
+        "surrogate",
+        "mixed"
+      ]
     },
     "placeholders": {
       "description": "Every value replaced by a token. Admissible because the token is in the protected text: a holder of that text recovers this list with one regular expression, so the record discloses nothing it did not already have. It is also what lets a consumer tell a token mamori minted from one the user typed.",
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["token", "kind"],
+        "required": [
+          "token",
+          "kind"
+        ],
         "additionalProperties": false,
         "properties": {
-          "token": {"type": "string", "minLength": 1},
-          "kind": {"type": "string", "minLength": 1}
+          "token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "protected": {
       "description": "Every value replaced by a SURROGATE, as a kind and a count and never a string. The protected text deliberately does not announce these, so naming them would say which values are invented, by elimination which are real, and would mark the exact spans that held a real one.",
       "type": "array",
-      "items": {"$ref": "#/$defs/kindCount"}
+      "items": {
+        "$ref": "#/$defs/kindCount"
+      }
     },
     "masked": {
       "description": "Every value replaced by a fixed mask, as a kind and a count. This is why 'reversible' may be false, and it is what tells a downstream which claims it can no longer check -- the difference between 'unsupported' and 'unverifiable'.",
       "type": "array",
-      "items": {"$ref": "#/$defs/kindCount"}
+      "items": {
+        "$ref": "#/$defs/kindCount"
+      }
     },
     "recall": {
       "description": "The stance the detectors ran under. Absent means the producer did not know it, not that a default applied.",
@@ -67,13 +96,70 @@
   "$defs": {
     "kindCount": {
       "type": "object",
-      "required": ["kind", "count"],
+      "required": [
+        "kind",
+        "count"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": {"type": "string", "minLength": 1},
-        "count": {"type": "integer", "minimum": 1}
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     }
   },
-  "$comment": "Invariants JSON Schema 2020-12 cannot express, because it cannot compare two properties of the same object. (1) Every token in 'placeholders' occurs in the protected text; a record naming a token the body does not contain is describing a different document. (2) A record describes exactly ONE scope: placeholder numbering is unique only within one, so two scopes merged into a single record make <PERSON_001> ambiguous, and ambiguous in the direction that restores the wrong person's name. (3) 'mode' is 'surrogate' or 'mixed' if and only if 'protected' is non-empty; a consumer that reads only 'placeholders' on such a record will believe the document fully enumerated when it is not."
+  "$comment": "Invariants JSON Schema 2020-12 cannot express, because it cannot compare two properties of the same object. (1) Every token in 'placeholders' occurs in the protected text; a record naming a token the body does not contain is describing a different document. (2) A record describes exactly ONE scope: placeholder numbering is unique only within one, so two scopes merged into a single record make <PERSON_001> ambiguous, and ambiguous in the direction that restores the wrong person's name. The third invariant this comment used to carry -- that a token-only consumer must refuse a record holding surrogates -- is now in the schema above, because splitting the contract identifier turned a comparison of two properties into a pair of discrete cases 'if'/'then' can state.",
+  "allOf": [
+    {
+      "$comment": "The plain contract may not carry surrogates. Expressible because both sides are discrete: 'if' on a const, 'then' on a length.",
+      "if": {
+        "properties": {
+          "contract": {
+            "const": "mamori.protection-scope/1"
+          }
+        },
+        "required": [
+          "contract"
+        ]
+      },
+      "then": {
+        "properties": {
+          "protected": {
+            "maxItems": 0
+          }
+        },
+        "required": [
+          "protected"
+        ]
+      }
+    },
+    {
+      "$comment": "And the +surrogate contract may not be used without one.",
+      "if": {
+        "properties": {
+          "contract": {
+            "const": "mamori.protection-scope/1+surrogate"
+          }
+        },
+        "required": [
+          "contract"
+        ]
+      },
+      "then": {
+        "properties": {
+          "protected": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "protected"
+        ]
+      }
+    }
+  ]
 }
