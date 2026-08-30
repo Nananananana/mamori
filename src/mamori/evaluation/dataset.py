@@ -27,6 +27,11 @@ measures nothing.
 **Every sample must be invented.** These files ship inside the package, so a
 real name or a real key committed here is published to everyone who installs
 mamori. See ``CONTRIBUTING.md``.
+
+That is a different question from **who invented it**. A file also declares a
+``provenance`` block naming the hand behind its text and the hand behind its
+labels, and a report will not be called evidence about anyone whose rules those
+hands could see. See :mod:`mamori.evaluation.provenance`.
 """
 
 from __future__ import annotations
@@ -34,11 +39,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..domain.span import Span
 from ..errors import ConfigurationError
+from .provenance import Provenance
 
 __all__ = ["Annotation", "Dataset", "Sample", "bundled_datasets", "parse_annotated"]
 
@@ -104,7 +110,15 @@ class Dataset:
     locale: str
     samples: tuple[Sample, ...]
     description: str = ""
+    #: Invented or drawn from life. A safety property, not a provenance one:
+    #: these files ship inside the package, so the answer here is always
+    #: ``"synthetic"`` and a change to that is a bug in review, not a finding.
     source: str = "synthetic"
+    #: Whose hands are in this data. Answers the question ``source`` does not:
+    #: whether the people who wrote these documents are the people who wrote
+    #: the rules being scored against them. Undeclared by default, and
+    #: undeclared refuses -- see :mod:`mamori.evaluation.provenance`.
+    provenance: Provenance = field(default_factory=Provenance)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -175,6 +189,7 @@ class Dataset:
             samples=tuple(samples),
             description=str(payload.get("description", "")),
             source=str(payload.get("source", "synthetic")),
+            provenance=Provenance.from_payload(payload.get("provenance"), origin),
         )
 
 

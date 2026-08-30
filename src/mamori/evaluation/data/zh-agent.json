@@ -3,6 +3,11 @@
  "name": "zh-agent",
  "locale": "zh",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "智能体的结构化载荷：标签是键名，而不是句子里的词。工具名、调用 ID 和 JSON 结构是负例——涂掉其中任何一个，坏掉的是这次调用而不是句子。",
  "samples": [
   {

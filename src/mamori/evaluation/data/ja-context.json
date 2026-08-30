@@ -3,6 +3,11 @@
  "name": "ja-context",
  "locale": "ja",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "組み立てられたプロンプト（tsumugiのContextPackageの形）。散文・パスを含むヘッダ・触れてはならない構造の3種類が1つの文書に同居する。A rendered context package: prose passages, headers carrying a file path, and structure -- item ids, content hashes, character offsets -- which is a negative set. Anything replaced there is a bug, because a redacted hash is a package whose id no longer verifies.",
  "samples": [
   {

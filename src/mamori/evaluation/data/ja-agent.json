@@ -3,6 +3,11 @@
  "name": "ja-agent",
  "locale": "ja",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "エージェントの構造化ペイロード。ラベルは文中の語ではなくキーである。1つのJSONに複数の言語が同居する場合、仮名はその文についての証拠でしかない。Agent-shaped text: the label is a key, and one payload can hold more than one language -- kana are evidence about their own sentence and no further.",
  "samples": [
   {

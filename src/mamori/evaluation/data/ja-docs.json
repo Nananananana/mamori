@@ -3,6 +3,11 @@
   "name": "ja-docs",
   "locale": "ja",
   "source": "synthetic",
+  "provenance": {
+    "text": "mamori",
+    "labels": "mamori",
+    "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+  },
   "description": "日本語のビジネス文書を、実際に送られる長さで。The core set measures fragments with a median of 28 characters; this one measures documents. Japanese stresses different things at this scale: there are no spaces, so a company name runs into the particle that follows it and a surname runs into the word after it; honorifics anchor the first mention and nothing anchors the rest; and a quoted reply chain repeats the same name in four different forms. Every name, address and number here is invented.",
   "samples": [
     {

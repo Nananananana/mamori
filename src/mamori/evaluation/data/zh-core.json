@@ -3,6 +3,11 @@
   "name": "zh-core",
   "locale": "zh",
   "source": "synthetic",
+  "provenance": {
+    "text": "mamori",
+    "labels": "mamori",
+    "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+  },
   "description": "Chinese business correspondence. Smaller than the Japanese and English sets on purpose: Chinese is the secondary target, and its personal-name rule is known to be weak. The set exists to stop the pack regressing and to quantify the trade-off rather than to claim the language is solved. Every name, number and identifier is invented.",
   "samples": [
     {

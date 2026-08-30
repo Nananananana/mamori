@@ -3,6 +3,11 @@
  "name": "en-agent",
  "locale": "en",
  "source": "synthetic",
+ "provenance": {
+  "text": "mamori",
+  "labels": "mamori",
+  "rules_in_view": ["akashi", "iriguchi", "kiseki", "mamori", "musubi", "tsumugi"]
+ },
  "description": "Agent-shaped text: tool-call arguments and tool definitions. The label is a key rather than a word in a sentence, and there is no prose around a value to give a rule a second chance. Tool names, call ids, JSON schemas and enums are a negative set: replacing one breaks the call rather than the sentence.",
  "samples": [
   {

@@ -1155,6 +1155,11 @@ def _report_as_json(report: EvaluationReport) -> dict[str, object]:
         "match": report.match_mode.value,
         "leak_rate": report.leak_rate,
         "over_redaction_rate": report.over_redaction_rate,
+        # Next to the numbers, not in a footer. A consumer that reads this JSON
+        # and drops the provenance is making a choice; one that never saw it is
+        # not making one.
+        "provenance": report.provenance.as_mapping(),
+        "independent_of_mamori": report.independent_of("mamori"),
         "precision": report.overall.precision,
         "recall": report.overall.recall,
         "f1": report.overall.f1,
@@ -1176,6 +1181,22 @@ def _report_as_json(report: EvaluationReport) -> dict[str, object]:
     }
 
 
+def _print_provenance(report: EvaluationReport) -> None:
+    """Say who wrote the data, in the same block as the rates it qualifies.
+
+    ADR-0025 already said the corpus was written by the same hand as the rules.
+    It said so in a document nobody has open while looking at a leak rate, and
+    the figure travelled without it anyway. What was missing was never more
+    awareness; it was putting the sentence where the number is.
+    """
+    print(f"  corpus written by   {report.provenance.describe()}")
+    reason = report.provenance.why_not("mamori")
+    if reason is not None:
+        print(f"                      {reason}")
+        print("                      Read the rates above as a regression floor,")
+        print("                      not as a probability your documents are safe.")
+
+
 def _print_report(report: EvaluationReport, show_leaks: bool) -> None:
     print(f"{report.dataset}  ({report.locale}, {len(report.samples)} samples)")
     print(
@@ -1193,7 +1214,9 @@ def _print_report(report: EvaluationReport, show_leaks: bool) -> None:
         f"{report.overall.recall:.3f} / {report.overall.f1:.3f}"
         f"   (match: {report.match_mode.value})"
     )
-    print(f"  clean samples       {report.clean_samples}/{len(report.samples)}\n")
+    print(f"  clean samples       {report.clean_samples}/{len(report.samples)}")
+    _print_provenance(report)
+    print()
 
     width = max((len(name) for name in report.by_type), default=4)
     print(f"  {'type':<{width}}  {'n':>4}  {'prec':>6}  {'rec':>6}  {'f1':>6}")

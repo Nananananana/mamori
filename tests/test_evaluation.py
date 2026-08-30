@@ -12,8 +12,11 @@ from mamori.domain.policy import Action
 from mamori.domain.span import Span
 from mamori.errors import ConfigurationError
 from mamori.evaluation import (
+    NOTHING_IN_VIEW,
     Dataset,
     MatchMode,
+    Provenance,
+    ProvenanceError,
     Sample,
     bundled_datasets,
     evaluate,
@@ -412,3 +415,206 @@ class TestToleratedSpans:
             for sample in dataset:
                 if sample.tolerated:
                     assert sample.note, f"{dataset.name}/{sample.id} tolerates a span silently"
+
+
+class TestProvenance:
+    """Who wrote the corpus, and what the scorer refuses to call the result.
+
+    The rule came from iriguchi, who borrowed this project's corpus, scored
+    themselves with it, and reported a 1.0% miss rate their own unseen data did
+    not support:
+
+        A corpus that records its provenance can refuse to score a component
+        against its own origin. That does not have to be remembered. It can be
+        enforced in the scorer.
+    """
+
+    def test_home_ground_is_not_independent_evidence(self) -> None:
+        report = evaluate(bundled_datasets("ja")[0])
+        assert not report.independent_of("mamori")
+        with pytest.raises(ProvenanceError, match="written by mamori"):
+            report.as_evidence_for("mamori")
+
+    def test_borrowing_between_siblings_does_not_launder_it(self) -> None:
+        """The exact failure this was built for.
+
+        iriguchi did not write these files and recorded that honestly. It was
+        still not independent evidence about iriguchi, because the hand that
+        wrote it can see iriguchi's rules. Not having written something is not
+        the same as not having seen it.
+        """
+        report = evaluate(bundled_datasets("ja")[0])
+        assert not report.independent_of("iriguchi")
+        with pytest.raises(ProvenanceError, match="able to see iriguchi's rules"):
+            report.as_evidence_for("iriguchi")
+
+    def test_scoring_itself_never_refuses(self) -> None:
+        """The regression floor is a good thing and must keep working.
+
+        What refuses is the claim, not the measurement. If ``evaluate`` raised
+        on home-ground data, the CI that pins these numbers would have to pass
+        a flag saying "yes really", and a flag that is always passed stops
+        being read.
+        """
+        report = evaluate(bundled_datasets("en")[0])
+        assert report.leak_rate == report.leak_rate  # it produced numbers at all
+        assert report.provenance.text == "mamori"
+
+    def test_an_undeclared_corpus_refuses_everything(self) -> None:
+        """The default points at refusal, and that direction is the point.
+
+        Claiming independence you do not have is a quiet failure that changes
+        what a reader believes. Failing to claim independence you do have only
+        makes a number more modest than it needed to be.
+        """
+        provenance = Provenance()
+        assert not provenance.independent_of("mamori")
+        assert not provenance.independent_of("anybody-at-all")
+        why = provenance.why_not("mamori")
+        assert why is not None and "nobody recorded" in why
+
+    def test_an_outside_corpus_can_be_evidence(self) -> None:
+        """Otherwise this would only be a way of saying no to everything."""
+        provenance = Provenance("external:ragtruth", "external:ragtruth", frozenset())
+        assert provenance.independent_of("mamori")
+        assert provenance.why_not("mamori") is None
+
+    def test_the_strongest_claim_cannot_be_made_by_accident(self) -> None:
+        """``rules_in_view: []`` is refused, and has to be spelled as a word.
+
+        Pointing the default at refusal only governs the value nobody wrote.
+        The empty set is the most permissive value here -- it makes a corpus
+        evidence about everybody -- and it is also the one that falls out of
+        ``sorted(view or [])``, of a generator's default argument, and of a
+        hand-edit that took the last name off a list. In JSON it sits one
+        character from ``null`` and means the opposite.
+        """
+        with pytest.raises(ProvenanceError, match="empty list"):
+            Provenance.from_payload(
+                {"text": "acme", "labels": "acme", "rules_in_view": []}, "<test>"
+            )
+
+    def test_nothing_in_view_is_spelled_as_a_word(self) -> None:
+        payload = {"text": "acme", "labels": "acme", "rules_in_view": NOTHING_IN_VIEW}
+        provenance = Provenance.from_payload(payload, "<test>")
+        assert provenance.rules_in_view == frozenset()
+        assert provenance.independent_of("mamori")
+
+    def test_a_broken_declaration_raises_the_same_error_as_a_disqualifying_one(
+        self,
+    ) -> None:
+        """A caller catching ProvenanceError should not miss a corrupt block."""
+        with pytest.raises(ProvenanceError):
+            Provenance.from_payload({"text": "acme", "rules_in_view": 7}, "<test>")
+        with pytest.raises(ProvenanceError):
+            Provenance.from_payload({"nonsense": 1}, "<test>")
+
+    def test_an_outside_corpus_still_has_to_say_what_it_saw(self) -> None:
+        """`external:` in a name is a string, not a fact about who saw what."""
+        provenance = Provenance("external:ragtruth", "external:ragtruth", None)
+        assert not provenance.independent_of("mamori")
+
+    def test_a_third_party_scoring_their_own_corpus_is_independent(self) -> None:
+        """Somebody else's data, run through this harness, is evidence about us.
+
+        This is the case a single "is it ours" flag on the dataset would get
+        wrong: their corpus is not ours, and the harness has no way to know
+        that except by being told.
+        """
+        provenance = Provenance("acme", "acme", frozenset())
+        assert provenance.independent_of("mamori")
+
+    def test_borrowed_vocabulary_with_our_labels_is_still_ours(self) -> None:
+        """Drafting the text elsewhere makes a corpus harder, not independent.
+
+        tsumugi took genre vocabulary from a local model and their trap rate
+        went from 6.0% to 25.8% with no code change, which is worth doing. It
+        does not make the result evidence about anybody, because the labels --
+        what should have been redacted -- are still ours.
+        """
+        provenance = Provenance("model:llama3.1:8b", "mamori", None)
+        assert not provenance.independent_of("mamori")
+        why = provenance.why_not("mamori")
+        assert why is not None and "labels" in why
+
+    def test_a_generator_is_a_hand(self) -> None:
+        """The 900-document adversarial corpus was generated by us.
+
+        Recording "generated" rather than "generated by whom" would show it as
+        independent. Three of its five findings were resolved by deciding what
+        the generator should have been able to write, which is what a corpus
+        looks like when it can only refute what its author already imagined.
+        """
+        provenance = Provenance("mamori", "mamori", None)
+        assert not provenance.independent_of("mamori")
+
+    def test_every_bundled_dataset_declares_its_hands(self) -> None:
+        for dataset in bundled_datasets():
+            assert dataset.provenance.is_declared, (
+                f"{dataset.name} does not say who wrote it. Undeclared is "
+                "refused rather than assumed, so this would silently stop "
+                "every claim made about it."
+            )
+
+    def test_a_dataset_file_with_no_provenance_block_loads_as_undeclared(self) -> None:
+        """Refusing to load would break every corpus anybody already has."""
+        dataset = Dataset.from_payload(
+            {
+                "format_version": 1,
+                "name": "x",
+                "locale": "en",
+                "samples": [{"id": "x-1", "annotated": "call [[PERSON:Ana]] back"}],
+            }
+        )
+        assert not dataset.provenance.is_declared
+        assert not dataset.provenance.independent_of("mamori")
+
+    def test_a_misspelled_provenance_key_is_refused(self) -> None:
+        """A typo that silently dropped a declaration would quietly weaken it."""
+        with pytest.raises(ConfigurationError, match="unknown keys"):
+            Dataset.from_payload(
+                {
+                    "format_version": 1,
+                    "name": "x",
+                    "locale": "en",
+                    "provenance": {"text": "acme", "labels": "acme", "rules_seen": []},
+                    "samples": [{"id": "x-1", "annotated": "call [[PERSON:Ana]] back"}],
+                }
+            )
+
+    def test_the_report_carries_it_so_a_number_cannot_travel_alone(self) -> None:
+        """A caveat in a README arrives separately from the number, or later."""
+        report = evaluate(bundled_datasets("zh")[0])
+        assert report.provenance == bundled_datasets("zh")[0].provenance
+        assert "mamori" in report.provenance.describe()
+
+    def test_there_is_still_only_one_hand_in_the_whole_corpus(self) -> None:
+        """The gap this project has, stated where it will be noticed.
+
+        Recording provenance stops a home-ground number being quoted as
+        something else. It does not supply the missing measurement, and it
+        would be a poor outcome if writing the field down felt like having
+        done the work.
+
+        Two sibling projects arrived independently at what to do next: draft
+        the *text* elsewhere while keeping the labels, then report the score
+        split by which hand drafted it. tsumugi did it and the split was the
+        whole result -- 4.0% traps on vocabulary they wrote, 28.0% on
+        vocabulary a model drafted, and with the confounded languages removed
+        4.0% against 33.3%. The ranker looked healthy in its authors' own
+        words and failed seven times in eight in somebody else's.
+
+        Here that split has nothing to split: every bundled dataset has the
+        same single hand, so its spread is zero for want of a second reading
+        rather than because the vocabulary does not matter. This test says so
+        out loud, and will fail as soon as that stops being true -- at which
+        point the reports should start being separated by hand.
+        """
+        hands = {dataset.provenance.text for dataset in bundled_datasets()}
+        hands |= {dataset.provenance.labels for dataset in bundled_datasets()}
+        assert hands == {"mamori"}, (
+            f"the corpus now has more than one hand ({sorted(hands)}). Report "
+            "the leak rate split by hand rather than pooled: a pooled number "
+            "over mixed provenance hides exactly the difference that is worth "
+            "measuring."
+        )
