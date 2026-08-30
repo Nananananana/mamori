@@ -3,6 +3,23 @@ name: Publish
 # Fires only on a GitHub Release that a person creates. Not on a tag push, and
 # not on a merge to main: publishing to a public index is a decision, and the
 # trigger should be an act somebody performed rather than a side effect of one.
+#
+# **Everything below runs after the Release is already public.** That is worth
+# saying plainly, because this file is being copied into sibling projects and
+# the checks read like a gate. They are not one. By the time the first step
+# runs, the tag and the release notes are visible to anybody.
+#
+# The gate is in `ci.yml`, in the `distribution` job, which builds the wheel,
+# runs `twine check`, installs it, and uses it from outside the source tree --
+# on every push to main and every pull request. **A commit that cannot be
+# published cannot reach main**, so a Release cut from main is already known to
+# be publishable.
+#
+# What the checks here catch is the narrow case that gate cannot: a Release cut
+# from something that is not main, or from a commit whose CI has not finished.
+# For a project inheriting this file and not yet publishable at all, the whole
+# arrangement is wrong -- prove it in `ci.yml` first, or the only thing the
+# Release produces is a public announcement of a package that never arrives.
 on:
   release:
     types: [published]
@@ -52,8 +69,10 @@ jobs:
           print(f"ok: {tag} == v{version}")
           PY
 
-      # The same end-to-end check the CI `distribution` job runs, repeated here
-      # because this is the last point at which not publishing is still cheap.
+      # The same end-to-end check the CI `distribution` job runs. Repeated
+      # rather than trusted, because this workflow may be running on a commit
+      # that job never saw. It is not a last chance to reconsider -- the
+      # Release is public already; see the note on the trigger above.
       - name: Use the built wheel from outside the source tree
         run: |
           python -m pip install dist/*.whl
