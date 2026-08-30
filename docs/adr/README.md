@@ -42,3 +42,4 @@ it, and — the part that is usually missing — what it costs.
 | [0029](0029-a-prompt-nobody-typed.md) | A prompt nobody typed |
 | [0030](0030-a-tool-call-is-text.md) | A tool call is text, and evidence is local |
 | [0031](0031-the-morphological-adapter-measured-and-declined.md) | The morphological adapter, measured and declined |
+| [0032](0032-state-the-protection-without-importing-it.md) | State the protection without importing it |
