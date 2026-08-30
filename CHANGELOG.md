@@ -32,6 +32,23 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **A phone number has no script in it.** A language pack only runs where its
+  script appears, which is right for a rule that reads a name and wrong for one
+  made of digits: `Please call our Tokyo office at 090-1234-5678` is an
+  entirely Latin sentence, so the Japanese pack never ran and the number left
+  the machine. So did a CSV row whose neighbouring column was called `phone`.
+
+  The mobile prefix moves to the universal rules. **The landline half does
+  not**, and that is measured rather than assumed: `0\d{1,3}-\d{1,4}-\d{4}`
+  with no Japanese around it also matches `05-12-2024`, `Invoice 01-2345-6789`,
+  `Version 02-1000-0001` and an ISBN. That half carries no evidence of its own,
+  so the surrounding script has to be the evidence and it stays in the pack.
+
+  No dataset moved — not one of the twelve, and not the three adversarial sets.
+  Which is the point worth keeping: **the corpora could not have found this**,
+  because none of them contains a Japanese number in a document with no
+  Japanese in it. It came from a property test in a sibling session.
+
 - **A scope identifier may not quote the document.** `scope` is repeated into
   every place a protection is described, on the grounds that it carries no
   content — so `scope="tanaka-invoice"` puts the value back into all of them.

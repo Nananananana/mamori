@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from mamori import PrivacySession
 from mamori.domain.normalization import NormalizedText
 from mamori.infrastructure.detectors import (
     JAPANESE,
@@ -306,3 +307,54 @@ class TestATradingNameWithNoLegalForm:
     def test_it_is_not_also_a_person(self) -> None:
         """The whole point: the person reading was the bug."""
         assert "PERSON" not in ja_types("田中商事への発注は完了しています。")
+
+
+class TestANumberWithNoScriptAroundIt:
+    """A language pack runs where its script appears. A phone number has no
+    script in it.
+
+    `Please call our Tokyo office at 090-1234-5678` is an entirely Latin
+    sentence, so the Japanese pack never ran on it and the number left the
+    machine. So did a CSV row whose neighbouring column was literally called
+    `phone`. Gating on script is right for a rule that reads a name; for a rule
+    made of digits it gates on something the rule never looks at.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Please call our Tokyo office at 090-1234-5678 tomorrow.",
+            "Tanaka,080-1111-2222,tanaka@example.com",
+            '{"contact": "070-9999-8888"}',
+            "090-1234-5678",
+        ],
+    )
+    def test_a_mobile_number_is_found_with_no_japanese_present(self, text: str) -> None:
+        session = PrivacySession(locales=["en"])
+        protected = session.protect(text).protected_text
+        assert "PHONE" in protected
+        for digits in ("090-1234-5678", "080-1111-2222", "070-9999-8888"):
+            assert digits not in protected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Due 05-12-2024 at noon.",
+            "Invoice 01-2345-6789 is overdue.",
+            "Version 02-1000-0001",
+            "Order 09-8765-4321 shipped.",
+            "ISBN 04-0123-4567",
+        ],
+    )
+    def test_the_landline_shape_stays_gated(self, text: str) -> None:
+        r"""Measured, not assumed: `0\d{1,3}-\d{1,4}-\d{4}` with no Japanese
+        around it matches all five of these. That half of the pattern carries
+        no evidence of its own, so the script around it has to be the
+        evidence, and it stays in the language pack."""
+        assert "PHONE" not in PrivacySession(locales=["en"]).protect(text).protected_text
+
+    def test_japanese_text_still_finds_the_landline(self) -> None:
+        session = PrivacySession(locales=["ja"])
+        protected = session.protect("電話は 03-1234-5678 です").protected_text
+        assert "03-1234-5678" not in protected
+        assert "PHONE" in protected
