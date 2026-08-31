@@ -114,6 +114,29 @@ jobs:
       #
       # So the question "can this be published at all" is answered here, on
       # every push, where the answer is still free.
+      # `py.typed` is a promise to whoever installs this: their type checker
+      # will read mamori's annotations instead of treating the package as
+      # untyped. The file being in the repository is the reason it goes in --
+      # it is not a reason it keeps going in, and a packaging change would drop
+      # it in silence, because nothing here fails when a downstream loses types.
+      #
+      # So the check is the promise itself rather than the file: a program that
+      # imports mamori is type checked against the *installed* package, and has
+      # to come out knowing that `protected_text` is a `str`.
+      - name: A downstream still gets types
+        working-directory: /tmp
+        run: |
+          python -m pip install mypy
+          cat > downstream.py <<'PY'
+          import mamori
+
+          session = mamori.PrivacySession(locales=["ja"])
+          result = session.protect("x")
+          reveal_type(result.protected_text)
+          PY
+          python -m mypy downstream.py | tee out.txt
+          grep -q 'Revealed type is "str"' out.txt
+
       - name: The name can still be claimed
         run: python scripts/check_name_is_claimable.py
 

@@ -1015,6 +1015,32 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     return _EXIT_OK
 
 
+def _emit(text: str) -> None:
+    """Write transformed text to stdout, exactly.
+
+    `print` appends a newline to text that usually already ends with one, so
+    every pass through the CLI grew the document by a byte: protect once and it
+    has one extra, restore it and it has two. A round trip was not byte-exact,
+    and a pipeline of these -- which is what the sibling projects assemble --
+    accumulated one per hop.
+
+    That matters beyond tidiness. Downstream tools resolve spans back to byte
+    offsets in an original, and a document that gains a trailing byte at every
+    stage is a document those offsets are measured against and no longer match.
+
+    So: the text, and nothing else. What came in without a trailing newline
+    goes out without one, the way `sed` and `cat` behave, and for the same
+    reason -- a filter that adds a byte is not a filter.
+
+    The exception is a terminal, where the missing newline runs the shell
+    prompt into the output and there is no pipeline to keep exact. Piped, it is
+    byte-for-byte; watched, it is tidy.
+    """
+    sys.stdout.write(text)
+    if text and not text.endswith(chr(10)) and sys.stdout.isatty():
+        sys.stdout.write(chr(10))
+
+
 def _cmd_protect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     settings = _settings_from(args)
@@ -1055,7 +1081,7 @@ def _cmd_protect(args: argparse.Namespace) -> int:
             )
         )
     else:
-        print(result.protected_text)
+        _emit(result.protected_text)
         if result.entities:
             print(f"\n-- {result.entity_count} value(s) protected", file=sys.stderr)
     return _EXIT_OK
@@ -1067,7 +1093,7 @@ def _cmd_restore(args: argparse.Namespace) -> int:
     scope = load_scope(store, Path(args.mapping))
     session = PrivacySession(store=store, scope=scope)
     result: RestorationResult = session.restore(text)
-    print(result.text)
+    _emit(result.text)
     if result.unknown:
         print(
             f"-- warning: {len(result.unknown)} unrecognised placeholder(s) left as-is",

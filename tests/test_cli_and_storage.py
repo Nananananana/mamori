@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -660,3 +661,49 @@ class TestEvalTakesTheStanceFromTheConfig:
         assert main(["eval", "--locale", "en", "--config", config, "--compare"]) == 0
         out = capsys.readouterr().out
         assert "20.02%" in out, "the compare baseline lost the stance"
+
+
+class TestTheCliIsAFilter:
+    """`protect` and `restore` write the transformed text and nothing else.
+
+    They used to use `print`, which appends a newline to text that already ends
+    with one, so every pass grew the document by a byte: protect once and it
+    had one extra, restore it and it had two. A round trip was not byte-exact
+    and a pipeline accumulated one per hop.
+
+    That is not tidiness. The sibling projects resolve spans back to byte
+    offsets in an original document, and a document that gains a byte at every
+    stage is one those offsets no longer describe.
+    """
+
+    ROUND_TRIPS: ClassVar[list[object]] = [
+        pytest.param("a mail from taro@example.com\n", id="trailing newline"),
+        pytest.param("a mail from taro@example.com", id="no trailing newline"),
+        pytest.param("From: taro@example.com\nTo: hanako@example.com\n", id="several lines"),
+        pytest.param("nothing sensitive here", id="nothing detected"),
+    ]
+
+    @pytest.mark.parametrize("original", ROUND_TRIPS)
+    def test_a_round_trip_is_byte_exact(
+        self, original: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        source = tmp_path / "in.txt"
+        source.write_text(original, encoding="utf-8")
+        mapping = tmp_path / "map.json"
+
+        assert main(["protect", "-f", str(source), "--save-mapping", str(mapping)]) == 0
+        protected = tmp_path / "protected.txt"
+        protected.write_text(capsys.readouterr().out, encoding="utf-8")
+
+        assert main(["restore", "-f", str(protected), "--mapping", str(mapping)]) == 0
+        assert capsys.readouterr().out == original
+
+    def test_protect_does_not_add_a_trailing_newline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Stated on its own, because the round-trip test would still pass if
+        both commands added one and one of them stripped it."""
+        source = tmp_path / "in.txt"
+        source.write_text("taro@example.com", encoding="utf-8")
+        assert main(["protect", "-f", str(source)]) == 0
+        assert capsys.readouterr().out == "<EMAIL_001>"
