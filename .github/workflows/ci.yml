@@ -106,6 +106,17 @@ jobs:
           print("ok:", mamori.__version__, record["mode"])
           PY
 
+      # Everything above is about the artefact, and all of it passes on a name
+      # that belongs to somebody else. The only thing that fails then is the
+      # upload -- which happens after a GitHub Release has been created, and a
+      # Release is public the moment it is made. No check inside `publish.yml`
+      # can help: by the time it runs, the irreversible part is done.
+      #
+      # So the question "can this be published at all" is answered here, on
+      # every push, where the answer is still free.
+      - name: The name can still be claimed
+        run: python scripts/check_name_is_claimable.py
+
       - name: Keep the zero-dependency promise honest
         run: |
           python - <<'PY'

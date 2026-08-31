@@ -17,9 +17,13 @@ name: Publish
 #
 # What the checks here catch is the narrow case that gate cannot: a Release cut
 # from something that is not main, or from a commit whose CI has not finished.
-# For a project inheriting this file and not yet publishable at all, the whole
-# arrangement is wrong -- prove it in `ci.yml` first, or the only thing the
-# Release produces is a public announcement of a package that never arrives.
+#
+# **If you are copying this file, the important half is in `ci.yml`.** That job
+# also answers the question this one structurally cannot: whether the name can
+# be uploaded at all. A distribution whose name belongs to somebody else builds
+# cleanly, passes `twine check`, installs, works -- and is refused at the last
+# step, by which time the Release announcing it is public. That is an ordering
+# defect, not a missing check, and adding checks here cannot fix it.
 on:
   release:
     types: [published]

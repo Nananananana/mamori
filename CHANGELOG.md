@@ -8,6 +8,26 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Added
+
+- **CI now asks whether the name can be uploaded at all.** Everything the
+  distribution job checked was about the artefact — it builds, `twine check`
+  passes, the wheel installs and works — and every one of those passes on a
+  name that belongs to somebody else. The only thing that fails then is the
+  upload, which happens **after** a GitHub Release exists, and a Release is
+  public the moment it is made.
+
+  That is an ordering defect rather than a missing check: no amount of checking
+  inside `publish.yml` can help, because by the time it runs the irreversible
+  part is done. `scripts/check_name_is_claimable.py` asks PyPI on every push,
+  where the answer is still free, and fails when the name is taken by a project
+  that does not link back to this repository.
+
+  Found by the release role while reading `publish.yml` for other projects to
+  copy. mamori is unaffected — the name is unclaimed and the artefact was
+  measured as publishable — but a project inheriting the arrangement would get
+  a public Release announcing a package that can never arrive.
+
 ### Fixed
 
 - **`mamori eval --config` threw away the config file's stance.** `--stance`
