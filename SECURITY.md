@@ -91,6 +91,24 @@ fails before a release does.
 
 ### What the numbers actually are
 
+**A leak rate is a rate against a label set, and this one is ours.** Every
+figure below counts sensitive characters that a detection did not cover, where
+*sensitive* means *marked in a dataset written by the people who wrote the
+rules, using the types those rules have*. A value nobody here thought to give a
+type to is not a miss in these numbers. It is not in them at all.
+
+That is not a hedge, it is the unit. `0.00%` on `ja-core` means the rules cover
+everything **mamori's own type system knows how to mark**, and says nothing
+about what an owner of that document would have wanted hidden. The two
+questions have different answers, and the second one is
+[open](docs/open-questions.md#nothing-here-was-written-by-anybody-else).
+
+The type system reaches past personal data on purpose — `COMPANY_NAME`,
+`EMPLOYEE_ID` and `PROJECT_NAME` are business-confidential rather than personal
+— so "it is only a PII tool" is not available as an explanation for what it
+misses there. Where it stops is stated in the gap tables above rather than by
+category.
+
 Detection is measured against bundled labelled datasets, at two scales. Run
 `mamori eval` yourself. Every figure below is what that command prints on the
 current version, at the default recall-first stance, and
