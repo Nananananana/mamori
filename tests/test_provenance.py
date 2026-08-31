@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -40,7 +41,7 @@ VALUES = (
 )
 
 
-def emitted(session: PrivacySession, text: str, **kwargs: object) -> dict:
+def emitted(session: PrivacySession, text: str, **kwargs: object) -> dict[str, Any]:
     """Protect, build the record, and put it through JSON as bytes.
 
     The round trip is the point. Anything that only holds together as Python

@@ -78,13 +78,25 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src/mamori"]
+# Everything, not just the package. `files = ["src/mamori"]` checked 86 of the
+# repository's 130 Python files and said "Success" -- the scope of a check has
+# to match the scope of what it protects, and a narrower spelling of it passes
+# by construction. The tests are where the fakes live, and a fake that does not
+# satisfy the protocol it stands in for is exercising a path no real
+# implementation takes.
+files = ["src/mamori", "tests", "scripts"]
 strict = true
 warn_unreachable = true
 
 # tomllib arrived in 3.11. The import is guarded at runtime and the caller gets
 # a clear message telling them to use JSON, but mypy pinned to 3.10 cannot see
 # a module that does not exist there.
+# Dev-only, and it ships no stubs. Named rather than blanket-ignored so that a
+# second untyped import has to be argued for.
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = "tomllib"
 ignore_missing_imports = true

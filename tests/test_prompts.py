@@ -10,6 +10,7 @@ security decision.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 import pytest
 
@@ -40,7 +41,7 @@ def rule(rule_id: str, text: str = "x", **kwargs: object) -> GuidanceRule:
     return GuidanceRule(id=rule_id, text=text, **kwargs)  # type: ignore[arg-type]
 
 
-def answer(*entities: dict[str, object]) -> str:
+def answer(*entities: Mapping[str, object]) -> str:
     return json.dumps({"entities": list(entities)})
 
 

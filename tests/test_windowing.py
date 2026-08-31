@@ -37,7 +37,7 @@ class TestCoverage:
 
     def test_the_windows_reconstruct_the_document(self) -> None:
         text = "".join(f"line {i} of the document.\n" for i in range(200))
-        covered = set()
+        covered: set[int] = set()
         for window in windows(text, 300):
             covered.update(range(window.offset, window.end))
         assert covered == set(range(len(text)))

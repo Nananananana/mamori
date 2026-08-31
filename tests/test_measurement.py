@@ -116,7 +116,7 @@ class TestComparingTwoRuns:
 
     def test_the_mapping_carries_both_sides_and_the_delta(self) -> None:
         payload = compare(self._report("balanced"), self._report("recall_first")).as_mapping()
-        assert set(payload["baseline"]) >= {"leak_rate", "over_redaction_rate"}  # type: ignore[arg-type]
+        assert set(payload["baseline"]) >= {"leak_rate", "over_redaction_rate"}  # type: ignore[call-overload]
         assert "leak_rate" in payload["delta"]  # type: ignore[operator]
         assert json.dumps(payload)
 

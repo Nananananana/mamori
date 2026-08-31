@@ -73,7 +73,7 @@ class NoNetwork:
             self._saved[name] = getattr(socket.socket, name, None)
             setattr(socket.socket, name, refusal(name))
         self._saved["create_connection"] = socket.create_connection
-        socket.create_connection = refusal("create_connection")  # type: ignore[assignment]
+        socket.create_connection = refusal("create_connection")
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -505,7 +505,7 @@ class TestACommandThatReadsWritesNothing:
         from mamori.interfaces.cli.main import build_parser
 
         writers = {"correct"}  # and 'protect --save', which needs a flag
-        commands = set(build_parser()._subparsers._group_actions[0].choices)  # type: ignore[union-attr]
+        commands = set(build_parser()._subparsers._group_actions[0].choices)  # type: ignore[union-attr,arg-type]
         assert writers <= commands
         assert not writers & {"inspect", "privacy", "corrections", "eval"}
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from types import TracebackType
 
 from ..domain.corrections import CorrectionLog
@@ -49,7 +49,7 @@ class PrivacySession:
         locales: Sequence[str] | str | None = None,
         prompts: PromptLibrary | None = None,
         corrections: CorrectionLog | None = None,
-        surrogate_types: frozenset[str] = frozenset(),
+        surrogate_types: Iterable[str] = (),
         placeholder_style: PlaceholderStyle = PlaceholderStyle.ANGLE,
         trace: bool = False,
     ) -> None:
@@ -77,7 +77,11 @@ class PrivacySession:
                 is set to, because a placeholder's identity is its
                 ``(type, index)`` pair and the brackets are surface.
             surrogate_types: Types replaced by a plausible value rather than a
-                token. Empty by default. Read
+                token. Any iterable of names -- it was annotated
+                ``frozenset[str]`` while the body accepted anything, so every
+                caller reading the signature built a frozenset it did not need,
+                and every one that passed a list was correct and looked
+                wrong. Empty by default. Read
                 :mod:`mamori.domain.surrogate` before turning it on: an
                 unrestored placeholder is obvious and an unrestored surrogate
                 is a sentence about the wrong person.

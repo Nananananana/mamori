@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -11,6 +11,7 @@ import pytest
 
 from mamori.application.results import EntityReport
 from mamori.domain.policy import Action
+from mamori.domain.sensitive_entity import SensitiveEntity
 from mamori.domain.span import Span
 from mamori.errors import ConfigurationError
 from mamori.evaluation import (
@@ -688,9 +689,10 @@ class TestAModelThatNeverAnswered:
 
         class _Pipeline:
             passes = (_Pass(),)
+            name = "fake"
 
-            def detect(self, text: str, context: object = None) -> list[object]:
-                return []
+            def detect(self, text: str) -> Sequence[SensitiveEntity]:
+                return ()
 
         dataset = next(d for d in bundled_datasets() if d.name == "ja-core")
         report = evaluate(dataset, detectors=[_Pipeline()])
@@ -705,9 +707,10 @@ class TestAModelThatNeverAnswered:
 
         class _Pipeline:
             passes = (_Pass(),)
+            name = "fake"
 
-            def detect(self, text: str, context: object = None) -> list[object]:
-                return []
+            def detect(self, text: str) -> Sequence[SensitiveEntity]:
+                return ()
 
         dataset = next(d for d in bundled_datasets() if d.name == "ja-core")
         assert evaluate(dataset, detectors=[_Pipeline()]).unanswered_samples == 0

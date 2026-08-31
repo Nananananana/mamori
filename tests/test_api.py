@@ -21,6 +21,7 @@ import importlib
 import inspect
 import pathlib
 import pkgutil
+from types import ModuleType
 
 import pytest
 
@@ -215,7 +216,7 @@ class TestNothingElseLooksPublic:
         assert not missing, missing
 
 
-def _every_module() -> list[object]:
+def _every_module() -> list[ModuleType]:
     modules = [mamori]
     for info in pkgutil.walk_packages(mamori.__path__, prefix="mamori."):
         try:

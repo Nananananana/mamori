@@ -138,7 +138,7 @@ class TestWhatUsedToGoUpstream:
             protected, _ = protect_request(session, payload, add_guidance=False)
         assert (
             protected["tools"][0]["function"]["parameters"]
-            == payload["tools"][0]["function"]["parameters"]
+            == payload["tools"][0]["function"]["parameters"]  # type: ignore[index]
         )
 
     def test_the_end_user_identifier(self) -> None:
@@ -365,7 +365,7 @@ class TestItFailsClosedOnBrokenJson:
                     )
                 ]
 
-        with PrivacySession(detectors=[BreaksJson()]) as session:
+        with PrivacySession(detectors=[BreaksJson()]) as session:  # type: ignore[list-item]
             with pytest.raises(MamoriError, match="valid JSON"):
                 protect_request(session, payload, add_guidance=False)
 

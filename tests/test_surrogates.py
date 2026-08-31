@@ -120,7 +120,9 @@ class TestRoundTrip:
         with surrogate_config("PERSON").session() as session:
             result = session.protect(EN)
             surrogate = next(
-                v for v in (pool_for("PERSON", "en") or ()).values if v in result.protected_text
+                v
+                for v in getattr(pool_for("PERSON", "en"), "values", ())
+                if v in result.protected_text
             )
             mangled = result.protected_text.replace(surrogate, surrogate.split()[0])
             answer = session.restore(mangled)
