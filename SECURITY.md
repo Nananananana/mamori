@@ -92,7 +92,10 @@ fails before a release does.
 ### What the numbers actually are
 
 Detection is measured against bundled labelled datasets, at two scales. Run
-`mamori eval` yourself; as of `0.18.0`, at the default recall-first stance:
+`mamori eval` yourself. Every figure below is what that command prints on the
+current version, at the default recall-first stance, and
+`tests/test_security_figures.py` fails the build when it stops being so — the
+table was hand-copied until 0.28 and three of its rows had drifted:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
@@ -204,17 +207,22 @@ values, and costs roughly six times the over-redaction.
 
 **At 14B the answer is different, and 0.23 is where that was first measurable.**
 `qwen2.5:14b-instruct-q4_K_M` against the document sets, which are documents
-rather than fragments:
+rather than fragments. **These four rows were taken on a GPU**, which matters
+because the device is not always neutral -- see `docs/choosing-a-model.md`,
+where one smaller model redacts 44% more on a CPU:
 
 | set | leak: rules -> +model | over-redaction | recall |
 |---|---|---|---|
 | `en-docs`, balanced | 20.02% -> **1.69%** | 0.03% -> 0.03% | 0.700 -> 0.950 |
 | `en-docs` | 3.50% -> **0.36%** | 0.90% -> 0.90% | 0.883 -> 0.967 |
 | `ja-docs` | 0.33% -> **0.00%** | 1.06% -> 1.06% | 0.984 -> 1.000 |
-| `zh-docs` | 2.37% -> **0.00%** | 1.20% -> 1.20% | 0.978 -> 0.978 |
+| `zh-docs` | 2.37% -> **0.00%** | 1.12% -> 1.68% | 0.978 -> 0.978 |
 
-Over-redaction does not move anywhere, which is what did not happen at 8B, and
-two of the three languages reach zero. What closes in English is the anchorless
+Over-redaction holds in English and Japanese, which is what did not happen at
+8B, and two of the three languages reach zero. **It does move in Chinese**,
+by +0.56 points, which this section claimed it did not until the row was
+re-measured: the earlier figure carried a stale baseline and an unchecked
+delta. Entity precision falls with it, 0.900 to 0.865. What closes in English is the anchorless
 name, the largest measured gap in this project since 0.9. The Chinese row read
 2.37% -> 2.37% until 0.24, when this library started accepting the type names
 the model actually uses. The **345 seconds per document** this line used to

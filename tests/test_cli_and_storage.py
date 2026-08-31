@@ -605,3 +605,58 @@ class TestCliLlm:
     ) -> None:
         assert main(["config", "--json"]) == 0
         assert json.loads(capsys.readouterr().out)["llm"] is None
+
+
+class TestEvalTakesTheStanceFromTheConfig:
+    """`--stance` used to carry a default, so a config file's stance was thrown
+    away and every `mamori eval --config` scored recall-first without saying so.
+
+    A setting that is read and then silently overwritten by a default is worse
+    than one that is ignored: the file says balanced, the output says nothing,
+    and the numbers are somebody else's. It was found by re-measuring a
+    published figure and getting the wrong baseline -- 3.50% where the document
+    said 20.02% -- which is the only way it could have been found, because
+    nothing in the run mentions a stance at all.
+    """
+
+    @staticmethod
+    def _config(tmp_path: Path, **values: object) -> str:
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"locales": ["en"], **values}), encoding="utf-8")
+        return str(path)
+
+    def test_the_config_stance_is_used_when_the_flag_is_absent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert (
+            main(["eval", "--locale", "en", "--config", self._config(tmp_path, stance="balanced")])
+            == 0
+        )
+        out = capsys.readouterr().out
+        # The wide tier is off, so en-docs leaks a fifth of its sensitive text.
+        assert "20.02%" in out, out
+
+    def test_the_flag_still_wins_when_it_is_given(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = self._config(tmp_path, stance="balanced")
+        assert main(["eval", "--locale", "en", "--config", config, "--stance", "recall_first"]) == 0
+        assert "3.50%" in capsys.readouterr().out
+
+    def test_recall_first_is_still_the_default_with_no_config(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["eval", "--locale", "en"]) == 0
+        assert "3.50%" in capsys.readouterr().out
+
+    def test_the_compare_baseline_keeps_everything_but_the_model(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The baseline used to be a fresh default config, which dropped the
+        locales along with the model and attributed the difference to the
+        model. `MamoriConfig.detectors` carries a docstring about the last time
+        a hand-rebuilt pipeline did this."""
+        config = self._config(tmp_path, stance="balanced")
+        assert main(["eval", "--locale", "en", "--config", config, "--compare"]) == 0
+        out = capsys.readouterr().out
+        assert "20.02%" in out, "the compare baseline lost the stance"

@@ -374,8 +374,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_cmd.add_argument(
         "--stance",
         choices=[stance.value for stance in Stance],
-        default=Stance.RECALL_FIRST.value,
-        help="which rule tiers to score (default: recall_first)",
+        help=(
+            "which rule tiers to score. Omit to use the stance in --config, or "
+            "recall_first when there is none"
+        ),
     )
     evaluate_cmd.add_argument(
         "--show-leaks",
@@ -1263,11 +1265,20 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         print("no datasets matched", file=sys.stderr)
         return _EXIT_ERROR
 
-    stance = Stance(args.stance)
-    rules_only = MamoriConfig(stance=stance)
-    settings = rules_only
-    if args.config:
-        settings = load_config_file(Path(args.config)).replace(stance=stance)
+    # `--stance` wins when it is given and stays out of the way when it is not.
+    # It used to carry a default, so `mamori eval --config settings.json` threw
+    # away whatever stance that file asked for and scored recall-first without
+    # saying so: a setting read, then silently overwritten by a default.
+    settings = load_config_file(Path(args.config)) if args.config else MamoriConfig()
+    if args.stance is not None:
+        settings = settings.replace(stance=Stance(args.stance))
+
+    # The baseline for `--compare` is these settings with the model taken out,
+    # not a fresh default. Rebuilt by hand it would lose the locales, the
+    # co-occurrence pass and the corrections along with the model, and the
+    # comparison would attribute all of that to the model. `MamoriConfig.
+    # detectors` carries a docstring about the last time that happened.
+    rules_only = settings.replace(llm=None)
 
     cache: CachedProvider | None = None
     if args.cache:

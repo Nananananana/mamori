@@ -10,6 +10,28 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **`mamori eval --config` threw away the config file's stance.** `--stance`
+  carried a default, so every run overrode whatever the file asked for and
+  scored recall-first without saying so. A setting read and then silently
+  replaced by a default is worse than one ignored: the file says `balanced`,
+  the output says nothing, and the numbers belong to a different question.
+
+  Found by re-measuring a published figure and getting the wrong baseline —
+  3.50% where `SECURITY.md` says 20.02% — which is the only way it could have
+  been found, because nothing in the output mentions a stance.
+
+  The `--compare` baseline was rebuilt from a fresh `MamoriConfig` too, so it
+  dropped the locales along with the model and charged the difference to the
+  model. It is now the same settings with `llm=None`. `MamoriConfig.detectors`
+  has carried a docstring about exactly this mistake since the last time a
+  hand-rebuilt pipeline made it.
+
+- **The 14B's Chinese over-redaction was published as unchanged and is not.**
+  `zh-docs` reads `1.12% -> 1.68%`, not `1.20% -> 1.20%`: a stale baseline and
+  an unchecked delta, on the one row of that table nobody had re-measured.
+  Entity precision falls with it, 0.900 to 0.865. The sentence claiming
+  over-redaction does not move now says where it does.
+
 - **Three of the twelve figures in `SECURITY.md` were out of date**, and three
   sample counts with them. `ja-core` was the worst: over-redaction published as
   2.78% against a real 2.44%, precision 0.925 against 0.955. Nothing was broken
