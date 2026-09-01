@@ -100,29 +100,6 @@ detection and will never be extended, or a per-type folding rule with the
 
 ---
 
---|---|
-| `7b-q4_K_M` ja over-redaction | +0.84 | +0.26 |
-| `llama3.1:8b` en leak | 1.21% | 0.84% |
-| `7b-q8_0`, `14b-q4_K_M`, both languages | — | unchanged |
-
-Sampling is ruled out: at `temperature=0.0` one device returns a
-byte-identical answer three times running. **What is not ruled out is that
-mamori changed between the two runs** — the morning's per-model outputs were
-overwritten by the evening's, so no surviving artifact can separate the two.
-
-That the artifacts cannot answer it is its own finding. The retraction removed
-the wrong thing: **withdrawing the claim "345 seconds is a property of this
-model" was right; deleting the measurement "this machine produced 345 seconds
-on this day" took the comparison baseline with it.**
-
-**Settled by** running one model against one dataset twice on a fixed version
-of mamori, changing only the device, and comparing the full JSON rather than
-the rates — two corpora can reach the same leak rate by covering different
-characters. Being measured now by the benchmark session, from a checkout pinned
-to `2b197a3`, with what each outcome would mean written down before the run.
-
----
-
 ## When does `mamori.protection-scope/1` freeze?
 
 Three sibling projects read it. One has it implemented and verified against
