@@ -255,6 +255,23 @@ model returns" is not a claim this file makes. See
 carrying — it needs a model you have to run, on hardware that decides which
 one — and "measure it on your own hardware" is still not a formality.
 
+**A model can score well on text it has memorised, and here it has not.** The
+bundled corpora were written on 2026-08-29 and 2026-08-30, in a repository
+whose first commit is 2026-08-29. Three of the models measured above were
+already on the machine before those files existed -- `qwen2.5:14b` and
+`llama3.1:8b` by twenty-six days, `gemma4:12b` by nineteen. Weights cannot
+memorise text that did not exist when they were trained.
+
+The other two were pulled after, and their published weights certainly predate
+the pull, but this project has not verified that and does not claim it.
+
+**This is the kind of true statement that stops being true.** The corpora are
+public now, under a licence that invites copying, so every model trained after
+this week may have read them. The date is the floor: a figure above is
+uncontaminated for a model released before 2026-08-29 and says nothing about
+one released after. Any corpus commissioned to replace these inherits the same
+clock from the day it is committed.
+
 **Why this took sixteen releases.** Every attempt since 0.7 reported that the
 model timed out, and every write-up repeated it. `LLMRequest.timeout` defaulted
 to thirty seconds and the provider took the smaller of the request's and the
