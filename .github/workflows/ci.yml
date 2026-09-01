@@ -137,8 +137,24 @@ jobs:
           python -m mypy downstream.py | tee out.txt
           grep -q 'Revealed type is "str"' out.txt
 
+      # Two halves of one question -- can this be published -- and both have
+      # to be answered before a GitHub Release exists, because a Release is
+      # public the moment it is made.
+      #
+      #   the name        somebody else's state: is it taken
+      #   direct refs     our own state: does the metadata name a URL
+      #
+      # A single PEP 508 direct reference makes warehouse reject the **whole**
+      # distribution, not the extra carrying it. Nothing else here catches it:
+      # hatchling refuses to build and names the flag that silences itself,
+      # `twine check` says PASSED, and the zero-dependency assertion passes
+      # because it filters `extra ==`. Measured on a poisoned build of this
+      # tree, not assumed.
       - name: The name can still be claimed
         run: python scripts/check_name_is_claimable.py
+
+      - name: The metadata names no URL
+        run: python scripts/check_no_direct_references.py dist/*
 
       - name: Keep the zero-dependency promise honest
         run: |
