@@ -163,8 +163,16 @@ notion of it yet.
 
 *Your responsibility.* `--save-mapping` writes every original value in plain
 text. It exists so `protect` and `restore` can run in two processes. It warns on
-stderr, `.gitignore` covers the usual names, and an encrypted store is on the
-roadmap. Until then: use it deliberately, delete it afterwards.
+stderr and `.gitignore` covers the usual names. Until then: use it deliberately,
+delete it afterwards.
+
+An encrypted store has been "on the roadmap" since proposal 0001 and is now
+scheduled as `v0.29` ([proposal 0004](proposals/0004-the-road-to-1-0-corrected.md)),
+after a check meant to confirm it had shipped found that the word "encrypt"
+appears in this package three times and all three are promises to build it.
+**Nothing about this entry changes when it ships**: an encrypted file protects
+a mapping at rest from somebody who reads the disk, and this threat model has
+always put a compromised machine out of scope.
 
 ### T11 — Placeholder collision in the input
 
@@ -172,6 +180,23 @@ roadmap. Until then: use it deliberately, delete it afterwards.
 indistinguishable from our own token on the way back, and restoration would
 splice an unrelated value into it. Such text is detected and re-mapped to its
 own placeholder, so it survives the round trip as literal text.
+
+### T12 — The proxy bound to the network
+
+*Mitigated as far as it can be.* `mamori serve` binds to `127.0.0.1`, and
+reaching it from another machine takes `--host 0.0.0.0`. There is no
+authentication, and a reachable proxy holds every original value for every live
+conversation, so a non-loopback binding prints:
+
+```text
+WARNING: this is bound to a public address. Anything that can reach
+this port can send documents through it and read the restored answers.
+```
+
+Authentication is not planned. A service that needs authenticating is one that
+should not be on the network, and the answer to `--host 0.0.0.0` is to say what
+it costs rather than to make it feel safe. mamori's trust boundary is the
+machine.
 
 ## Out of scope
 

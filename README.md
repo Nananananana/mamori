@@ -1223,19 +1223,31 @@ measuring it and saying no.
 |---|---|
 | **v0.17** | The assembled prompt. Prompts are increasingly not typed by anybody — they are rendered by a retrieval layer or an agent framework, with file paths in the headers and hashes in the structure. That gets a generated corpus and a measurement like everything else, and the structural parts get measured as a *negative* set: an id replaced is a bug with a number attached. |
 | **v0.18** | Deployment: a fail-closed stance that stops rather than misses, a CI linter for values that should not be committed, `<PERSON_001>` inside HTML, and a name split across two JSON keys. |
+| **v0.29** | The mapping at rest: an opt-in encrypted store, and retention as a rule the caller can read rather than a thread they cannot see. Both were promised for `v0.18` and neither was built. |
+| **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values — and a proxy that says out loud what a non-loopback binding exposes. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 
 The reasoning behind that table — what was planned and did not happen, what was
 adopted and turned out redundant, and what is deliberately *not* planned — is in
 [docs/proposals/0003](docs/proposals/0003-what-mamori-is-for.md).
 
-Two things are wanted and deliberately have no version number, because giving
-them one a third time would be a way of not admitting they keep losing to
-whatever the corpus turned up that week: the optional Japanese morphological
-adapter, and an encrypted store for deployments that cannot hold mappings in
-memory alone. The morphological adapter has since been measured and declined
-([ADR 0031](docs/adr/0031-the-morphological-adapter-measured-and-declined.md));
-the encrypted store is still wanted.
+The morphological adapter, long wanted and never scheduled, was measured and
+declined ([ADR 0031](docs/adr/0031-the-morphological-adapter-measured-and-declined.md)).
+The encrypted store was in the same position and is now `v0.29`, because it
+turned out to have been *reported as delivered*: a search for the word
+"encrypt" in this package finds three files, and all three mention it as future
+work. [docs/proposals/0004](docs/proposals/0004-the-road-to-1-0-corrected.md)
+has that correction and one gap found while checking it — no record that a
+protection ever happened — plus one claimed gap withdrawn before the document
+was committed, because checking it meant reading the code rather than searching
+for a name somebody supplied.
+
+**The last one is a consequence of a good decision, not an oversight.** This
+library has no logging at all — `import logging` appears nowhere in `src/` —
+which is what makes "a protected value never appears in a log line" true by
+construction rather than by discipline. The cost is that nothing survives the
+process, and an operator asking what left this machine last Tuesday has no
+answer.
 
 Questions that are open rather than planned — a known gap with no good fix yet,
 a number nobody has, a decision that is owed — are in

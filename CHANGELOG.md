@@ -8,6 +8,34 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Documented
+
+- **[Proposal 0004](docs/proposals/0004-the-road-to-1-0-corrected.md): the road
+  to 1.0, corrected.** `0.15` promised six things and shipped four. The
+  encrypted mapping store and retention were never built, and this project
+  reported them as delivered to its owner on 2026-08-31 — on the strength of
+  `grep -rlq "encrypt" src/`, which matched three files that all mention it as
+  future work. **A grep for a word finds the word**, and a promise to build
+  something is where the word gets used most.
+
+  They are scheduled as `v0.29`, with `v0.30` for the traceability gap: there
+  is no record that a protection ever happened. That one follows from a good
+  decision rather than an oversight — this library has no logging at all, which
+  is what makes "a protected value never appears in a log line" true by
+  construction — so the plan is an opt-in sink for `protection-scope` records,
+  which already carry no values and already have a schema.
+
+  A third gap was claimed and withdrawn before the document was committed. The
+  proxy was reported to describe a public binding and say nothing about it;
+  it says
+  `WARNING: this is bound to a public address`, and the property doing it is
+  called something other than the name that was searched for. **The same
+  mistake as the `encrypt` grep, in the opposite direction** — one found a word
+  and inferred a feature, the other missed a word and inferred its absence.
+  Both are in the proposal, because how they got in matters more than either
+  claim.
+
+
 ### Added
 
 - **CI now asks whether the name can be uploaded at all.** Everything the
