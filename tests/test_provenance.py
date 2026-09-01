@@ -403,3 +403,61 @@ class TestTheIdentifiersAndTheSchemaNameTheSameThing:
         """Checked here as well as in CI, because a check that only runs on a
         runner is a check a local run cannot fail."""
         assert SCHEMA["title"] == CONTRACT
+
+
+class TestTheCheckThatSurvivesAVersionChange:
+    """Which check a consumer should reach for, measured rather than assumed.
+
+    The split identifier ties the name to the contents, and `if`/`then` in the
+    schema enforces it. It only enforces it for records written after the
+    split. A `0.26.0` record carrying surrogates declared the plain contract,
+    because there was nothing else to declare, so a reader keying on the
+    identifier passes it.
+
+    The check that refuses both vintages is `protected` being non-empty. It is
+    a property of the record; the identifier is a property of the record's
+    vintage.
+
+    Observed by iriguchi, whose reader accepted eight of nine malformed
+    records. The one that mattered declared the plain contract and listed
+    surrogate-protected values: it reported a finding and dropped three
+    surrogates in silence.
+    """
+
+    @staticmethod
+    def _record(contract: str, protected: list[dict[str, object]]) -> dict[str, Any]:
+        return {
+            "contract": contract,
+            "by": "someone/0.26.0",
+            "scope": "s",
+            "reversible": True,
+            "mode": "mixed",
+            "placeholders": [{"token": "<EMAIL_001>", "kind": "EMAIL"}],
+            "protected": protected,
+            "masked": [],
+        }
+
+    def test_the_identifier_check_misses_the_older_record(self) -> None:
+        """Stated so nobody recommends it as the only check."""
+        old = self._record(CONTRACT, [{"kind": "PERSON", "count": 3}])
+        assert old["contract"] == CONTRACT, "a reader keying on the name sees nothing wrong"
+
+    def test_the_non_emptiness_check_catches_both(self) -> None:
+        for contract in (CONTRACT, CONTRACT_WITH_SURROGATES):
+            record = self._record(contract, [{"kind": "PERSON", "count": 3}])
+            assert record["protected"], (
+                "a reader that refuses any record it cannot fully enumerate "
+                f"refuses this one, whatever {contract!r} says"
+            )
+
+    def test_the_schema_still_refuses_the_older_record(self) -> None:
+        """mamori's own validator catches it through the identifier, which is
+        why the guidance is for consumers who cannot run one."""
+        old = self._record(CONTRACT, [{"kind": "PERSON", "count": 3}])
+        with pytest.raises(ValidationError):
+            Draft202012Validator(SCHEMA).validate(old)
+
+    def test_the_guidance_is_in_the_shipped_schema(self) -> None:
+        """A note only in an ADR is a note a consumer reading the schema does
+        not have."""
+        assert "survives a version change" in SCHEMA["$comment"]

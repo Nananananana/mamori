@@ -278,6 +278,30 @@ package, and `iriguchi` gets the record its README already promises when it
 escalates a prompt. The `Restorer` Protocol stays exactly as it is: **stating
 what happened becomes a document; doing the thing stays an interface.**
 
+### Which check a consumer should reach for
+
+Splitting the identifier ties the name to the contents, and the schema's
+`if`/`then` enforces it — for records written after the split. A `0.26.0`
+record carrying surrogates declared the plain contract because there was
+nothing else to declare, so a reader keying on the identifier lets it through.
+
+**The check that refuses both vintages is `protected` being non-empty.** It is
+a property of the record. The identifier is a property of the record's vintage,
+and a consumer old enough to meet both will meet the vintage first.
+
+That is measured rather than argued. `iriguchi`, the only implemented consumer
+in the family, accepted eight of nine malformed records — extra properties, a
+missing `masked`, a missing `by` and `scope`, a malformed `by`, a placeholder
+with no token. The one that mattered declared the plain contract and listed
+surrogate-protected values: it reported a finding and **dropped three
+surrogates in silence**, which is the failure this whole document exists to
+prevent. What it did refuse was a well-formed `+surrogate` record.
+
+Two things follow. **A consumer existing is not the contract being kept** — the
+one reader in the family had a validator's worth of gaps and nobody knew. And
+the guidance belongs in the shipped schema rather than here, because a reader
+that cannot run a validator is also not reading an ADR.
+
 **It is not frozen yet**, and what would freeze it is in
 [docs/open-questions.md](../open-questions.md).
 
