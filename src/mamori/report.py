@@ -34,6 +34,7 @@ from typing import Any
 from .config import MamoriConfig
 from .domain.entity_types import BUILTIN_TYPES
 from .domain.policy import Uncertain
+from .domain.retention import Retention
 from .errors import MamoriError
 
 __all__ = ["Claim", "PrivacyReport", "build_report"]
@@ -180,13 +181,20 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
         "by_action": by_action,
     }
 
+    # The default store's retention, read from the default rather than named
+    # here, so this report cannot drift from what a session actually gets.
+    default_retention = Retention.forever()
     storage = {
         "mappings": "memory only, for the life of one session",
         "written_to_disk": False,
+        "retention": default_retention.describe(),
         "note": (
             "A JSON store exists and must be passed to a session explicitly in "
             "Python. There is no setting that turns on writing to disk, so a "
-            "configuration file cannot start it by accident."
+            "configuration file cannot start it by accident. A store may be "
+            "given a retention period, in which case it stops answering for "
+            "what it has forgotten -- expiry happens when the store is used "
+            "and nothing here starts a thread."
         ),
     }
 

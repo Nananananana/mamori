@@ -808,6 +808,7 @@ def _cmd_privacy(args: argparse.Namespace) -> int:
     print("What is kept")
     print()
     print(f"  mappings        {report.storage['mappings']}")
+    print(f"  retention       {report.storage['retention']}")
     print(f"  on disk         {'yes' if report.storage['written_to_disk'] else 'no'}")
     print(f"  {report.storage['note']}")
 

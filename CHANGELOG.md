@@ -8,6 +8,33 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Added
+
+- **Retention: how long a store keeps what it keeps, as something a caller can
+  read.** `Retention.forever()` is the default and is what every store did
+  before this — expiring by surprise would be a worse change than not expiring
+  at all. `Retention.of(minutes=30)` makes a store stop answering for what it
+  has forgotten, and `mamori privacy` prints the rule.
+
+  **Expiry happens when the store is used. Nothing starts a thread.** That is
+  the half of proposal 0002's *"retention as a stated rule rather than a
+  background process"* that decides the design: a sweeper deletes at moments
+  the caller cannot predict or observe, and makes a store's contents depend on
+  how long the process has been running.
+
+  The rule lives in `domain`, the clock in the store. The architecture test
+  caught the first version reading `time` from the domain and was right to — a
+  domain that reads the clock is one whose behaviour depends on when you run
+  it.
+
+  **Expiry is not erasure**, and `describe()` says so in the line the report
+  prints: Python cannot promise a string is gone from memory, which the threat
+  model has said since the first release. What this buys is that a store asked
+  for a value it should no longer have does not produce one.
+
+  First half of `v0.29` ([proposal 0004](docs/proposals/0004-the-road-to-1-0-corrected.md)).
+
+
 ### Documented
 
 - **[Proposal 0004](docs/proposals/0004-the-road-to-1-0-corrected.md): the road
