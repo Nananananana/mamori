@@ -17,6 +17,15 @@ __all__ = ["STRICT_PLACEHOLDER_RE", "Placeholder", "PlaceholderStyle"]
 #: Exactly the form this library emits.
 STRICT_PLACEHOLDER_RE = re.compile(r"<([A-Z][A-Z0-9_]{0,62})_(\d{1,6})>")
 
+#: The grammar an entity type name must follow, split out of
+#: :data:`STRICT_PLACEHOLDER_RE` so that construction and parsing cannot drift.
+#: They did: only the parser knew the rule, so a name outside it produced a
+#: token that went into a document and could never be read back.
+TYPE_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]{0,62}")
+
+#: The largest index a token can carry, from the ``\d{1,6}`` above.
+MAX_INDEX = 999_999
+
 
 class PlaceholderStyle(Enum):
     """Which brackets a placeholder is written with.
@@ -67,6 +76,24 @@ class Placeholder:
     def __post_init__(self) -> None:
         if self.index < 1:
             raise ValueError(f"placeholder index must be >= 1, got {self.index}")
+        if self.index > MAX_INDEX:
+            raise ValueError(
+                f"placeholder index must be <= {MAX_INDEX}, got {self.index}. Beyond "
+                "that the token grows a seventh digit and stops being one this "
+                "library can read back."
+            )
+        if not TYPE_NAME_RE.fullmatch(self.entity_type_name):
+            raise ValueError(
+                f"{self.entity_type_name!r} is not a usable entity type name. It must "
+                f"match {TYPE_NAME_RE.pattern} -- upper-case ASCII, digits and "
+                "underscores, starting with a letter. "
+                "This is checked here because the two ends disagreed otherwise: "
+                "``token`` would happily build ``<個人名_001>`` and put it in a "
+                "protected text, and ``parse`` -- which restoration goes through -- "
+                "would refuse it. The result was a document nobody could restore and "
+                "no error saying why. A custom detector returning a type name in "
+                "Japanese, or in lower case, hit exactly that."
+            )
 
     @property
     def token(self) -> str:

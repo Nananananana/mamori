@@ -126,3 +126,67 @@ class TestPlaceholder:
     def test_index_must_be_positive(self) -> None:
         with pytest.raises(ValueError):
             Placeholder("PERSON", 0)
+
+
+class TestThePlaceholderGrammarIsEnforcedAndNotAssumed:
+    """A token is ASCII because construction refuses anything else.
+
+    It was not. `STRICT_PLACEHOLDER_RE` described the form and only `parse`
+    consulted it, so `Placeholder("個人名", 1).token` produced `<個人名_001>`
+    quite happily -- a token that went into a protected document, into a
+    mapping, and into `placeholders[].token` of a `protection-scope` record,
+    and that `parse` then refused. The document could never be restored and
+    nothing said why.
+
+    A custom detector is all it takes: an entity type named in Japanese, or in
+    lower case, or starting with a digit. The library's own detectors all
+    happen to use upper-case ASCII, which is why this survived to 0.30.
+
+    The distinction that matters is the one a sibling project put well: a rule
+    only the parser knows is **discipline**, and it holds until somebody writes
+    a detector. A rule the constructor refuses to break is **structure**.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            pytest.param("個人名", id="japanese"),
+            pytest.param("张伟", id="chinese"),
+            pytest.param("person", id="lower case"),
+            pytest.param("9LIVES", id="leading digit"),
+            pytest.param("A-B", id="hyphen"),
+            pytest.param("", id="empty"),
+            pytest.param("A B", id="space"),
+            pytest.param("A" * 64, id="too long"),
+        ],
+    )
+    def test_a_name_the_parser_would_refuse_cannot_be_constructed(self, name: str) -> None:
+        with pytest.raises(ValueError, match="not a usable entity type name"):
+            Placeholder(name, 1)
+
+    @pytest.mark.parametrize("name", ["PERSON", "EMAIL", "A", "MY_TYPE_2", "A" * 63])
+    def test_the_names_the_parser_accepts_still_work(self, name: str) -> None:
+        assert Placeholder.parse(Placeholder(name, 1).token) == Placeholder(name, 1)
+
+    def test_every_token_this_library_can_build_can_be_read_back(self) -> None:
+        """The property the constructor now guarantees, stated as itself. The
+        cases above are examples of it; this is the rule."""
+        for name in ("PERSON", "NATIONAL_ID", "A1"):
+            for index in (1, 42, 999_999):
+                token = Placeholder(name, index).token
+                assert Placeholder.parse(token) == Placeholder(name, index), token
+
+    def test_an_index_that_would_need_a_seventh_digit_is_refused(self) -> None:
+        r"""`\d{1,6}` in the pattern. Index 1000000 formats to `1000000`, which
+        `parse` refuses -- the same unrestorable token by a different route."""
+        assert Placeholder.parse(Placeholder("PERSON", 999_999).token) is not None
+        with pytest.raises(ValueError, match="must be <= 999999"):
+            Placeholder("PERSON", 1_000_000)
+
+    def test_the_two_patterns_have_not_drifted_apart(self) -> None:
+        """`TYPE_NAME_RE` was split out of `STRICT_PLACEHOLDER_RE`. If one is
+        edited and the other is not, the bug this class exists for comes
+        straight back."""
+        from mamori.domain.placeholder import STRICT_PLACEHOLDER_RE, TYPE_NAME_RE
+
+        assert f"<({TYPE_NAME_RE.pattern})_" in STRICT_PLACEHOLDER_RE.pattern
