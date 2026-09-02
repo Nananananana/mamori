@@ -233,32 +233,81 @@ class TestWhatGoesIntoARedirectedFile:
         "LANG": "C",
     }
 
-    def run(self, argv: list[str], out: Path) -> bytes:
+    #: Run through `-c` rather than `-m`. `python -m mamori.interfaces.cli.main`
+    #: emits a `RuntimeWarning` about the module already being in `sys.modules`,
+    #: which lands in stderr and makes a failure message unreadable.
+    LAUNCH: ClassVar[str] = (
+        "import sys; from mamori.interfaces.cli.main import main; sys.exit(main())"
+    )
+
+    def environment(self) -> dict[str, str]:
         import os
+
+        env = {**os.environ, **self.ENV}
+        env.pop("PYTHONIOENCODING", None)
+        return env
+
+    def run(self, argv: list[str], out: Path) -> bytes:
+        """Run one command with stdout redirected to ``out``, and return the
+        bytes.
+
+        **The document goes in through `--file`, never through `argv`.** On
+        POSIX under `LC_ALL=C` the interpreter decodes its own arguments as
+        ASCII with surrogateescape, so a Chinese argument is mangled before
+        mamori is reached -- and the test would then be measuring the shell's
+        handling of argv rather than mamori's handling of a redirect. Windows
+        passes arguments as UTF-16 and has no such problem, which is exactly
+        the kind of difference that makes a green local run mean nothing. CI
+        found this on ubuntu.
+        """
         import subprocess
 
-        environment = {**os.environ, **self.ENV}
-        environment.pop("PYTHONIOENCODING", None)
         with out.open("wb") as handle:
             completed = subprocess.run(  # noqa: S603
-                [sys.executable, "-X", "utf8=0", "-m", "mamori.interfaces.cli.main", *argv],
+                [sys.executable, "-X", "utf8=0", "-c", self.LAUNCH, *argv],
                 stdout=handle,
                 stderr=subprocess.PIPE,
-                env=environment,
+                env=self.environment(),
                 check=False,
             )
         assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
         return out.read_bytes()
 
-    def test_the_locale_here_would_not_have_been_enough(self) -> None:
-        """Otherwise the two tests below prove nothing: on a UTF-8 locale a
-        redirect is already UTF-8 and the reconfigure could be deleted."""
-        import locale
+    def document(self, tmp_path: Path, text: str) -> list[str]:
+        """Write ``text`` and return the `--file` arguments that read it."""
+        path = tmp_path / "document.txt"
+        path.write_text(text, encoding="utf-8")
+        return ["--file", str(path)]
 
-        assert locale.getpreferredencoding(False).lower().replace("-", "") not in {
-            "utf8",
-            "cp65001",
-        }, "this machine's locale is already UTF-8; force it with LC_ALL=C"
+    def test_the_locale_in_the_child_would_not_have_been_enough(self) -> None:
+        """Otherwise everything below proves nothing: on a UTF-8 locale a
+        redirect is already UTF-8 and the reconfigure could be deleted.
+
+        **Measured in the child, not here.** The first version asserted on this
+        process, which is the wrong process -- the environment being tested is
+        the one passed to `subprocess`, and CI runs on machines whose own
+        locale is UTF-8. It failed on every runner, correctly, about a claim
+        nothing here was making.
+        """
+        import subprocess
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-X",
+                "utf8=0",
+                "-c",
+                "import locale; print(locale.getpreferredencoding(False))",
+            ],
+            capture_output=True,
+            env=self.environment(),
+            check=True,
+        )
+        encoding = completed.stdout.decode("ascii").strip().lower().replace("-", "")
+        assert encoding not in {"utf8", "cp65001"}, (
+            f"the subprocess locale is {encoding!r}, which can already encode "
+            "everything below. These tests would pass with _force_utf8 deleted."
+        )
 
     def test_a_redirected_command_writes_utf8(self, tmp_path: Path) -> None:
         raw = self.run(["prompt", "detection"], tmp_path / "out.txt")
@@ -270,16 +319,16 @@ class TestWhatGoesIntoARedirectedFile:
         writes valid UTF-8 and loses characters to `?` while doing it -- and
         for a document, as opposed to prose, a lost character is corruption
         rather than a blemish."""
-        raw = self.run(["protect", f"张伟さんに{OUTSIDE_CP932}"], tmp_path / "out.txt")
-        assert "?" not in raw.decode("utf-8")
+        argv = ["protect", *self.document(tmp_path, f"张伟さんに{OUTSIDE_CP932}")]
+        assert "?" not in self.run(argv, tmp_path / "out.txt").decode("utf-8")
 
     def test_a_redirected_json_document_parses(self, tmp_path: Path) -> None:
         """The failure the sibling project actually shipped: a report nobody
         could read back, including the tool that wrote it."""
         import json
 
-        raw = self.run(["inspect", "--json", f"张伟さんに{OUTSIDE_CP932}"], tmp_path / "out.json")
-        json.loads(raw.decode("utf-8"))
+        argv = ["inspect", "--json", *self.document(tmp_path, f"张伟さんに{OUTSIDE_CP932}")]
+        json.loads(self.run(argv, tmp_path / "out.json").decode("utf-8"))
 
 
 class TestTheFilesTheCommandsWrite:
@@ -305,6 +354,7 @@ class TestTheFilesTheCommandsWrite:
     """
 
     ENV = TestWhatGoesIntoARedirectedFile.ENV
+    LAUNCH = TestWhatGoesIntoARedirectedFile.LAUNCH
 
     def run(self, argv: list[str]) -> None:
         import os
@@ -313,18 +363,28 @@ class TestTheFilesTheCommandsWrite:
         environment = {**os.environ, **self.ENV}
         environment.pop("PYTHONIOENCODING", None)
         completed = subprocess.run(  # noqa: S603
-            [sys.executable, "-X", "utf8=0", "-m", "mamori.interfaces.cli.main", *argv],
+            [sys.executable, "-X", "utf8=0", "-c", self.LAUNCH, *argv],
             capture_output=True,
             env=environment,
             check=False,
         )
         assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
 
+    def document(self, tmp_path: Path, text: str) -> list[str]:
+        """The document goes in through `--file`. Under `LC_ALL=C` on POSIX the
+        interpreter decodes its own argv as ASCII, so a Chinese argument is
+        mangled before mamori sees it -- and the test would be measuring the
+        platform's argv handling rather than mamori's writing."""
+        path = tmp_path / "document.txt"
+        path.write_text(text, encoding="utf-8")
+        return ["--file", str(path)]
+
     def test_a_saved_mapping_is_utf8_and_parses(self, tmp_path: Path) -> None:
         import json
 
         path = tmp_path / "mapping.json"
-        self.run(["protect", f"张伟さんに{OUTSIDE_CP932}", "--save-mapping", str(path)])
+        document = self.document(tmp_path, f"张伟さんに{OUTSIDE_CP932}")
+        self.run(["protect", *document, "--save-mapping", str(path)])
 
         raw = path.read_bytes()
         saved = json.loads(raw.decode("utf-8"))
@@ -336,7 +396,8 @@ class TestTheFilesTheCommandsWrite:
         import json
 
         path = tmp_path / "mapping.json"
-        self.run(["protect", f"张伟さんに{OUTSIDE_CP932}", "--save-mapping", str(path)])
+        document = self.document(tmp_path, f"张伟さんに{OUTSIDE_CP932}")
+        self.run(["protect", *document, "--save-mapping", str(path)])
 
         saved = json.loads(path.read_text(encoding="utf-8"))
         values = [mapping["original_value"] for mapping in saved["mappings"]]
@@ -354,23 +415,26 @@ class TestTheFilesTheCommandsWrite:
         import subprocess
 
         path = tmp_path / "mapping.json"
-        document = f"张伟さんに{OUTSIDE_CP932}してください"
-        self.run(["protect", document, "--save-mapping", str(path)])
+        source = self.document(tmp_path, f"张伟さんに{OUTSIDE_CP932}してください")
+        self.run(["protect", *source, "--save-mapping", str(path)])
 
         saved = json.loads(path.read_text(encoding="utf-8"))
         token = saved["mappings"][0]["placeholder"]
 
         environment = {**os.environ, **self.ENV}
         environment.pop("PYTHONIOENCODING", None)
+        response = tmp_path / "response.txt"
+        response.write_text(f"{token}さんに连络", encoding="utf-8")
         restored = subprocess.run(  # noqa: S603
             [
                 sys.executable,
                 "-X",
                 "utf8=0",
-                "-m",
-                "mamori.interfaces.cli.main",
+                "-c",
+                self.LAUNCH,
                 "restore",
-                f"{token}さんに连络",
+                "--file",
+                str(response),
                 "--mapping",
                 str(path),
             ],
@@ -400,7 +464,8 @@ class TestTheFilesTheCommandsWrite:
         saved = os.environ.get(DEFAULT_KEY_VARIABLE)
         os.environ[DEFAULT_KEY_VARIABLE] = key
         try:
-            self.run(["protect", f"张伟さんに{OUTSIDE_CP932}", "--encrypt-mapping", str(path)])
+            source = self.document(tmp_path, f"张伟さんに{OUTSIDE_CP932}")
+            self.run(["protect", *source, "--encrypt-mapping", str(path)])
         finally:
             if saved is None:
                 del os.environ[DEFAULT_KEY_VARIABLE]
