@@ -21,6 +21,32 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 
 The mapping from `<PERSON_001>` back to `田中太郎` never leaves your machine.
 
+**mamori is a place values pass through, not a place they are kept.** It is not
+encryption and not access control: it sits at the last moment before text
+leaves for a service you do not control, and at the first moment the answer
+comes back.
+
+```mermaid
+flowchart LR
+    DOC["your document<br/>田中太郎 / tanaka@example.com"]
+    P["<b>mamori protect</b>"]
+    LLM["an external model<br/><i>outside the trust boundary</i>"]
+    R["<b>mamori restore</b>"]
+    OUT["the answer<br/>田中太郎 / tanaka@example.com"]
+    MAP[("the mapping<br/><b>never leaves</b>")]
+
+    DOC --> P
+    P -->|"&lt;PERSON_001&gt; / &lt;EMAIL_001&gt;"| LLM
+    LLM -->|"an answer, still in placeholders"| R
+    R --> OUT
+    P -.-> MAP
+    MAP -.-> R
+```
+
+Everything on the left of the model is local, deterministic, and testable
+without a network. The model never receives a value and is never asked to
+decide anything about one.
+
 
 | | |
 |---|---|

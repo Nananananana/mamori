@@ -126,7 +126,7 @@ the same asset.
   protect against a compromised machine**, which is already out of scope, and
   saying that plainly matters more than shipping the feature.
 
-### 0.30 — Saying what happened, without saying what it was
+### 0.30 — Saying what happened, without saying what it was — **shipped 2026-09-03**
 
 The traceability gap, built so that it cannot become the logging this project
 refuses.
@@ -134,13 +134,45 @@ refuses.
 - **An audit sink**: an opt-in port that receives `protection-scope` records —
   the document that already exists, already carries no values, and already has
   a schema and a conformance suite. A file writer, and nothing else, in this
-  package.
+  package. **Shipped** as `mamori.ports.audit_sink.AuditSink`,
+  `JsonlAuditSink`, `ProtectionLedger`, and `mamori protect --audit PATH`.
 - **The invariant is the point**: what reaches the sink is exactly what
   [ADR 0032](../adr/0032-state-the-protection-without-importing-it.md) permits
   — anything derivable from the protected artifact, and nothing else. The
   record inherits the classification of the text it describes, and the sink
   documentation says so, because "it contains no values" is the sentence that
   gets a file written to a log directory at the wrong classification.
+
+**Three things this proposal did not anticipate, found while building it.**
+
+**A timestamp does not fit in the record, and the feature needs one.** The
+question is *what left this machine last Tuesday* and `protection-scope` has no
+time in it. Adding one looked obvious and is wrong: ADR 0032 says a record
+states what is derivable from the artifact it describes, and when a protection
+happened is a fact about the **event**. One exception turns an invariant into
+something people argue about instead of check. So the time went on an envelope
+the sink owns — `{"line", "at", "record"}` — and the contract stayed frozen.
+
+**Strict is the right default and the proposal assumed the opposite.** Writing
+this down as "auditing is bookkeeping, bookkeeping must never break the work"
+would have produced a privacy layer that runs perfectly, an audit file that is
+empty, and nothing saying which protections are missing from it. An audit trail
+is worth having because it is complete; one that fails open reads like evidence
+and is not. `strict=False` exists for a deployment that has weighed that.
+
+**The sink cannot import `provenance`.** Infrastructure is inside the
+application and `provenance` reads it, so the import runs backwards. The schema
+is loaded from package data instead, and asserted equal to the published one
+rather than trusted — the layering rule was not a formality here, it moved
+where a file lives.
+
+**And one thing a sibling raised that this proposal should have.** `by` is what
+a producer says about itself. mamori defines this contract and mamori writes
+it, so today they coincide. The port is a `Protocol`, which is exactly where
+they can stop coinciding: a record written by something else validates just as
+happily, because a schema states the shape of a document and never who wrote
+it. Documented on the port rather than solved, because solving it needs a
+signature and this is not the release for one.
 
 ### 1.0 — The contract
 
