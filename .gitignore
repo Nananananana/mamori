@@ -14,3 +14,8 @@ venv/
 htmlcov/
 *.mamori-mapping.json
 mapping.json
+
+# Audit files written by `mamori protect --audit`. They hold no protected
+# value, but they describe documents that do, and a repository is exactly the
+# wrong place for that classification. One got here from a mutation test.
+*.jsonl
