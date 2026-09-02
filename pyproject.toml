@@ -59,6 +59,14 @@ packages = ["src/mamori"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# A parametrized test whose parameter set turns out to be empty is marked
+# `skip` by default, and a skipped test reports green. Several checks in this
+# suite assert that a count is zero -- no `import logging` in `src`, no
+# unconditional `Requires-Dist`, `socket` in exactly two files -- and a check
+# that counts to zero cannot tell a clean codebase from a population that
+# vanished. Point `PACKAGE_ROOT` at a directory that does not exist and every
+# one of them passes. This makes that a collection error instead.
+empty_parameter_set_mark = "fail_at_collect"
 
 [tool.ruff]
 line-length = 100

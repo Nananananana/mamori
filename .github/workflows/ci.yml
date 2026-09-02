@@ -161,13 +161,26 @@ jobs:
           python - <<'PY'
           from importlib.metadata import metadata
 
-          required = [
-              value
-              for value in metadata("mamori").get_all("Requires-Dist") or []
-              if "extra ==" not in value
-          ]
+          declared = metadata("mamori").get_all("Requires-Dist") or []
+
+          # A check that counts to zero cannot tell a clean package from a
+          # population that vanished. If a packaging change dropped every
+          # `Requires-Dist` line -- extras included -- the assertion below
+          # would pass, print 0, and hide that `mamori[encrypted]` now
+          # installs no cipher. So the extras have to still be there.
+          assert declared, (
+              "no Requires-Dist at all. That is not zero runtime dependencies, "
+              "it is metadata that lost the extras: `pip install mamori[encrypted]` "
+              "would silently install nothing."
+          )
+          for extra in ("cryptography", "pytest"):
+              assert any(extra in value for value in declared), (
+                  f"{extra} is no longer declared by any extra: {declared}"
+              )
+
+          required = [value for value in declared if "extra ==" not in value]
           assert not required, f"mamori grew a runtime dependency: {required}"
-          print("runtime dependencies:", len(required))
+          print(f"runtime dependencies: 0, of {len(declared)} declared for extras")
           PY
 
   lint:
