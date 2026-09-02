@@ -8,6 +8,12 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-01
+
+The mapping at rest. Two things `0.15` promised, neither of which had been
+built, and which this project reported as delivered until a check of the
+check found otherwise.
+
 ### Added
 
 - **An encrypted mapping store**, opt-in, completing `v0.29`. T10 has promised
@@ -2325,7 +2331,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/Nananananana/mamori/compare/v0.27.0...v0.29.0
 [0.27.0]: https://github.com/Nananananana/mamori/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/Nananananana/mamori/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/Nananananana/mamori/compare/v0.24.0...v0.25.0

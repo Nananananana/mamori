@@ -122,7 +122,7 @@ pip install git+https://github.com/Nananananana/mamori.git
 リリースにはタグがあるので、版を指定してもよい:
 
 ```bash
-pip install git+https://github.com/Nananananana/mamori.git@v0.27.0
+pip install git+https://github.com/Nananananana/mamori.git@v0.29.0
 ```
 
 モデル不要、GPU不要、通信なし。既定の検出器はマイクロ秒で動くパターン規則。

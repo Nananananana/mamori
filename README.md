@@ -124,7 +124,7 @@ than reading it.
 Releases are tagged, so a specific version works too:
 
 ```bash
-pip install git+https://github.com/Nananananana/mamori.git@v0.27.0
+pip install git+https://github.com/Nananananana/mamori.git@v0.29.0
 ```
 
 No model, no GPU, no network. The default detectors are pattern rules that run
