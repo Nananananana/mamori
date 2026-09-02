@@ -461,3 +461,38 @@ class TestTheCheckThatSurvivesAVersionChange:
         """A note only in an ADR is a note a consumer reading the schema does
         not have."""
         assert "survives a version change" in SCHEMA["$comment"]
+
+
+class TestTheContractNamesItsEncoding:
+    """A contract that does not say UTF-8 is one the producer gets wrong.
+
+    Not hypothetically. A sibling project wrote its own JSON report through a
+    redirected stream, which Python encodes with the **locale** rather than the
+    encoding the reader uses; on a Japanese Windows desktop that is cp932. The
+    file was not valid JSON, three of its own commands refused it, and the
+    hash it published was over bytes that were not in the file. Its reading
+    side had named UTF-8 in a docstring since the first commit. Its writing
+    side had never been asked.
+
+    Nothing was violated, because nothing had been stated. That is the defect
+    this class exists to keep out of `protection-scope`.
+    """
+
+    def test_the_schema_says_utf8(self) -> None:
+        assert "UTF-8" in SCHEMA["$comment"]
+
+    def test_a_record_survives_the_encoding_it_names(self) -> None:
+        """Round-tripped through bytes, because a record that only ever exists
+        as a dict has not met the part that goes wrong."""
+        with PrivacySession(locales=["ja"]) as session:
+            record = protection_record(session.protect("田中太郎さんに连络"), session=session)
+        raw = json.dumps(record, ensure_ascii=False).encode("utf-8")
+        assert json.loads(raw.decode("utf-8")) == record
+
+    def test_the_shipped_schema_is_utf8_on_disk(self) -> None:
+        """The document that says UTF-8 is itself UTF-8. It carries Japanese
+        and Chinese examples in its prose, so this is not tautological."""
+        from importlib import resources
+
+        raw = (resources.files("mamori.schemas") / "protection-scope-1.json").read_bytes()
+        json.loads(raw.decode("utf-8"))

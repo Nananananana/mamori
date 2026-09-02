@@ -63,7 +63,11 @@ ALLOWED: dict[str, frozenset[str]] = {
     # arrangement as ``report``: it reads the application and the application
     # cannot reach it, so stating what happened can never become part of doing
     # it. See ADR 0032.
-    "provenance": frozenset({"domain", "application"}),
+    # ``ports`` was added in 0.30 for ``AuditSink``: the ledger hands a record
+    # to a port, which is inward and is the direction ports exist for. It does
+    # not loosen the rule that matters -- ``infrastructure`` still cannot reach
+    # here, so an adapter cannot make itself part of producing a record.
+    "provenance": frozenset({"domain", "ports", "application"}),
     # Frozen contract documents shipped as package data. No code in it, so
     # nothing to import: the emptiness here is the point.
     "schemas": frozenset(),
@@ -323,3 +327,82 @@ class TestNoCycles:
 
         for layer in edges:
             assert not reaches(layer, layer, set()), f"'{layer}' can reach itself"
+
+
+class TestThereIsStillSomethingToCheck:
+    """The population these checks run over is not empty.
+
+    Every assertion in this file is of the form *no file does X*, and a
+    vanished population satisfies all of them at once. Point ``PACKAGE_ROOT``
+    at a directory that does not exist and this file reports green -- it did,
+    before ``empty_parameter_set_mark = "fail_at_collect"`` went into
+    ``pyproject.toml`` and these went in beside it.
+
+    The parametrized checks are covered by that setting. These cover the ones
+    written as a loop inside a single test, which pytest cannot see into.
+    """
+
+    def test_files_were_found(self) -> None:
+        assert len(ALL_FILES) > 50, f"only {len(ALL_FILES)} source files walked"
+
+    def test_the_layers_on_disk_are_the_layers_in_the_table(self) -> None:
+        """Not a subset check. A layer in `ALLOWED` with no files behind it is
+        a rule that stopped applying to anything and still reads as enforced."""
+        on_disk = {layer_of(path) for path in ALL_FILES} - {"__init__", "py"}
+        assert on_disk == set(ALLOWED), (
+            f"only on disk: {sorted(on_disk - set(ALLOWED))}; "
+            f"only in the table: {sorted(set(ALLOWED) - on_disk)}"
+        )
+
+    def test_imports_were_actually_parsed(self) -> None:
+        """`imported_layers` returning an empty set for everything would make
+        the layering checks pass without reading a line."""
+        seen = set()
+        for path in ALL_FILES:
+            seen |= imported_layers(path)
+        assert len(seen) >= 5, f"only these layers were ever seen imported: {sorted(seen)}"
+
+
+class TestThePublishedPromiseAboutLogging:
+    """``README.md``: *this library has no logging at all -- ``import logging``
+    appears nowhere in ``src/``*.
+
+    That sentence is the reason a protected value cannot end up in a log line:
+    not because every log call is careful, but because there are none. It was
+    published and nothing checked it, which made it a fact about the day it was
+    written. The 0.30 audit sink is exactly the change that puts a reach for
+    ``logging`` within one plausible commit -- somebody wanting the sink to
+    mention that it could not write.
+    """
+
+    def logging_importers(self) -> list[str]:
+        found = []
+        for path in ALL_FILES:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    roots = [alias.name.split(".")[0] for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                    roots = [node.module.split(".")[0]]
+                else:
+                    continue
+                if "logging" in roots:
+                    found.append(str(path.relative_to(PACKAGE_ROOT)))
+        return found
+
+    def test_nothing_in_the_package_imports_logging(self) -> None:
+        offenders = sorted(set(self.logging_importers()))
+        assert not offenders, (
+            f"{offenders} import logging. README.md promises the package has none, "
+            "and that promise is what makes 'a protected value never reaches a log "
+            "line' structural rather than careful. If a log line is genuinely "
+            "needed, the promise has to be withdrawn from README.md in the same "
+            "change -- not quietly outlived."
+        )
+
+    def test_the_readme_still_makes_the_promise(self) -> None:
+        """Enforcing a sentence nobody publishes any more is its own kind of
+        drift: the check would outlive the claim and nobody would know which
+        one to believe."""
+        readme = Path(__file__).resolve().parent.parent / "README.md"
+        assert "`import logging` appears nowhere" in readme.read_text(encoding="utf-8")

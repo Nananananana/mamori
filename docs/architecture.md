@@ -61,15 +61,15 @@ interfaces ──> application ──> domain
 | Layer | Holds | May import |
 |---|---|---|
 | `domain/` | Value objects, entities, policy, resolution, normalization, placeholder identity, host trust, corrections, surrogates | stdlib only |
-| `ports/` | `Detector`, `DetectionPass`, `MappingStore`, `LLMProvider` protocols, `LLMEndpoint` | `domain` |
+| `ports/` | `Detector`, `DetectionPass`, `MappingStore`, `LLMProvider` protocols, `LLMEndpoint`, `AuditSink` | `domain` |
 | `prompts/` | Guidance, prompt definitions, overlays, response parsing | `domain` |
 | `application/` | `ProtectionService`, `RestorationService`, `PrivacySession`, result DTOs | `domain`, `ports`, `prompts`, and `infrastructure` for default construction only |
-| `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file, LLM providers | `domain`, `ports`, `prompts` |
+| `infrastructure/` | Regex detectors, language packs, in-memory store, JSON mapping file, encrypted mapping file, JSONL audit sink, LLM providers | `domain`, `ports`, `prompts` |
 | `evaluation/` | Labelled datasets, scoring, quality metrics | `domain`, `ports`, `application`, `infrastructure` |
 | `llm_settings.py` | Model settings, and the endpoint they build | `domain`, `ports` |
 | `config.py` | Every switch, and the factories that assemble them | everything above |
 | `report.py` | What a configuration does with your data | `domain`, `config` |
-| `provenance.py` | What one protected text had done to it, as a document | `domain`, `application` |
+| `provenance.py` | What one protected text had done to it, as a document, and the ledger that hands it to a sink | `domain`, `ports`, `application` |
 | `schemas/` | Frozen contract documents, shipped as package data | nothing; there is no code in it |
 | `interfaces/cli/` | Argument parsing, output formatting | everything above |
 | `interfaces/proxy/` | The OpenAI-compatible endpoint: payload walk, exchange, upstream | everything above |

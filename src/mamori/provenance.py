@@ -69,11 +69,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from .application.results import ProtectionResult
     from .application.session import PrivacySession
     from .domain.policy import PrivacyPolicy
+    from .ports.audit_sink import AuditSink
 
 __all__ = [
     "CONTRACT",
     "CONTRACT_WITH_SURROGATES",
     "SCHEMA",
+    "ProtectionLedger",
     "policy_hash",
     "protection_record",
 ]
@@ -243,3 +245,120 @@ def protection_record(
 def _counted(counts: Counter[str]) -> list[dict[str, Any]]:
     """Kind and count, in a fixed order. Never a string that was substituted."""
     return [{"kind": kind, "count": count} for kind, count in sorted(counts.items())]
+
+
+class ProtectionLedger:
+    """Builds a record for each protection and hands it to a sink.
+
+    The pairing that makes the audit trail possible without moving anything
+    inward. :class:`~mamori.PrivacySession` cannot do this itself and should
+    not learn how: `provenance` reads the application, so a session that
+    recorded its own protections would invert that, and *stating what
+    happened* would become part of *doing it* -- the arrangement ADR 0032 set
+    up specifically to prevent.
+
+    So the caller wires it up, and the session stays unaware:
+
+        >>> from mamori import PrivacySession
+        >>> from mamori.infrastructure.audit import JsonlAuditSink
+        >>> session = PrivacySession()                     # doctest: +SKIP
+        >>> ledger = ProtectionLedger(                     # doctest: +SKIP
+        ...     JsonlAuditSink("audit.jsonl"), by="billing-import/2.1"
+        ... )
+        >>> result = session.protect(text)                 # doctest: +SKIP
+        >>> ledger.record(result, session=session)         # doctest: +SKIP
+
+    ``by``, ``recall`` and ``policy_fingerprint`` are held here rather than
+    passed to every call, because they describe the deployment and not the
+    document, and a value repeated at every call site is a value that will
+    disagree with itself at one of them.
+    """
+
+    def __init__(
+        self,
+        sink: AuditSink,
+        *,
+        by: str = "",
+        recall: str | None = None,
+        policy_fingerprint: str | None = None,
+        strict: bool = True,
+    ) -> None:
+        """
+        Args:
+            sink: Where records go.
+            by: Producer, as ``name/version``. Defaults to this mamori.
+            recall: The stance the detectors ran under, when the caller knows
+                it. Omitted from every record when ``None``, because a record
+                that guesses is worse than one that is silent.
+            policy_fingerprint: From :func:`policy_hash`. When ``None`` and a
+                session is passed to :meth:`record`, it is computed from that
+                session.
+            strict: Whether a sink that fails should stop the caller.
+
+                **On by default, which is the unusual choice, so here is the
+                reasoning.** The instinct is that auditing is bookkeeping and
+                bookkeeping must never break the work. The trouble is what
+                that produces: a misconfigured path, a full disk or a
+                read-only mount then yields a privacy layer that runs
+                perfectly and an audit file that is empty, and nothing
+                anywhere says which protections are missing from it. An audit
+                trail is worth having because it is complete; one that fails
+                open is a file that reads like evidence and is not.
+
+                ``strict=False`` is there for the deployment that has weighed
+                this and prefers protection to survive a broken disk. It
+                counts what it dropped -- see :attr:`dropped` -- so the gap is
+                at least visible from inside the process.
+        """
+        self._sink = sink
+        self._by = by
+        self._recall = recall
+        self._policy_fingerprint = policy_fingerprint
+        self._strict = strict
+        self._written = 0
+        self._dropped = 0
+
+    @property
+    def written(self) -> int:
+        """Records the sink accepted."""
+        return self._written
+
+    @property
+    def dropped(self) -> int:
+        """Records lost to a sink failure. Always ``0`` when ``strict``."""
+        return self._dropped
+
+    def record(
+        self,
+        result: ProtectionResult,
+        *,
+        session: PrivacySession | None = None,
+    ) -> dict[str, Any]:
+        """Record one protection. Returns the record, whether or not it landed.
+
+        Returning it regardless is deliberate: with ``strict=False`` the
+        caller still gets the document and can do something else with it, and
+        the return value never becomes a way to ask whether the write
+        succeeded -- :attr:`dropped` is that, and it does not look like
+        anything else.
+
+        Raises:
+            Whatever the sink raises, when ``strict``. Usually
+            :class:`~mamori.errors.StorageError`.
+        """
+        document = protection_record(
+            result,
+            session=session,
+            by=self._by,
+            recall=self._recall,
+            policy_fingerprint=self._policy_fingerprint,
+        )
+        try:
+            self._sink.record(document)
+        except Exception:
+            self._dropped += 1
+            if self._strict:
+                raise
+            return document
+        self._written += 1
+        return document
