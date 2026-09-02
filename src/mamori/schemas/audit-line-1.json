@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nananananana/mamori/schemas/audit-line-1.json",
+  "title": "mamori.audit-line/1",
+  "description": "One line of a mamori audit file. An envelope around a mamori.protection-scope record, and nothing more. It exists because the question the audit file answers -- what left this machine last Tuesday -- needs a time, and a protection-scope record cannot carry one: ADR 0032 says a record states what is derivable from the artifact it describes, and when a protection happened is a fact about the event rather than the text. So the time lives out here, where this format owns it, and the contract inside stays frozen. ENCODING: UTF-8, and a file is one such line per protection separated by \n (JSON Lines). A contract that does not name its encoding is one its own producer eventually gets wrong.",
+  "type": "object",
+  "required": [
+    "line",
+    "at",
+    "record"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "line": {
+      "description": "This format's identifier. Versioned separately from the record's contract because the two change for unrelated reasons: this one is a file format, that one is a statement about a document.",
+      "const": "mamori.audit-line/1"
+    },
+    "at": {
+      "description": "When the protection happened, UTC, to the millisecond. UTC because a file saying 09:15 and not which 09:15 is a file two people read differently; milliseconds because two protections in the same second are ordinary and a JSON Lines file has no ordering other than the order of its lines.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "record": {
+      "description": "A mamori.protection-scope record, validated against its own schema before it is written. This schema does not restate its shape: a second copy of a frozen contract is a second thing to keep in step.",
+      "type": "object",
+      "required": [
+        "contract"
+      ],
+      "properties": {
+        "contract": {
+          "type": "string",
+          "pattern": "^mamori\\.protection-scope/"
+        }
+      }
+    }
+  },
+  "$comment": "What this format does NOT say, and cannot: who wrote the line. 'by' inside the record is a producer's claim about itself, and a schema states the shape of a document, never its author. A file treated as evidence of what one machine did needs that established some other way."
+}

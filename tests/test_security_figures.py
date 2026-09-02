@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+from typing import ClassVar
 
 import pytest
 
@@ -86,3 +87,97 @@ def test_the_published_figures_are_the_measured_ones(dataset: Dataset) -> None:
         + ". Run `mamori eval` and copy the numbers, or explain in the document "
         "why the published figure differs from what the tool reports."
     )
+
+
+class TestTheLabelSetTheFiguresAreARateAgainst:
+    """`SECURITY.md`: *a leak rate is a rate against a label set, and this one
+    is ours*. The document is explicit that `0.00%` means the rules cover
+    everything **mamori's own type system knows how to mark** -- so the type
+    system is the unit those figures are quoted in.
+
+    That set was pinned nowhere. Adding a type was measured, and it turned
+    **zero** mechanisms red: a type with no rule behind it produces no
+    detections, so every number in the table stays exactly where it was while
+    the sentence explaining what the numbers mean quietly starts meaning
+    something else. The published claim goes on being literally true and stops
+    being the same claim.
+
+    A sibling put the general form of this well: *adding a member to a set --
+    how many mechanisms does that turn red? If zero, the set will be silent for
+    the next member too.*
+
+    The direction that motivates it is the opposite one, and was settled
+    earlier in this project: a proposal to exclude a type from the rate by
+    declaring it out of scope was refused, because *a declaration adjusts a
+    reader's expectations and is not authority to change the denominator* --
+    otherwise the cheapest way to improve a rate is to rewrite the scope
+    narrower. Adding a type moves the same denominator the other way, and it
+    should be no quieter.
+    """
+
+    #: Every type the published figures are a rate against, as of `0.30.0`.
+    #: Not a count: a count survives one type being swapped for another, which
+    #: is the change most likely to happen by accident.
+    PUBLISHED_LABEL_SET: ClassVar[frozenset[str]] = frozenset(
+        {
+            "PERSON",
+            "EMAIL",
+            "PHONE",
+            "ADDRESS",
+            "POSTAL_CODE",
+            "DATE_OF_BIRTH",
+            "CREDIT_CARD",
+            "MY_NUMBER",
+            "SSN",
+            "RESIDENT_ID",
+            "IDENTIFIER",
+            "API_KEY",
+            "ACCESS_TOKEN",
+            "PASSWORD",
+            "PRIVATE_KEY",
+            "DATABASE_URL",
+            "COMPANY_NAME",
+            "EMPLOYEE_ID",
+            "PROJECT_NAME",
+            "INTERNAL_IP",
+            "INTERNAL_URL",
+            # Registered as `TEXT`. The Python constant is
+            # `PLACEHOLDER_LITERAL`, which is what the first version of
+            # this set said -- a set written from the source rather than
+            # from the registry, and the check caught it immediately.
+            "TEXT",
+        }
+    )
+
+    def test_the_set_is_the_one_the_figures_were_measured_against(self) -> None:
+        from mamori.domain.entity_types import BUILTIN_TYPES
+
+        current = set(BUILTIN_TYPES)
+        # The wording below avoids "update ... table", which ruff's S608 rule
+        # reads as SQL construction inside an f-string.
+        assert current == self.PUBLISHED_LABEL_SET, (
+            f"added: {sorted(current - self.PUBLISHED_LABEL_SET)}; "
+            f"removed: {sorted(self.PUBLISHED_LABEL_SET - current)}.\n\n"
+            "The label set the figures in SECURITY.md are a rate against has "
+            "changed. That is allowed and is not a defect -- but it is a "
+            "decision, and this is the only place that makes it one. Change "
+            "this set in the same commit, re-run `mamori eval`, and if the "
+            "figures moved, correct them too. If the new type has no rule "
+            "behind it "
+            "the numbers will not move, which is exactly why nothing else here "
+            "would have told you."
+        )
+
+    def test_the_document_still_says_the_figures_are_a_rate_against_it(self) -> None:
+        """Pinning a set whose published meaning has been withdrawn would leave
+        a check with nothing behind it."""
+        assert "a rate against a label set" in SECURITY.read_text(encoding="utf-8")
+
+    def test_the_business_confidential_types_named_in_the_document_are_real(self) -> None:
+        """`SECURITY.md` names three types to argue that this is not only a PII
+        tool. A renamed type would leave the argument standing on nothing."""
+        from mamori.domain.entity_types import BUILTIN_TYPES
+
+        for name in ("COMPANY_NAME", "EMPLOYEE_ID", "PROJECT_NAME"):
+            assert name in BUILTIN_TYPES
+            assert f"`{name}`" in SECURITY.read_text(encoding="utf-8")
