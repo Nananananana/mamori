@@ -166,13 +166,24 @@ text. It exists so `protect` and `restore` can run in two processes. It warns on
 stderr and `.gitignore` covers the usual names. Until then: use it deliberately,
 delete it afterwards.
 
-An encrypted store has been "on the roadmap" since proposal 0001 and is now
-scheduled as `v0.29` ([proposal 0004](proposals/0004-the-road-to-1-0-corrected.md)),
-after a check meant to confirm it had shipped found that the word "encrypt"
-appears in this package three times and all three are promises to build it.
-**Nothing about this entry changes when it ships**: an encrypted file protects
-a mapping at rest from somebody who reads the disk, and this threat model has
-always put a compromised machine out of scope.
+**`--encrypt-mapping` is the alternative, and it changes less than it sounds
+like.** It writes the same scope through Fernet, with a key from
+`MAPPING_ENCRYPTION_KEY` or a caller-supplied callable and never from a
+settings file. What it defends is a file that leaves the machine without its
+key -- a backup, a synced directory, a lost laptop.
+
+**What it does not defend:**
+
+- **A compromised machine.** Out of scope here since the first release. If
+  something reads the process, the key is in the process.
+- **A key beside the ciphertext.** The variable exported in the same shell
+  profile, the same repository, the same backup. Nothing in the library can
+  tell whether the key travelled with the file, and a lock on the same shelf
+  as its own key is decoration.
+- **Erasure.** Deleting the file does not overwrite the disk.
+
+A wrong key and an altered file produce the same error, because authentication
+cannot tell them apart and the message says so rather than guessing.
 
 ### T11 — Placeholder collision in the input
 

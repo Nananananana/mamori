@@ -10,6 +10,32 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **An encrypted mapping store**, opt-in, completing `v0.29`. T10 has promised
+  one since proposal 0001 and `--save-mapping` has written every original value
+  in the clear the whole time.
+
+  `mamori keygen` prints a key, `MAPPING_ENCRYPTION_KEY` or a callable supplies
+  it, and **a settings file never does** — the rule `api_key_env` already
+  follows, because a value in a settings file reaches version control
+  eventually.
+
+  **The variable is outside the `MAMORI_` prefix**, which is reserved for
+  configuration. The first version used `MAMORI_MAPPING_KEY` and every command
+  died with *"unknown configuration key(s): mapping_key"* — and that error goes
+  on to say a key variable needs a name outside the prefix. The rule was
+  already written down; this module had not read it.
+
+  Encryption is `cryptography`'s Fernet, an optional extra
+  (`pip install "mamori[encrypted]"`). **No cipher, mode or padding is written
+  here.** The base install still declares zero unconditional dependencies —
+  measured on the built wheel, not assumed.
+
+  The scope name goes inside the ciphertext: a scope can be named after its
+  subject, `protect` refuses that at the source, and a file written by
+  something else need not have come through there. A wrong key and an altered
+  file give the same error, because authentication cannot separate them.
+
+
 - **Retention: how long a store keeps what it keeps, as something a caller can
   read.** `Retention.forever()` is the default and is what every store did
   before this — expiring by surprise would be a worse change than not expiring

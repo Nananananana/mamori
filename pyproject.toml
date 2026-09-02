@@ -35,7 +35,14 @@ dev = [
     "jsonschema>=4.0",
     "ruff>=0.6",
     "mypy>=1.10",
+    # Exercised by the encrypted-store tests, which are skipped without it.
+    "cryptography>=42",
 ]
+
+# The encrypted mapping store, and nothing else. Optional because the default
+# store writes nothing to disk and needs no cipher, so the promise of zero
+# runtime dependencies is unchanged for anybody who does not ask for this.
+encrypted = ["cryptography>=42"]
 
 [project.urls]
 Homepage = "https://github.com/Nananananana/mamori"

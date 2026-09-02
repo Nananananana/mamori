@@ -49,6 +49,12 @@ from ...evaluation import (
 )
 from ...infrastructure.detectors import available_locales
 from ...infrastructure.storage import InMemoryMappingStore
+from ...infrastructure.storage.encrypted import (
+    DEFAULT_KEY_VARIABLE,
+    generate_key,
+    read_encrypted_scope,
+    write_encrypted_scope,
+)
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
@@ -142,6 +148,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="write the mapping so a later 'restore' can use it (PLAINTEXT)",
     )
     protect.add_argument(
+        "--encrypt-mapping",
+        metavar="PATH",
+        help=(
+            "write the mapping encrypted instead. Needs a key in "
+            f"{DEFAULT_KEY_VARIABLE}; `mamori keygen` prints one. Never reads "
+            "the key from a settings file"
+        ),
+    )
+    protect.add_argument(
         "--permissive",
         action="store_true",
         help="anonymize everything instead of blocking credentials",
@@ -150,6 +165,16 @@ def build_parser() -> argparse.ArgumentParser:
     restore = sub.add_parser("restore", help="put original values back into a response")
     add_input_args(restore)
     restore.add_argument("--mapping", required=True, metavar="PATH", help="mapping file")
+    restore.add_argument(
+        "--encrypted",
+        action="store_true",
+        help=(f"the mapping file is encrypted; read the key from {DEFAULT_KEY_VARIABLE}"),
+    )
+
+    sub.add_parser(
+        "keygen",
+        help="print a new key for the encrypted mapping store, and stop",
+    )
 
     sub.add_parser("policy", help="show the active policy")
     sub.add_parser("locales", help="show the language packs and when each runs")
@@ -1042,6 +1067,24 @@ def _emit(text: str) -> None:
         sys.stdout.write(chr(10))
 
 
+def _cmd_keygen(_: argparse.Namespace) -> int:
+    """Print a key and stop.
+
+    On stdout so it can be captured, with the instructions on stderr so that
+    `export MAMORI_MAPPING_KEY=$(mamori keygen)` gets the key and not the
+    prose. The key is generated rather than derived from a passphrase: a KDF
+    needs a salt and a work factor, and both are somewhere else to be wrong.
+    """
+    _emit(generate_key())
+    print(
+        f"\nSet {DEFAULT_KEY_VARIABLE} to this. It is never read from a "
+        "settings file, because a settings file ends up in version control. "
+        "Store it away from the mapping files it opens.",
+        file=sys.stderr,
+    )
+    return _EXIT_OK
+
+
 def _cmd_protect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     settings = _settings_from(args)
@@ -1069,6 +1112,16 @@ def _cmd_protect(args: argparse.Namespace) -> int:
         print(f"wrote {count} mappings to {path}", file=sys.stderr)
         print(PLAINTEXT_WARNING, file=sys.stderr)
 
+    if args.encrypt_mapping:
+        path = Path(args.encrypt_mapping)
+        count = write_encrypted_scope(store, session.scope, path)
+        print(f"wrote {count} encrypted mappings to {path}", file=sys.stderr)
+        print(
+            "The key is not in that file. Keep it somewhere the file is not: "
+            "a key beside the ciphertext is a decorative lock.",
+            file=sys.stderr,
+        )
+
     if args.json:
         print(
             json.dumps(
@@ -1091,7 +1144,10 @@ def _cmd_protect(args: argparse.Namespace) -> int:
 def _cmd_restore(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     store = InMemoryMappingStore()
-    scope = load_scope(store, Path(args.mapping))
+    if args.encrypted:
+        scope = read_encrypted_scope(store, Path(args.mapping))
+    else:
+        scope = load_scope(store, Path(args.mapping))
     session = PrivacySession(store=store, scope=scope)
     result: RestorationResult = session.restore(text)
     _emit(result.text)
@@ -1462,6 +1518,7 @@ _COMMANDS = {
     "inspect": _cmd_inspect,
     "protect": _cmd_protect,
     "restore": _cmd_restore,
+    "keygen": _cmd_keygen,
     "policy": _cmd_policy,
     "config": _cmd_config,
     "prompt": _cmd_prompt,
