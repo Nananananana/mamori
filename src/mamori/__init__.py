@@ -34,7 +34,7 @@ from .errors import (
 )
 from .llm_settings import LLMSettings
 
-__version__ = "0.29.0"
+__version__ = "0.30.0"
 
 #: The public API. Everything here is what this package promises; anything
 #: reachable only by a deeper import is not, however useful it looks.

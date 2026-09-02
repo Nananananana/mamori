@@ -51,6 +51,14 @@ class AuditSink(Protocol):
     that an audit trail which drops what it cannot write has holes in it and
     nothing that shows where. That failure mode is worse than a loud one, and
     a sink that swallows is the only place it can be introduced.
+
+    **`by` is what the producer says about itself.** Today mamori defines this
+    contract and mamori writes it, so the two coincide. This port is where they
+    can stop coinciding: it is a Protocol, so a caller can hand a sink a record
+    that came from somewhere else, and the schema will validate it happily --
+    a schema states the shape of a document, never who wrote it. A sink whose
+    file is treated as evidence of what *this* machine did needs the operator
+    to know that, because nothing in the format will say it.
     """
 
     def record(self, record: dict[str, Any]) -> None:

@@ -47,6 +47,7 @@ from ...evaluation import (
     compare,
     evaluate,
 )
+from ...infrastructure.audit import JsonlAuditSink
 from ...infrastructure.detectors import available_locales
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.encrypted import (
@@ -58,6 +59,7 @@ from ...infrastructure.storage.encrypted import (
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
+from ...provenance import ProtectionLedger
 from .demo import SCENARIOS, LiveSettings, run_demo
 from .explain import audit_rules, trace_text
 
@@ -154,6 +156,25 @@ def build_parser() -> argparse.ArgumentParser:
             "write the mapping encrypted instead. Needs a key in "
             f"{DEFAULT_KEY_VARIABLE}; `mamori keygen` prints one. Never reads "
             "the key from a settings file"
+        ),
+    )
+    protect.add_argument(
+        "--audit",
+        metavar="PATH",
+        help=(
+            "append a mamori.protection-scope record to PATH, one JSON line per "
+            "run. Holds no protected value -- but it describes documents that "
+            "do, so give it the classification of those documents and not of a "
+            "log directory"
+        ),
+    )
+    protect.add_argument(
+        "--audit-by",
+        metavar="NAME/VERSION",
+        help=(
+            "what to write in the record's 'by' field. Defaults to this mamori. "
+            "Set it when the record should name the pipeline rather than the "
+            "library, e.g. billing-import/2.1"
         ),
     )
     protect.add_argument(
@@ -1121,6 +1142,22 @@ def _cmd_protect(args: argparse.Namespace) -> int:
             "a key beside the ciphertext is a decorative lock.",
             file=sys.stderr,
         )
+
+    if args.audit:
+        # After the mapping files and before the output. A record saying a
+        # protection happened, written once the protection has happened and
+        # everything it produced is on disk -- not before, which would record a
+        # run that could still fail on the next line.
+        #
+        # Strict, so a path that cannot be written stops the command. The
+        # alternative is a run that prints protected text, exits 0, and leaves
+        # nothing in the file the operator turned on in order to have
+        # something.
+        ProtectionLedger(
+            JsonlAuditSink(Path(args.audit)),
+            by=args.audit_by or "",
+            recall=settings.stance.value,
+        ).record(result, session=session)
 
     if args.json:
         print(

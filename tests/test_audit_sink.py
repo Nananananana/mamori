@@ -27,6 +27,7 @@ from mamori.errors import StorageError
 from mamori.infrastructure.audit import JsonlAuditSink
 from mamori.infrastructure.audit.jsonl import ACCEPTED_CONTRACTS, LINE_FORMAT, SCHEMA
 from mamori.infrastructure.storage import InMemoryMappingStore
+from mamori.interfaces.cli.main import main as cli
 from mamori.ports.audit_sink import AuditSink
 from mamori.provenance import (
     CONTRACT,
@@ -356,3 +357,85 @@ def test_a_collecting_sink_satisfies_it_too() -> None:
     subclassing anything of ours. If this ever needs an import from mamori,
     the port has stopped being a protocol."""
     assert isinstance(Collecting(), AuditSink)
+
+
+class TestTheCommandLineFlag:
+    """`mamori protect --audit PATH`. The reason the sink is reachable at all
+    for somebody who is not writing Python."""
+
+    def read(self, path: Path) -> list[dict[str, Any]]:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+    def test_it_appends_a_record(self, tmp_path: Path) -> None:
+        path = tmp_path / "audit.jsonl"
+        assert cli(["protect", TEXT, "--audit", str(path)]) == 0
+        (line,) = self.read(path)
+        assert line["record"]["contract"] in ACCEPTED_CONTRACTS
+        assert line["record"]["placeholders"]
+
+    def test_two_runs_are_two_lines(self, tmp_path: Path) -> None:
+        path = tmp_path / "audit.jsonl"
+        for _ in range(2):
+            assert cli(["protect", TEXT, "--audit", str(path)]) == 0
+        assert len(self.read(path)) == 2
+
+    def test_the_file_holds_no_value_from_the_document(self, tmp_path: Path) -> None:
+        path = tmp_path / "audit.jsonl"
+        cli(["protect", TEXT, "--audit", str(path)])
+        raw = path.read_bytes()
+        for secret in (NAME, ADDRESS, "090-1234-5678"):
+            assert secret.encode("utf-8") not in raw
+
+    def test_audit_by_names_the_pipeline(self, tmp_path: Path) -> None:
+        path = tmp_path / "audit.jsonl"
+        cli(["protect", TEXT, "--audit", str(path), "--audit-by", "billing-import/2.1"])
+        assert self.read(path)[0]["record"]["by"] == "billing-import/2.1"
+
+    def test_the_default_by_names_this_mamori(self, tmp_path: Path) -> None:
+        import mamori
+
+        path = tmp_path / "audit.jsonl"
+        cli(["protect", TEXT, "--audit", str(path)])
+        assert self.read(path)[0]["record"]["by"] == f"mamori/{mamori.__version__}"
+
+    def test_the_record_says_which_stance_the_rules_ran_under(self, tmp_path: Path) -> None:
+        """`recall` is the field an operator needs to read a row from six
+        months ago and know what the detectors were doing. The library cannot
+        invent it -- a session does not hold the stance -- but the CLI knows,
+        because it built the settings."""
+        path = tmp_path / "audit.jsonl"
+        cli(["protect", TEXT, "--audit", str(path), "--stance", "balanced"])
+        assert self.read(path)[0]["record"]["recall"] == "balanced"
+
+    def test_a_path_that_cannot_be_written_stops_the_command(self, tmp_path: Path) -> None:
+        """Strict, and this is what strict is for: the alternative is a run
+        that prints protected text, exits 0, and leaves nothing in the file the
+        operator turned on in order to have something."""
+        path = tmp_path / "nope" / "audit.jsonl"
+        assert cli(["protect", TEXT, "--audit", str(path)]) != 0
+
+    def test_a_blocked_document_writes_no_record(self, tmp_path: Path) -> None:
+        """Nothing was protected, so there is nothing to say a protection
+        happened about. A record here would be a line asserting a protection
+        that did not occur."""
+        from .credentials import FAKE_AWS_KEY
+
+        path = tmp_path / "audit.jsonl"
+        assert cli(["protect", f"key {FAKE_AWS_KEY}", "--audit", str(path)]) == 2
+        assert not path.exists()
+
+    def test_it_is_off_unless_asked_for(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole feature is opt-in. A library that started writing files
+        because it was upgraded would be the defect, not the feature.
+
+        Run from an empty working directory, because a default path is how
+        this would actually go wrong -- not a file appearing in `tmp_path`,
+        but one appearing wherever the command happened to be run.
+        """
+        monkeypatch.chdir(tmp_path)
+        assert cli(["protect", TEXT]) == 0
+        assert not list(tmp_path.iterdir()), (
+            f"protect wrote {[p.name for p in tmp_path.iterdir()]} without being asked"
+        )

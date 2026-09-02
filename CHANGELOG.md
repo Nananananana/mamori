@@ -8,6 +8,91 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-03
+
+The audit sink. An operator asking *what left this machine last Tuesday, and
+under which policy* had no way to answer: `protection-scope` records existed,
+carried no value, had a schema and a conformance suite — and were handed to a
+caller with nowhere to put them.
+
+### Added
+
+- **An opt-in audit sink**, `mamori protect --audit PATH`, and
+  `mamori.ports.audit_sink.AuditSink` for callers writing Python.
+
+  **It is not a logger, and the difference is not stylistic.** This package has
+  no logging — `import logging` appears nowhere in `src/` — and that is what
+  makes *"a protected value never reaches a log line, because nothing writes
+  one"* true by construction. A logger takes whatever a caller passes it, and
+  whether it stays clean is a promise about everybody's future code. The sink
+  takes a `protection-scope` record and nothing else, and validates it against
+  the shipped schema before writing. A record carrying one extra field is
+  refused, because the realistic leak is not somebody passing a string — it is
+  somebody adding `"sample"` to a document that is otherwise correct.
+
+  **The file inherits the classification of the documents it describes.** A
+  line saying `{"kind": "NATIONAL_ID", "count": 1}` tells somebody holding the
+  document nothing they did not have, and tells somebody who does not hold it
+  which file is worth taking. A log directory is the wrong place for it.
+
+  **The time is on the envelope, not in the record.** ADR 0032 says a record
+  states what is derivable from the artifact it describes, and when a
+  protection happened is a fact about the event. Putting it inside would give
+  the invariant one exception, and an invariant with one exception is argued
+  about rather than checked. A line is
+  `{"line": "mamori.audit-line/1", "at": …, "record": {…}}`.
+
+  **`ProtectionLedger` is strict by default**, which is the unusual choice. The
+  instinct is that auditing must never break the work — but that produces a
+  privacy layer that runs perfectly, an audit file that is empty, and nothing
+  saying which protections are missing from it. `strict=False` is available and
+  counts what it dropped.
+
+  `PrivacySession` learns nothing from this: `provenance` reads the
+  application and the application cannot reach `provenance`, so stating what
+  happened never becomes part of doing it.
+
+### Fixed
+
+- **A placeholder whose token this library could not read back.**
+  `STRICT_PLACEHOLDER_RE` described the form a token takes and only `parse`
+  consulted it, so `Placeholder("個人名", 1).token` produced `<個人名_001>` —
+  which went into the protected text, the mapping and the record, and which
+  `parse` then refused. Restoration goes through `parse`, so a custom detector
+  with an entity type named in Japanese, in lower case, or starting with a
+  digit produced a document that could never be restored, silently. The
+  grammar is now enforced at construction; the index is bounded for the same
+  reason.
+
+  Every detector shipped here uses upper-case ASCII, which is why it survived
+  to 0.30. A rule only the parser knows is discipline; a rule the constructor
+  refuses to break is structure.
+
+### Changed
+
+- **`mamori.protection-scope/1` states the token grammar and its encoding.**
+  Descriptions only — the contract is frozen, and one that tightens is not
+  frozen; the pattern lands in `/2`. A contract that does not name its encoding
+  is one the producer eventually gets wrong: a sibling project wrote its own
+  JSON report in the platform's locale encoding, could not parse it back, and
+  published a hash over bytes that were not in the file.
+
+- **Checks that could not tell zero from nothing.** An empty parameter set is
+  marked `skip` by pytest and reports green: pointing `PACKAGE_ROOT` at a
+  directory that does not exist left every layering and domain-purity check
+  passing, measured at 35 passed. `empty_parameter_set_mark = "fail_at_collect"`
+  closes that; the loop-inside-a-test checks got assertions of their own, and
+  the zero-dependency check in CI now asserts the extras are still declared —
+  it would otherwise pass, and print 0, while `pip install mamori[encrypted]`
+  installed no cipher.
+
+  The README's promise of no logging is now enforced, and so is the README
+  still making it. Encoding is checked in three parts that turned out to be
+  three and not one: a real subprocess, the redirected path separately, and
+  the **bytes rather than the exit code** — measured by poisoning the mapping
+  writer, which then exits 0, writes valid UTF-8 and valid JSON, and stores
+  `??` where the name was.
+
 ## [0.29.0] - 2026-09-01
 
 The mapping at rest. Two things `0.15` promised, neither of which had been
@@ -2331,7 +2416,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/Nananananana/mamori/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/Nananananana/mamori/compare/v0.27.0...v0.29.0
 [0.27.0]: https://github.com/Nananananana/mamori/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/Nananananana/mamori/compare/v0.25.0...v0.26.0

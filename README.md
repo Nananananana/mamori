@@ -712,6 +712,84 @@ otherwise would be worse than one that stayed quiet.
 
 ---
 
+## What left this machine, and when
+
+`mamori privacy` describes a configuration. It cannot tell you what actually
+went out on Tuesday, and until 0.30 nothing could:
+
+```bash
+mamori protect "田中太郎さんに tanaka@example.com" --audit audit.jsonl
+```
+
+One JSON line per protection:
+
+```json
+{"line": "mamori.audit-line/1", "at": "2026-09-03T09:15:00.000+00:00",
+ "record": {"contract": "mamori.protection-scope/1", "by": "mamori/0.30.0",
+            "scope": "session-336be07e6da4", "reversible": true,
+            "mode": "placeholder", "recall": "recall_first",
+            "placeholders": [{"token": "<PERSON_001>", "kind": "PERSON"},
+                             {"token": "<EMAIL_001>", "kind": "EMAIL"}],
+            "protected": [], "masked": [],
+            "policy_hash": "sha256:9a3ae39…"}}
+```
+
+**This is not logging, and the difference is not stylistic.** This library has
+no logging at all — `import logging` appears nowhere in `src/` — and that is
+what makes *"a protected value never reaches a log line"* true because nothing
+writes one, rather than because every call was careful. A logger takes whatever
+you pass it. The sink takes a `mamori.protection-scope` record and nothing
+else, validated against the schema it ships before a byte is written, and a
+record carrying one field the contract does not define is refused. The
+realistic leak was never somebody passing a string; it was somebody adding
+`"sample"` to a document that was otherwise correct.
+
+**The record holds no protected value — and the file is still sensitive.**
+`{"kind": "NATIONAL_ID", "count": 1}` tells somebody holding the document
+nothing they did not already have, and tells somebody who does not hold it
+which file is worth taking. **Give this file the classification of the
+documents it describes.** A directory chosen for logs is the wrong one, and the
+file is created owner-only where the platform has such a thing.
+
+The time sits on the envelope rather than in the record, because
+[ADR 0032](docs/adr/0032-state-the-protection-without-importing-it.md) says a record may
+state what is derivable from the artifact it describes and nothing else — and
+when a protection happened is a fact about the event, not the text. An
+invariant with one exception is a thing people argue about instead of check.
+
+From Python, where the wiring is yours:
+
+```python
+from mamori import PrivacySession
+from mamori.infrastructure.audit import JsonlAuditSink
+from mamori.provenance import ProtectionLedger
+
+session = PrivacySession()
+ledger = ProtectionLedger(JsonlAuditSink("audit.jsonl"), by="billing-import/2.1")
+
+result = session.protect(document)
+ledger.record(result, session=session)
+```
+
+The session does not know the ledger exists. `provenance` reads the
+application and the application cannot reach `provenance`, so saying what
+happened never becomes part of doing it — which is why the sink cannot grow
+into something that changes a protection.
+
+**The ledger stops the caller when the sink fails**, which is the unusual
+default and the deliberate one. Auditing that fails open gives you a privacy
+layer that runs perfectly, an audit file that is empty, and nothing saying
+which protections are missing from it. `ProtectionLedger(..., strict=False)`
+is there for a deployment that has weighed that and would rather protection
+survive a broken disk; it counts what it dropped.
+
+Any object with a `record(dict)` method is a sink — the port is a `Protocol`,
+so sending records to a queue or a database needs no import from mamori. Note
+that `by` is what a producer says about itself: a schema states the shape of a
+document, never who wrote it.
+
+---
+
 ## Wiring up a model, wherever it runs
 
 The realistic deployment is not a laptop. It is one GPU machine the team shares:
@@ -1224,7 +1302,7 @@ measuring it and saying no.
 | **v0.17** | The assembled prompt. Prompts are increasingly not typed by anybody — they are rendered by a retrieval layer or an agent framework, with file paths in the headers and hashes in the structure. That gets a generated corpus and a measurement like everything else, and the structural parts get measured as a *negative* set: an id replaced is a bug with a number attached. |
 | **v0.18** | Deployment: a fail-closed stance that stops rather than misses, a CI linter for values that should not be committed, `<PERSON_001>` inside HTML, and a name split across two JSON keys. |
 | **v0.29** | The mapping at rest: an opt-in encrypted store, and retention as a rule the caller can read rather than a thread they cannot see. Both were promised for `v0.18` and neither was built. |
-| **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values — and a proxy that says out loud what a non-loopback binding exposes. |
+| **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values. The proxy half of this row was withdrawn before it was built: the warning it called for was already there, and the check that said otherwise had searched for a property name that does not exist. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 
 The reasoning behind that table — what was planned and did not happen, what was
@@ -1242,12 +1320,19 @@ protection ever happened — plus one claimed gap withdrawn before the document
 was committed, because checking it meant reading the code rather than searching
 for a name somebody supplied.
 
-**The last one is a consequence of a good decision, not an oversight.** This
-library has no logging at all — `import logging` appears nowhere in `src/` —
-which is what makes "a protected value never appears in a log line" true by
-construction rather than by discipline. The cost is that nothing survives the
-process, and an operator asking what left this machine last Tuesday has no
-answer.
+**The last one was a consequence of a good decision, not an oversight.** This
+library has no logging at all — `import logging` appears nowhere in `src/`,
+and as of `v0.30` a test says so rather than a sentence — which is what makes
+"a protected value never appears in a log line" true by construction rather
+than by discipline. The cost was that nothing survived the process, and an
+operator asking what left this machine last Tuesday had no answer.
+
+`v0.30` closes it without giving that decision up: not a logger, which would
+take whatever a caller passed it, but [an opt-in sink](#what-left-this-machine-and-when)
+that takes a `protection-scope` record and nothing else and validates it
+against the shipped schema first. The narrowness is the safety — a sink that
+also accepted a message would be a logger with a longer name, and the first
+person in a hurry would use the message.
 
 Questions that are open rather than planned — a known gap with no good fix yet,
 a number nobody has, a decision that is owed — are in
