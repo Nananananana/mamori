@@ -147,3 +147,36 @@ been published, and there has never been a job that would publish one.
 **Settled by** the owner deciding whether the name should be claimed. Not a
 defect to fix: publishing to a public index is a decision, and the CI job that
 builds and checks the artifact is already in place either way.
+
+---
+
+## The entropy pass has no corpus to measure its cost on
+
+`MamoriConfig(secrets="entropy")` runs the detector every secret scanner runs,
+and the documentation says what it costs: a commit id, a content hash or a
+base64 payload in a prompt becomes a refused request. That cost is stated from
+synthetic cases -- `tests/test_entropy.py` holds a commit id, an encoded
+sentence and a pangram -- and not from a corpus, because the corpora cannot
+show it.
+
+Twelve bundled datasets, 167 samples, both stances: every published figure is
+identical with the pass on. Not because it is free. Between them the samples
+hold eight runs of twenty or more key-shaped characters and none is generated.
+An instrument that reports zero change is not evidence of zero cost; it is
+evidence about the range it was given, and this is the same finding the
+detection figures carry under
+[nothing here was written by anybody else](#nothing-here-was-written-by-anybody-else),
+arrived at from the secrets side.
+
+The measure's own limits are known and pinned -- a UUID can never clear the
+threshold, a pangram always does -- but a limit demonstrated on one string is
+not a rate.
+
+**Settled by** a corpus of documents that carry real secrets *and* real
+checksums, commit ids, signed URLs and base64 payloads, labelled by somebody
+who has not read the thresholds, with the over-redaction and leak rates of the
+pass published against it at both stances and at `min_confidence` 0.0 and
+0.6. The commissioned corpus already approved for the detection figures is the
+natural place for it, if its brief is widened to include a code review and a
+deployment ticket -- the two documents where a hash and a key sit in the same
+paragraph.

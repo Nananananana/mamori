@@ -327,6 +327,7 @@ class TestEveryFieldSurvivesTheMapping:
         "surrogates": ["PERSON"],
         "placeholder_style": "square",
         "uncertain": "refuse",
+        "secrets": "entropy",
     }
 
     def test_the_table_covers_every_field(self) -> None:

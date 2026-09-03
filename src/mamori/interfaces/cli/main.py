@@ -48,7 +48,7 @@ from ...evaluation import (
     evaluate,
 )
 from ...infrastructure.audit import JsonlAuditSink
-from ...infrastructure.detectors import available_locales
+from ...infrastructure.detectors import available_locales, available_secret_algorithms
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.encrypted import (
     DEFAULT_KEY_VARIABLE,
@@ -129,6 +129,16 @@ def build_parser() -> argparse.ArgumentParser:
             help=(
                 "which rule tiers run. recall_first (the default) adds rules that "
                 "match on shape alone: fewer misses, more ordinary words replaced"
+            ),
+        )
+        p.add_argument(
+            "--secrets",
+            choices=list(available_secret_algorithms()),
+            help=(
+                "which algorithm looks for credentials the pattern rules cannot "
+                "name. patterns (the default) adds nothing; entropy also flags "
+                "long evenly-spread runs -- bare hex keys, and also commit ids and "
+                "base64 payloads -- as API_KEY, which the default policy blocks"
             ),
         )
 
@@ -513,6 +523,8 @@ def _settings_from(args: argparse.Namespace) -> MamoriConfig:
         changes["co_occurrence"] = False
     if getattr(args, "stance", None):
         changes["stance"] = Stance(args.stance)
+    if getattr(args, "secrets", None):
+        changes["secrets"] = args.secrets
     return settings.replace(**changes) if changes else settings
 
 
@@ -525,6 +537,7 @@ def _cmd_config(args: argparse.Namespace) -> int:
     print("effective settings\n")
     print(f"  locales                      {', '.join(settings.locales or ['(all)'])}")
     print(f"  stance                       {settings.stance.value}")
+    print(f"  secrets                      {settings.secrets}")
     print(f"  default action               {settings.default_action.value}")
     print(f"  min confidence               {settings.min_confidence}")
     print(f"  co-occurrence                {'on' if settings.co_occurrence else 'off'}")
@@ -566,6 +579,7 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
     return {
         "locales": list(settings.locales) if settings.locales else None,
         "stance": settings.stance.value,
+        "secrets": settings.secrets,
         "rules": {name: action.value for name, action in settings.rules.items()},
         "category_defaults": {
             category.value: action.value for category, action in settings.category_defaults.items()
@@ -863,6 +877,7 @@ def _cmd_privacy(args: argparse.Namespace) -> int:
     print()
     print(f"  languages       {', '.join(locales) if isinstance(locales, list) else locales}")
     print(f"  stance          {detection['stance']}")
+    print(f"  secrets         {detection['secrets']}")
     print(f"  minimum conf.   {detection['minimum_confidence']}")
     print(f"  below that      {detection['uncertain']}")
     print(f"  placeholders    {detection['placeholder_style']} brackets")

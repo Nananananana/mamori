@@ -43,3 +43,4 @@ it, and — the part that is usually missing — what it costs.
 | [0030](0030-a-tool-call-is-text.md) | A tool call is text, and evidence is local |
 | [0031](0031-the-morphological-adapter-measured-and-declined.md) | The morphological adapter, measured and declined |
 | [0032](0032-state-the-protection-without-importing-it.md) | State the protection without importing it |
+| [0033](0033-secrets-are-an-algorithm-you-choose.md) | Secrets are an algorithm you choose |

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mamori"
-version = "0.30.0"
+version = "0.31.0"
 description = "Local-first privacy layer for generative AI. Detect and pseudonymize secrets before they reach an external LLM, and restore them locally afterwards."
 readme = "README.md"
 requires-python = ">=3.10"

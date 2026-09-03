@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from .confidence import CERTAIN, HIGH, LOW, MEDIUM, Confidence
 from .entity_types import BUILTIN_TYPES, Category, EntityType, get_type, register_type
+from .entropy import Alphabet, EntropyVerdict, judge, shannon_entropy
 from .mapping import Mapping
 from .normalization import NormalizedText, normalize_value
 from .occurrences import find_occurrences
@@ -30,10 +31,12 @@ __all__ = [
     "LOW",
     "MEDIUM",
     "Action",
+    "Alphabet",
     "Category",
     "Confidence",
     "EndpointPolicy",
     "EntityType",
+    "EntropyVerdict",
     "HostKind",
     "Mapping",
     "NormalizedText",
@@ -48,9 +51,11 @@ __all__ = [
     "Window",
     "find_occurrences",
     "get_type",
+    "judge",
     "normalize_value",
     "register_type",
     "resolve_overlaps",
     "scan_placeholders",
+    "shannon_entropy",
     "windows",
 ]

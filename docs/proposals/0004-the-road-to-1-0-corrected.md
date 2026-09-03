@@ -174,6 +174,49 @@ happily, because a schema states the shape of a document and never who wrote
 it. Documented on the port rather than solved, because solving it needs a
 signature and this is not the release for one.
 
+### 0.31 — Secrets as an algorithm you choose — **shipped 2026-09-03**
+
+Not in the original plan, and it came from reading the plan's own words. The
+threat model has said since 0.1 that entropy-based detection *is not
+implemented because it produces too many false positives to be usable by
+default* — and *by default* is a qualifier the library already had a dial for.
+
+- **`MamoriConfig(secrets="entropy")`**, off by default, running the
+  Shannon-entropy pass that `detect-secrets`, `gitleaks` and `trufflehog`
+  share, after the rules and only over spans nothing with an anchor claimed.
+  A keyword window decides `MEDIUM` or `LOW`, so `min_confidence=0.6` keeps
+  only the candidates something called a secret.
+- **A registry**, so a fourth algorithm is a call and a config value.
+  [ADR 0033](../adr/0033-secrets-are-an-algorithm-you-choose.md).
+
+**What building it found.** The bundled corpora cannot measure the pass: 167
+samples, eight key-shaped runs, none generated, every figure identical with it
+on. The cost is stated from synthetic cases and the open-questions file says
+what would settle it — the commissioned corpus, with its brief widened to a
+code review and a deployment ticket, where a hash and a key sit in the same
+paragraph. And three claims in the first tests were wrong: a pangram clears
+the base64 line, a short base64 payload does not, and a UUID cannot. Each is
+now a pinned fact rather than an assumption.
+
+**Found on the way, unrelated:** two settings a config file could name and
+could not set. `uncertain` and `placeholder_style` were dataclass fields the
+unknown-key check accepted and `from_mapping` never read, so
+`MAMORI_UNCERTAIN=refuse` gave `discard`. Fixed, and the class closed: a field
+without a parser now fails at a table every field has to appear in.
+
+### Next — the confidence dial, and what is still owed
+
+What 0.31 did for *which detector runs*, the next release should do for *how
+sure a detection is*. Confidence is currently a constant per rule. A
+**context scorer** — a word within a window that raises or lowers a
+detection's confidence, the "context enhancement" Presidio ships — would let
+`min_confidence` mean something for the wide tier: a bare ten-digit run beside
+電話 or *tel* is a phone number, and beside *order* it is not. Same shape as
+0.31: a named strategy, defaulting to the constant, measured before it is
+offered, registered so a fourth is a call.
+
+Then 1.0, which is blocked on one thing only, and it is not code.
+
 ### 1.0 — The contract
 
 Unchanged from 0002, restated with what each clause needs:

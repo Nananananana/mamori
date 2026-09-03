@@ -105,6 +105,17 @@ class MamoriConfig:
             covers. Off by default. It buys answer quality and costs the thing
             that makes a placeholder safe: an unrestored token is obvious, and
             an unrestored surrogate reads as a fact about the wrong person.
+        secrets: Which algorithm looks for the credentials the pattern rules
+            cannot name. ``"patterns"`` (the default) adds nothing: a key with
+            no vendor prefix and no keyword is missed, and no content hash is
+            ever mistaken for one. ``"entropy"`` adds the Shannon-entropy pass
+            that ``detect-secrets`` and ``gitleaks`` run: it finds the bare
+            hex key and the random session token, and it also flags a commit
+            id and a base64 payload -- and the default policy **blocks** what
+            it flags. That is why it is a choice and not a default. Any name
+            registered with
+            :func:`~mamori.infrastructure.detectors.register_secret_algorithm`
+            is accepted here.
     """
 
     locales: tuple[str, ...] | None = None
@@ -122,6 +133,7 @@ class MamoriConfig:
     surrogates: bool | Sequence[str] = False
     placeholder_style: str = "angle"
     uncertain: str = "discard"
+    secrets: str = "patterns"
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -168,7 +180,13 @@ class MamoriConfig:
             if self.co_occurrence
             else None
         )
+        from .infrastructure.detectors.secrets import secret_passes
+
         extra = list(self.llm_passes(provider=provider))
+        # After the model and before the corrections: the pattern rules and
+        # the model have first claim on every span, and a measurement only
+        # speaks for what nothing with an anchor has spoken for.
+        extra.extend(secret_passes(self.secrets))
         log = self.correction_log()
         if log.added():
             # Last, so it sees what everything else found and adds only what
@@ -400,6 +418,8 @@ class MamoriConfig:
             )
         if "uncertain" in values:
             kwargs["uncertain"] = _as_choice(values["uncertain"], "uncertain", Uncertain)
+        if "secrets" in values:
+            kwargs["secrets"] = _as_secret_algorithm(values["secrets"])
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -570,6 +590,24 @@ def _as_choice(value: object, where: str, choices: type[Enum]) -> str:
     if text not in known:
         raise ConfigurationError(f"unknown {where} {value!r}; allowed: {', '.join(known)}")
     return text
+
+
+def _as_secret_algorithm(value: object) -> str:
+    """A registered secrets algorithm, by name.
+
+    Validated against the registry when the file is read, so a deployment
+    that wrote ``"entrpy"`` fails at startup and not by silently scanning with
+    the patterns alone while its config says otherwise.
+    """
+    from .infrastructure.detectors.secrets import available_secret_algorithms
+
+    name = str(value).strip().lower()
+    known = available_secret_algorithms()
+    if name not in known:
+        raise ConfigurationError(
+            f"unknown secrets algorithm {value!r}; available: {', '.join(known)}"
+        )
+    return name
 
 
 def _as_stance(value: object) -> Stance:

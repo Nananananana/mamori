@@ -60,9 +60,20 @@ there is no legitimate reason to send an API key to a third party, and even a
 placeholder tells the recipient one exists.
 
 A credential with no recognisable prefix, not written next to a keyword, is not
-detected. Entropy-based detection is not implemented — it produces too many
-false positives on base64 payloads and hashes to be usable at the default
-setting.
+detected **by default**. Since 0.31 an entropy-based pass exists and is a
+choice: `MamoriConfig(secrets="entropy")` runs the Shannon-entropy measure
+that `detect-secrets` and `gitleaks` use, with a keyword window that raises a
+candidate to `MEDIUM` beside a word like *key* or *bearer* and leaves it at
+`LOW` beside *commit* or *hash*. It stays off by default for the reason it was
+never built before: the measure cannot tell a key from a checksum, and what it
+flags is `API_KEY`, which this policy **blocks**. A deployment turning it on
+has decided that a refused request over a content hash costs less than a bare
+key leaving the machine. `min_confidence=0.6` keeps only the candidates that
+had a keyword beside them.
+
+The bundled corpora cannot measure the trade: they hold no bare keys and no
+long hashes, so every published figure is identical with the pass on. See
+[ADR 0033](adr/0033-secrets-are-an-algorithm-you-choose.md).
 
 ### T3 — The mapping table reaches the external service
 

@@ -10,6 +10,7 @@ from ...ports.detector import Detector
 from .adaptive import AdaptiveLocaleDetector
 from .co_occurrence import DEFAULT_SEED_TYPES, CoOccurrencePass
 from .composite import CompositeDetector
+from .entropy_pass import EntropyPass
 from .locales import (
     CHINESE,
     ENGLISH,
@@ -29,6 +30,7 @@ from .patterns import (
 )
 from .pipeline import DetectionPipeline, DetectorPass
 from .regex_detector import RegexDetector
+from .secrets import available_secret_algorithms, register_secret_algorithm, secret_passes
 
 __all__ = [
     "CHINESE",
@@ -41,20 +43,24 @@ __all__ = [
     "CompositeDetector",
     "DetectionPipeline",
     "DetectorPass",
+    "EntropyPass",
     "LocalePack",
     "PatternRule",
     "RegexDetector",
     "RuleTier",
     "Stance",
     "available_locales",
+    "available_secret_algorithms",
     "build_pipeline",
     "compile_rule",
     "default_detectors",
     "get_locale",
     "luhn_valid",
     "register_locale",
+    "register_secret_algorithm",
     "resolve_locales",
     "rules_for",
+    "secret_passes",
 ]
 
 

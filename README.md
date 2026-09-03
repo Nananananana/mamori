@@ -597,6 +597,45 @@ balanced" is a test rather than a hope.
 
 ---
 
+### The secrets dial
+
+The pattern rules match a vendor prefix, a PEM block, a database scheme or a
+keyword next to a value. A key with none of those — a bare 40-character hex
+token, a random session id, `Authorization: Bearer a3f9c2e1…` — has been the
+documented gap since the first release, and it still is by default:
+
+```python
+MamoriConfig(secrets="patterns")  # the default: nothing beyond the rules
+MamoriConfig(secrets="entropy")  # also measure how evenly a run is spread
+```
+
+`"entropy"` runs the Shannon-entropy pass that `detect-secrets`, `gitleaks` and
+`trufflehog` share, after the rules and only over spans nothing with an anchor
+has claimed. A word beside the candidate decides how sure it is — *key*,
+*token*, *bearer*, 鍵, 密钥 raise it to `MEDIUM`; *commit*, *sha*, *hash* leave
+it at `LOW` — so `min_confidence=0.6` keeps only the candidates something
+called a secret.
+
+**It is a choice and not a default for one reason.** What it flags is
+`API_KEY`, and the default policy **blocks** a credential rather than
+replacing it. A false positive here does not cost a stray placeholder; it stops
+the request. The measure cannot tell a key from a content hash, so a commit id
+in a prompt becomes a refused document. A deployment that turns this on has
+decided that is cheaper than a bare key leaving the machine — which for some
+deployments it is, and the library does not decide that for them.
+
+The bundled corpora **cannot measure the trade**: 167 samples hold eight runs
+of key-shaped characters and none is generated, so every figure in this README
+is identical with the pass on. The cost is stated from synthetic cases, not a
+corpus, and [open-questions.md](docs/open-questions.md) says what would
+settle it.
+
+The algorithm is a name, and the name is a registry: a fourth — a local model
+asked one question per candidate, a filter of known-leaked keys — is
+`register_secret_algorithm("name", factory)` and a config value, not an edit.
+`mamori privacy` reports which one is running and what that means for what
+blocks. [ADR 0033](docs/adr/0033-secrets-are-an-algorithm-you-choose.md).
+
 ## When it gets something wrong
 
 It will. A salutation anchor is right far more often than it is wrong, and
@@ -1328,6 +1367,7 @@ measuring it and saying no.
 | **v0.17** | The assembled prompt. Prompts are increasingly not typed by anybody — they are rendered by a retrieval layer or an agent framework, with file paths in the headers and hashes in the structure. That gets a generated corpus and a measurement like everything else, and the structural parts get measured as a *negative* set: an id replaced is a bug with a number attached. |
 | **v0.18** | Deployment: a fail-closed stance that stops rather than misses, a CI linter for values that should not be committed, `<PERSON_001>` inside HTML, and a name split across two JSON keys. |
 | **v0.29** | The mapping at rest: an opt-in encrypted store, and retention as a rule the caller can read rather than a thread they cannot see. Both were promised for `v0.18` and neither was built. |
+| **v0.31** | Secrets as an algorithm you choose: the entropy pass `detect-secrets` and `gitleaks` run, behind a `secrets` switch that defaults to what shipped before, with a registry so a fourth algorithm is a call and a config value. Found on the way: two settings a config file could name and could not set. |
 | **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values. The proxy half of this row was withdrawn before it was built: the warning it called for was already there, and the check that said otherwise had searched for a property name that does not exist. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 

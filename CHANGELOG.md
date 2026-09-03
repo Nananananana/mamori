@@ -8,6 +8,74 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-03
+
+Secrets as an algorithm you choose. The gap that has been documented since
+0.1 -- a credential with no vendor prefix and no keyword beside it -- gets the
+detector every secret scanner uses, behind a switch that defaults to what
+shipped before.
+
+### Added
+
+- **`MamoriConfig(secrets="entropy")`**, and `--secrets` on every command that
+  takes settings. Runs the Shannon-entropy pass that `detect-secrets`,
+  `gitleaks` and `trufflehog` share, after the pattern rules and only over
+  spans nothing with an anchor has claimed. Two thresholds, because the
+  ceiling depends on the alphabet -- 3.0 bits per character for hex, 4.5 for
+  base64, the numbers those tools ship -- and a keyword window: *key*,
+  *token*, *bearer*, 鍵, 密钥 within sixty characters raise a candidate to
+  `MEDIUM`; *commit*, *sha*, *hash* leave it at `LOW`, so `min_confidence=0.6`
+  keeps only the candidates something called a secret.
+
+  **Off by default, for the reason it was never built before.** What it flags
+  is `API_KEY`, and the default policy blocks a credential rather than
+  replacing it. A false positive is not a stray placeholder; it is a refused
+  request, and the measure cannot tell a key from a commit id. A deployment
+  turning this on has decided that is cheaper than a bare key leaving the
+  machine. `mamori privacy` says which algorithm is running and what that
+  means for what blocks.
+
+- **A registry**, `register_secret_algorithm(name, factory)`, so a fourth
+  algorithm -- a local model asked one question per candidate, a filter of
+  known-leaked keys -- is a call and a config value rather than an edit. A
+  misspelled name is refused when the file is read, not silently patterns.
+
+- **`mamori.domain.entropy`**: the measure itself, pure, on one token. Three
+  claims in its first tests were wrong and calibration said so: a pangram
+  clears 4.5 (so the detector requires a mix of character classes), a short
+  base64 payload sits at 4.48, and a UUID cannot be flagged at all -- seventeen
+  symbols cap at log2(17). That last is a stated miss and also what keeps
+  every request id in an agent payload from becoming a refused request.
+
+### Fixed
+
+- **Two settings a config file could name and could not set.** `uncertain`
+  and `placeholder_style` were dataclass fields since 0.19 and 0.20; the
+  unknown-key check accepted them and `from_mapping` never read them.
+  `{"uncertain": "refuse"}` in a file, or `MAMORI_UNCERTAIN=refuse`, produced
+  `discard` and said nothing -- the safety setting a deployment turns on when
+  it would rather send nothing, silently off. Both are parsed now, validated
+  when the file is read. And the class is closed: every field needs an entry
+  in a table of non-default values that has to survive the round trip, so a
+  field added without a parser fails at the table.
+
+- `mamori config` and `mamori config --json` now show `uncertain`,
+  `placeholder_style`, `surrogates` and `corrections`, which they never did.
+
+### Measured
+
+- **The bundled corpora cannot measure the entropy pass.** Twelve datasets,
+  167 samples, both stances: every figure is identical with it on -- not
+  because the pass is free, but because the samples hold eight runs of twenty
+  or more key-shaped characters between them and none is generated. The cost
+  is stated from synthetic cases and not a corpus, and
+  [docs/open-questions.md](docs/open-questions.md) says what would settle it.
+
+- `api_key = X` was never the gap: the keyword-assignment rule blocks it as
+  `PASSWORD` before the pass runs. Measured at both stances, the phrasings the
+  default rules actually miss are `Authorization: Bearer X`, *the new staging
+  key is X*, 鍵は X です and 密钥：X, and those are what the tests use.
+
 ## [0.30.0] - 2026-09-03
 
 The audit sink. An operator asking *what left this machine last Tuesday, and
@@ -2416,7 +2484,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/Nananananana/mamori/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/Nananananana/mamori/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/Nananananana/mamori/compare/v0.27.0...v0.29.0
 [0.27.0]: https://github.com/Nananananana/mamori/compare/v0.26.0...v0.27.0

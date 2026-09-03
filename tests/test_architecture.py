@@ -202,6 +202,9 @@ class TestDomainPurity:
             "enum",
             "hashlib",
             "ipaddress",
+            # Added in 0.31 for the entropy measure: `log2` is arithmetic and
+            # a hand-written logarithm would be the only way to avoid it.
+            "math",
             "re",
             "types",
             "typing",

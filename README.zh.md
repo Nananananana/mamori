@@ -521,6 +521,36 @@ wide 规则是 LOW 置信度，因此也可以不改 stance、直接用 `min_con
 
 ---
 
+### 密钥的旋钮
+
+模式规则匹配的是厂商前缀、PEM 块、数据库 scheme，以及值旁边的关键字。这些都没有的密钥——
+裸的 40 位 hex 令牌、随机会话 ID、`Authorization: Bearer a3f9c2e1…`——从第一个版本起就是
+文档中写明的缺口，**默认情况下现在仍然如此**：
+
+```python
+MamoriConfig(secrets="patterns")  # 默认：规则之外什么都不做
+MamoriConfig(secrets="entropy")  # 另外测量字符的分布是否均匀
+```
+
+`"entropy"` 在规则**之后**运行 `detect-secrets` / `gitleaks` / `trufflehog` 共用的 Shannon 熵
+检测，且只看没有被任何有锚点的检测占用的区间。旁边的词决定置信度——*key*、*token*、*bearer*、
+鍵、密钥 提升到 `MEDIUM`；*commit*、*sha*、*hash* 留在 `LOW`——所以 `min_confidence=0.6`
+只保留被某个词称作密钥的候选。
+
+**它是选项而不是默认，原因只有一个。** 它标记的是 `API_KEY`，而默认策略对凭证是**拦截**而非
+替换。这里的误报不是多一个占位符，而是**请求被拒绝**。熵无法区分密钥和内容哈希，因此提示词里
+的一个 commit id 会变成一份被拒绝的文档。开启它的部署已经判断这比裸密钥离开机器更便宜——
+对某些部署确实如此，库不替它们做这个决定。
+
+内置语料**无法衡量这一权衡**：167 个样本里只有 8 段 20 字以上的密钥形状字符串，没有一段是生成的，
+本 README 里的每个数字在开启后都完全相同。代价来自合成用例而非语料，
+[open-questions.md](docs/open-questions.md) 写明了什么能了结它。
+
+算法是一个名字，名字是一个注册表：第四种——对每个候选只问一个问题的本地模型、已知泄露密钥的
+过滤器——只需 `register_secret_algorithm("name", factory)` 加一个配置值，不需要改动。
+`mamori privacy` 会报告正在运行哪一种，以及这对拦截意味着什么。
+[ADR 0033](docs/adr/0033-secrets-are-an-algorithm-you-choose.md)。
+
 ## 当它判断错的时候
 
 它会错。称呼语这个锚点对的次数远多于错的次数，而 `Dear Monday,` 就是错的那次。

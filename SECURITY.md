@@ -36,7 +36,7 @@ Language-independent:
 
 | Category | Known gaps |
 |---|---|
-| Secrets | Any credential without a recognisable vendor prefix, and any high-entropy string not written next to a keyword. Entropy-based detection is not implemented: it produces too many false positives on base64 payloads and hashes to be usable by default. |
+| Secrets | Any credential without a recognisable vendor prefix, and any high-entropy string not written next to a keyword. Entropy-based detection exists since 0.31 and is **off by default**: `MamoriConfig(secrets="entropy")` runs the Shannon-entropy pass that `detect-secrets` and `gitleaks` use, and it flags commit ids, content hashes and base64 payloads as `API_KEY` -- which the default policy blocks. Its cost **cannot be measured on the bundled corpora**: 167 samples contain 8 runs of key-shaped characters and none is generated, so every figure below is identical with it on. The false-positive claim rests on the synthetic cases in `tests/test_entropy.py`, not on a corpus. See [ADR 0033](docs/adr/0033-secrets-are-an-algorithm-you-choose.md). |
 | `PHONE` | Unseparated digit runs, which are deliberately not matched -- an order number looks identical. |
 | Everything | Data that is only sensitive in context: a salary figure, an unreleased date, a headcount, who was in a meeting. |
 

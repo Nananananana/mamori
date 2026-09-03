@@ -178,8 +178,22 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
         "uncertain": config.uncertain,
         "co_occurrence": config.co_occurrence,
         "placeholder_style": config.placeholder_style,
+        # Which algorithm looks for the credentials the patterns cannot name.
+        # Reported because it changes what *blocks*: with "entropy" a content
+        # hash can stop a request, and an operator reading this to decide
+        # whether to trust the configuration needs to know that before the
+        # first refused document tells them.
+        "secrets": config.secrets,
         "by_action": by_action,
     }
+    if config.secrets != "patterns":
+        detection["secrets_note"] = (
+            f'secrets="{config.secrets}" runs a measurement after the pattern rules. '
+            "It finds credentials with no vendor prefix and no keyword, and it also "
+            "flags commit ids, content hashes and base64 payloads as API_KEY -- "
+            "which the default policy blocks. Set min_confidence to 0.6 or above "
+            "to keep only the candidates that had a keyword beside them."
+        )
 
     # The default store's retention, read from the default rather than named
     # here, so this report cannot drift from what a session actually gets.
