@@ -32,7 +32,7 @@ from pathlib import Path
 from ... import __version__
 from ...application.results import ProtectionResult, RestorationResult
 from ...application.session import PrivacySession
-from ...config import MamoriConfig, load_config_file
+from ...config import MamoriConfig, discover_config, load_config_file
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.stance import Stance
@@ -109,7 +109,20 @@ def build_parser() -> argparse.ArgumentParser:
             ),
         )
         p.add_argument(
-            "-c", "--config", metavar="PATH", help="settings file (.json, or .toml on 3.11+)"
+            "-c",
+            "--config",
+            metavar="PATH",
+            help=(
+                "settings file (.json, or .toml on 3.11+). Omit it and mamori "
+                "looks for mamori.toml, .mamori.toml, mamori.json, .mamori.json "
+                "or a [tool.mamori] table in pyproject.toml, walking up from the "
+                "working directory and stopping at the repository root"
+            ),
+        )
+        p.add_argument(
+            "--no-config",
+            action="store_true",
+            help="ignore any discovered settings file; use defaults, environment and flags only",
         )
         p.add_argument(
             "--min-confidence",
@@ -502,6 +515,21 @@ def _reports_as_json(result: ProtectionResult) -> list[dict[str, object]]:
     ]
 
 
+def _config_path(args: argparse.Namespace) -> Path | None:
+    """The settings file this invocation reads, or ``None``.
+
+    ``--config`` wins and is an error if it is missing or unreadable: the
+    caller named it. Discovery is a search, so finding nothing is not an error,
+    and neither is a `pyproject.toml` that belongs to some other tool.
+    """
+    named = getattr(args, "config", None)
+    if named:
+        return Path(named)
+    if getattr(args, "no_config", False):
+        return None
+    return discover_config()
+
+
 def _settings_from(args: argparse.Namespace) -> MamoriConfig:
     """Layer the settings: defaults, then file, then environment, then flags.
 
@@ -509,9 +537,9 @@ def _settings_from(args: argparse.Namespace) -> MamoriConfig:
     or one invocation can still differ without editing it.
     """
     settings = MamoriConfig()
-    path = getattr(args, "config", None)
-    if path:
-        settings = settings.merged_with(load_config_file(Path(path)))
+    path = _config_path(args)
+    if path is not None:
+        settings = settings.merged_with(load_config_file(path))
     settings = settings.merged_with(MamoriConfig.from_env())
 
     changes: dict[str, object] = {}
@@ -568,9 +596,18 @@ def _cmd_config(args: argparse.Namespace) -> int:
         print("\n  rules")
         for name, action in sorted(settings.rules.items()):
             print(f"    {name:<20} {action.value}")
+    print()
+    path = _config_path(args)
+    if path is None:
+        print("  settings file                (none found)")
+    else:
+        how = "named with --config" if getattr(args, "config", None) else "discovered"
+        print(f"  settings file                {path} ({how})")
     print(
-        "\nLayered: built-in defaults, then --config, then MAMORI_* environment\n"
-        "variables, then the flags on this command line. Later wins."
+        "\nLayered: built-in defaults, then the settings file, then MAMORI_*\n"
+        "environment variables, then the flags on this command line. Later\n"
+        "wins. Discovery walks up from the working directory and stops at the\n"
+        "repository root, so a file outside the project never applies."
     )
     return _EXIT_OK
 

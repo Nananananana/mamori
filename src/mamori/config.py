@@ -48,7 +48,7 @@ if TYPE_CHECKING:  # imported for types only; the runtime import stays lazy
     from .ports.mapping_store import MappingStore
 from .prompts.library import PromptLibrary, default_library
 
-__all__ = ["MamoriConfig", "load_config_file"]
+__all__ = ["CONFIG_FILENAMES", "MamoriConfig", "discover_config", "load_config_file"]
 
 _ENV_PREFIX = "MAMORI_"
 _TRUE = frozenset({"1", "true", "yes", "on"})
@@ -134,6 +134,19 @@ class MamoriConfig:
     placeholder_style: str = "angle"
     uncertain: str = "discard"
     secrets: str = "patterns"
+
+    #: Which settings a loader actually saw named, as opposed to left at the
+    #: default. Not a setting: it is excluded from the key check below, from
+    #: equality, and from every report.
+    #:
+    #: It exists because :meth:`merged_with` cannot otherwise tell *"this layer
+    #: said nothing"* from *"this layer said the default"*, and until 0.32 it
+    #: guessed by comparing against the defaults. That made a whole class of
+    #: setting impossible to apply: `MAMORI_DEFAULT_ACTION=block` over a file
+    #: saying `allow` did nothing, because `block` **is** the default. The
+    #: operator was trying to tighten, the value was the safe one, and it was
+    #: discarded in silence.
+    _named: frozenset[str] = field(default=frozenset(), compare=False, repr=False)
 
     def __post_init__(self) -> None:
         for name in ("min_confidence", "co_occurrence_min_confidence"):
@@ -360,7 +373,7 @@ class MamoriConfig:
         Raises:
             ConfigurationError: an unknown key, or a value of the wrong shape.
         """
-        known = {f.name for f in cls.__dataclass_fields__.values()}
+        known = {f.name for f in cls.__dataclass_fields__.values() if not f.name.startswith("_")}
         unknown = sorted(set(values) - known)
         if unknown:
             raise ConfigurationError(
@@ -420,6 +433,9 @@ class MamoriConfig:
             kwargs["uncertain"] = _as_choice(values["uncertain"], "uncertain", Uncertain)
         if "secrets" in values:
             kwargs["secrets"] = _as_secret_algorithm(values["secrets"])
+        # Every key this mapping carried, not every key that produced a
+        # non-default value. That difference is the whole point.
+        kwargs["_named"] = frozenset(values) & known
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -468,14 +484,113 @@ class MamoriConfig:
 
         Used to layer environment variables over a file, and command-line flags
         over both.
+
+        **What counts as "where it differs" depends on where ``other`` came
+        from.** A config built by a loader knows which keys it was given, and
+        those are the ones that overlay -- including a key whose value happens
+        to equal the default. A config built by calling the constructor knows
+        nothing of the sort, so for those this falls back to comparing against
+        the defaults, which is what every version before 0.32 did for both.
+
+        The fallback is a heuristic and is wrong in the same way the old code
+        was: `MamoriConfig(stance=Stance.RECALL_FIRST)` is indistinguishable
+        from `MamoriConfig()`. That is tolerable for a config a caller
+        assembled in Python, where they can simply build the final object, and
+        was intolerable for the layering path, where an operator setting
+        `MAMORI_DEFAULT_ACTION=block` over a file saying `allow` got `allow`.
         """
-        defaults = MamoriConfig()
-        changes = {
-            name: getattr(other, name)
-            for name in (f.name for f in MamoriConfig.__dataclass_fields__.values())
-            if getattr(other, name) != getattr(defaults, name)
-        }
+        names = [f.name for f in MamoriConfig.__dataclass_fields__.values()]
+        if other._named:
+            wanted = [name for name in names if name in other._named]
+        else:
+            defaults = MamoriConfig()
+            wanted = [name for name in names if getattr(other, name) != getattr(defaults, name)]
+        changes = {name: getattr(other, name) for name in wanted if not name.startswith("_")}
         return replace(self, **changes)
+
+
+#: Filenames :func:`discover_config` looks for, in order of precedence within
+#: one directory. A dedicated file beats a ``pyproject.toml`` section, which is
+#: the order ``ruff`` and ``mypy`` use and the order people expect: a file whose
+#: whole purpose is this tool is a more deliberate statement than a table inside
+#: a build file.
+CONFIG_FILENAMES: tuple[str, ...] = (
+    "mamori.toml",
+    ".mamori.toml",
+    "mamori.json",
+    ".mamori.json",
+    "pyproject.toml",
+)
+
+#: The table a ``pyproject.toml`` must carry to count as a config. A
+#: ``pyproject.toml`` with no ``[tool.mamori]`` is skipped rather than treated
+#: as an empty config, so discovery keeps walking upward instead of stopping at
+#: a build file that says nothing about this library.
+PYPROJECT_TABLE = ("tool", "mamori")
+
+
+def discover_config(start: Path | None = None) -> Path | None:
+    """The nearest config file at or above ``start``, or ``None``.
+
+    Walks upward the way ``ruff``, ``mypy`` and ``pytest`` do, so a repository
+    can carry one ``mamori.toml`` at its root and every command run anywhere
+    inside it finds the same settings.
+
+    **It stops at the repository root**, meaning the first directory holding a
+    ``.git``. Every other tool keeps walking to the filesystem root; this one
+    does not, because of what these settings are. A ``mamori.toml`` in a home
+    directory would quietly apply ``default_action = "allow"`` to every project
+    on the machine, and the person it applied to would have no reason to look
+    for it. A privacy setting inherited from outside the project you are in is
+    the kind of surprise this library refuses elsewhere -- `MAMORI_*` variables
+    are refused when unknown, unknown keys are refused, and a config nobody can
+    see is worse than either.
+
+    **The CLI calls this; the library does not.** ``PrivacySession()`` in
+    Python still starts from the defaults, because an application embedding
+    this library should not have its protection changed by a file somebody
+    added to the repository it happens to be running in.
+
+    Args:
+        start: Where to start looking. Defaults to the working directory.
+
+    Returns:
+        The path found, or ``None``. Finding nothing is not an error: no config
+        is a complete configuration, and the defaults are the safe ones.
+    """
+    directory = (Path.cwd() if start is None else Path(start)).resolve()
+    for candidate in (directory, *directory.parents):
+        for name in CONFIG_FILENAMES:
+            path = candidate / name
+            if not path.is_file():
+                continue
+            if name == "pyproject.toml" and not _has_mamori_table(path):
+                continue
+            return path
+        if (candidate / ".git").exists():
+            return None
+    return None
+
+
+def _has_mamori_table(path: Path) -> bool:
+    """Whether a ``pyproject.toml`` carries ``[tool.mamori]``.
+
+    A malformed ``pyproject.toml`` is *not* an error here. Discovery is a
+    search, and a build file this library cannot parse is a build file that
+    said nothing to it -- refusing to run because somebody else's TOML is
+    broken would be this tool failing over a file that is not its own. It
+    becomes an error only if it is named with ``--config``, where the caller
+    has said they meant it.
+    """
+    try:
+        payload = _load_toml(path)
+    except (ConfigurationError, OSError, ValueError):
+        return False
+    return (
+        isinstance(payload, dict)
+        and isinstance(payload.get(PYPROJECT_TABLE[0]), dict)
+        and PYPROJECT_TABLE[1] in payload[PYPROJECT_TABLE[0]]
+    )
 
 
 def load_config_file(path: Path) -> MamoriConfig:
@@ -485,9 +600,14 @@ def load_config_file(path: Path) -> MamoriConfig:
     mapping from anywhere, so a caller who prefers another format parses it
     themselves and keeps this library dependency-free.
 
+    A file named ``pyproject.toml`` is read from its ``[tool.mamori]`` table,
+    the convention every tool in the ecosystem now follows. Any other name is
+    read from the top level, so a ``mamori.toml`` says ``stance = "balanced"``
+    and not ``[tool.mamori]`` above it.
+
     Raises:
-        ConfigurationError: unreadable, malformed, or TOML on a Python without
-            ``tomllib``.
+        ConfigurationError: unreadable, malformed, TOML on a Python without
+            ``tomllib``, or a ``pyproject.toml`` with no ``[tool.mamori]``.
     """
     suffix = path.suffix.lower()
     try:
@@ -502,6 +622,19 @@ def load_config_file(path: Path) -> MamoriConfig:
 
     if not isinstance(payload, dict):
         raise ConfigurationError(f"config must be a mapping: {path}")
+
+    if path.name == "pyproject.toml":
+        section = payload.get(PYPROJECT_TABLE[0], {})
+        table = section.get(PYPROJECT_TABLE[1]) if isinstance(section, dict) else None
+        if table is None:
+            raise ConfigurationError(
+                f"{path} has no [tool.mamori] table. Named with --config it has to "
+                "carry one; discovery skips such a file instead."
+            )
+        if not isinstance(table, dict):
+            raise ConfigurationError(f"[tool.mamori] must be a table: {path}")
+        payload = table
+
     return MamoriConfig.from_mapping(payload)
 
 

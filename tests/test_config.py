@@ -331,7 +331,12 @@ class TestEveryFieldSurvivesTheMapping:
     }
 
     def test_the_table_covers_every_field(self) -> None:
-        fields = set(MamoriConfig.__dataclass_fields__)
+        # Private fields are excluded because they are not settings: `_named`
+        # records which keys a loader saw, is refused as a config key, and is
+        # left out of equality and every report. Excluding it is a decision
+        # this line makes deliberately -- the check caught it on the commit
+        # that added it, which is what the check is for.
+        fields = {name for name in MamoriConfig.__dataclass_fields__ if not name.startswith("_")}
         assert set(self.SAMPLES) == fields, (
             f"not in the table: {sorted(fields - set(self.SAMPLES))}; "
             f"not a field any more: {sorted(set(self.SAMPLES) - fields)}. A field "
@@ -347,6 +352,76 @@ class TestEveryFieldSurvivesTheMapping:
             f"produced the default {default!r}. The key is read as valid and does "
             "nothing, which is the failure this class exists for."
         )
+
+
+class TestALayerCanRestoreADefault:
+    """The layering could not express *"set this back to the safe value"*.
+
+    `merged_with` decided what to overlay by comparing against the defaults,
+    so a layer that named a setting whose value happened to *be* the default
+    was indistinguishable from a layer that said nothing. The worst case is
+    the fail-closed one: a config file saying `default_action = "allow"` could
+    not be overridden by `MAMORI_DEFAULT_ACTION=block`, because `block` is the
+    default. An operator tightening protection was ignored in silence.
+
+    Same family as the two fields above -- a setting accepted and discarded --
+    reached from the other direction, by a correct key with a correct value.
+    """
+
+    def layered(self, file: dict[str, object], env: dict[str, str]) -> MamoriConfig:
+        """Exactly what the command line does: defaults, file, environment."""
+        settings = MamoriConfig()
+        settings = settings.merged_with(MamoriConfig.from_mapping(file))
+        return settings.merged_with(MamoriConfig.from_env(env))
+
+    def test_the_environment_can_restore_the_fail_closed_default(self) -> None:
+        merged = self.layered({"default_action": "allow"}, {"MAMORI_DEFAULT_ACTION": "block"})
+        assert merged.default_action is Action.BLOCK
+
+    def test_the_environment_can_restore_the_safer_stance(self) -> None:
+        merged = self.layered({"stance": "balanced"}, {"MAMORI_STANCE": "recall_first"})
+        assert merged.stance is Stance.RECALL_FIRST
+
+    def test_the_environment_can_restore_full_coverage(self) -> None:
+        merged = self.layered({"min_confidence": 0.9}, {"MAMORI_MIN_CONFIDENCE": "0.0"})
+        assert merged.min_confidence == 0.0
+
+    def test_the_environment_can_turn_co_occurrence_back_on(self) -> None:
+        merged = self.layered({"co_occurrence": False}, {"MAMORI_CO_OCCURRENCE": "on"})
+        assert merged.co_occurrence is True
+
+    def test_a_layer_that_says_nothing_still_changes_nothing(self) -> None:
+        """The property the old heuristic got right, kept."""
+        merged = self.layered({"stance": "balanced"}, {})
+        assert merged.stance is Stance.BALANCED
+
+    def test_an_unrelated_key_does_not_drag_the_others_along(self) -> None:
+        merged = self.layered(
+            {"stance": "balanced", "min_confidence": 0.9}, {"MAMORI_LOCALES": "ja"}
+        )
+        assert merged.locales == ("ja",)
+        assert merged.stance is Stance.BALANCED
+        assert merged.min_confidence == 0.9
+
+    def test_a_hand_built_config_keeps_the_old_behaviour(self) -> None:
+        """A config assembled in Python names every field by construction, so
+        it cannot say which were meant. Documented, and unchanged -- a caller
+        in Python can build the final object instead of layering."""
+        assert MamoriConfig(stance=Stance.BALANCED).merged_with(MamoriConfig()).stance is (
+            Stance.BALANCED
+        )
+
+    def test_the_marker_is_not_a_configuration_key(self) -> None:
+        with pytest.raises(ConfigurationError, match="unknown configuration key"):
+            MamoriConfig.from_mapping({"_named": ["stance"]})
+
+    def test_the_marker_is_not_offered_as_a_known_key(self) -> None:
+        with pytest.raises(ConfigurationError) as raised:
+            MamoriConfig.from_mapping({"nope": 1})
+        assert "_named" not in str(raised.value)
+
+    def test_the_marker_does_not_affect_equality(self) -> None:
+        assert MamoriConfig.from_mapping({"stance": "recall_first"}) == MamoriConfig()
 
 
 class TestTheTwoFieldsThatWereDropped:
