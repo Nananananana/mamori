@@ -636,6 +636,89 @@ asked one question per candidate, a filter of known-leaked keys — is
 `mamori privacy` reports which one is running and what that means for what
 blocks. [ADR 0033](docs/adr/0033-secrets-are-an-algorithm-you-choose.md).
 
+### Recognisers that need a library
+
+The pattern rules find what has a shape. Two things have no shape, and the
+standard library cannot close either:
+
+```python
+MamoriConfig(nlp="spacy")  # a name with no anchor beside it
+MamoriConfig(phone="phonenumbers")  # a run of digits that is really a number
+```
+
+Both are off by default and both are extras — `pip install "mamori[nlp]"`,
+`pip install "mamori[phone]"` — so the wheel still declares zero unconditional
+dependencies.
+
+**What the recogniser buys**, measured against the rules that ship. The
+recall-first stance closes the name gap by accepting false positives; a
+recogniser closes part of the same gap without them:
+
+| | balanced | recall-first | balanced + `nlp="spacy"` |
+|---|---|---|---|
+| `I spoke to Sarah Okonkwo yesterday` | missed | found | **found** |
+| `Attendees: Yuki Tanaka, Marcus Lindqvist` | missed | found | **found** |
+| `Reported by: Nguyen Thi Hoa` | missed | found | **found** |
+| `The Quarterly Business Review is Monday` | clean | clean | **clean** |
+| `Social Security Number is required` | clean | clean | **clean** |
+
+`PERSON` only by default. `ORG` was in the map for one afternoon:
+`en_core_web_sm` tags *"The Quarterly Business Review"* and *"Social Security
+Number"* as organisations — the exact two phrases the English stoplist exists
+to reject — so it made the model a source of the false positives the rules had
+already paid to remove.
+
+**The phone one is the sharper result.** `SECURITY.md` says an unseparated
+digit run is not matched because an order number looks identical. That is true
+of a regular expression and false of a numbering plan:
+
+| | pattern rules | `phone="phonenumbers"` |
+|---|---|---|
+| `ring 07911123456 please` | missed | **found**, typed `PHONE` |
+| `order 98765432109 shipped` | missed | **correctly not a number** |
+
+Recall and precision improve together, which no wider regular expression can
+do. It is the move a checksum makes.
+
+**A model is never the security mechanism.** A recogniser returns labels and
+offsets; mapping a label to an entity type, deciding what the policy does with
+it and resolving it against everything else are unchanged and stay in code with
+no model in it. A model's opinion is `MEDIUM` — below a checksum, below an
+anchor — so `min_confidence` can drop it, and a model that fails to load stops
+the request rather than reporting nothing. A fourth recogniser is
+`register_nlp_algorithm("name", factory)` and a config value, not an edit.
+
+---
+
+### Already using Presidio
+
+Change one import:
+
+```python
+-from presidio_analyzer import AnalyzerEngine
++from mamori.interop.presidio import AnalyzerEngine
+
+results = AnalyzerEngine().analyze(text, language="en")
+for r in results:
+    print(r.entity_type, r.start, r.end, r.score)
+```
+
+`AnalyzerEngine` and `AnonymizerEngine` are mamori wearing Presidio's shape,
+constructor keywords and all. `to_presidio` converts a result you already
+have, `to_dict` emits Presidio's JSON keys, and `from_presidio` reads findings
+somebody else produced. `MamoriConfig(nlp="presidio")` goes the other way and
+runs Presidio's analyzer as a recogniser here.
+
+**One thing is deliberately different, and it is not hidden.** Presidio's
+`anonymize` writes `<PERSON>` and the original is gone; mamori writes
+`<PERSON_001>` and keeps the way back:
+
+```python
+with AnonymizerEngine().anonymize(text) as out:
+    reply = your_model(out.text)  # sees <PERSON_001>
+    print(out.restore(reply))  # your own words again
+```
+
 ## When it gets something wrong
 
 It will. A salutation anchor is right far more often than it is wrong, and
@@ -1367,6 +1450,7 @@ measuring it and saying no.
 | **v0.17** | The assembled prompt. Prompts are increasingly not typed by anybody — they are rendered by a retrieval layer or an agent framework, with file paths in the headers and hashes in the structure. That gets a generated corpus and a measurement like everything else, and the structural parts get measured as a *negative* set: an id replaced is a bug with a number attached. |
 | **v0.18** | Deployment: a fail-closed stance that stops rather than misses, a CI linter for values that should not be committed, `<PERSON_001>` inside HTML, and a name split across two JSON keys. |
 | **v0.29** | The mapping at rest: an opt-in encrypted store, and retention as a rule the caller can read rather than a thread they cannot see. Both were promised for `v0.18` and neither was built. |
+| **v0.32** | Nine defects, four of them leaks: a proxy that forwarded six payload shapes while claiming to fail closed, a Japanese name in half-width katakana that no rule could see, a restoration that named the wrong person, and a salutation that made a name invisible. Plus recognisers that need a library, and Presidio's shapes so trying this costs an import. |
 | **v0.31** | Secrets as an algorithm you choose: the entropy pass `detect-secrets` and `gitleaks` run, behind a `secrets` switch that defaults to what shipped before, with a registry so a fourth algorithm is a call and a config value. Found on the way: two settings a config file could name and could not set. |
 | **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values. The proxy half of this row was withdrawn before it was built: the warning it called for was already there, and the check that said otherwise had searched for a property name that does not exist. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |

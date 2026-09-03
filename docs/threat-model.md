@@ -155,6 +155,20 @@ a detector pointed at a hosted endpoint is not a detector but the leak itself.
 `OpenAICompatibleProvider` refuses a non-local base URL unless
 `allow_remote=True` is passed, and says why.
 
+### T12b — The proxy forwards a payload shape it does not recognise
+
+*Mitigated since 0.32, and it was not before.* The walk over a chat request is
+an allow-list of OpenAI's evolving format, and until 0.32 a field the
+allow-list had not caught up with was neither parsed nor refused — it went
+upstream verbatim, with a 200, while `server.py` said the proxy fails closed.
+Six shapes did.
+
+Four are walked now. The rest are covered by a residue check that inspects
+every string no slot claimed and refuses the request when one of them carries
+something sensitive, naming the JSON path and never the value. An allow-list of
+somebody else's API is out of date by construction; this is what covers the
+field nobody has thought of yet.
+
 ### T8 — Text crafted to defeat detection
 
 *Not mitigated.* Someone who knows the rules can write around them. `mamori` is

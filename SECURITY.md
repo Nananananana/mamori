@@ -37,7 +37,7 @@ Language-independent:
 | Category | Known gaps |
 |---|---|
 | Secrets | Any credential without a recognisable vendor prefix, and any high-entropy string not written next to a keyword. Entropy-based detection exists since 0.31 and is **off by default**: `MamoriConfig(secrets="entropy")` runs the Shannon-entropy pass that `detect-secrets` and `gitleaks` use, and it flags commit ids, content hashes and base64 payloads as `API_KEY` -- which the default policy blocks. Its cost **cannot be measured on the bundled corpora**: 167 samples contain 8 runs of key-shaped characters and none is generated, so every figure below is identical with it on. The false-positive claim rests on the synthetic cases in `tests/test_entropy.py`, not on a corpus. See [ADR 0033](docs/adr/0033-secrets-are-an-algorithm-you-choose.md). |
-| `PHONE` | Unseparated digit runs, which are deliberately not matched -- an order number looks identical. |
+| `PHONE` | Unseparated digit runs, which the pattern rules deliberately do not match -- an order number looks identical to a regular expression. `MamoriConfig(phone="phonenumbers")` reads them against real numbering plans instead, which finds them **and** rejects the order number: recall and precision improve together. Needs `mamori[phone]`. |
 | Everything | Data that is only sensitive in context: a salary figure, an unreleased date, a headcount, who was in a meeting. |
 
 Japanese (`ja`):
@@ -53,7 +53,7 @@ English (`en`):
 
 | Category | Known gaps |
 |---|---|
-| `PERSON` | **Any name not preceded by a title, salutation, sign-off or label.** Two capitalised words are also every product, city and department, so an unanchored rule would flag most of a business email. This is the largest single gap in the library. |
+| `PERSON` | **Any name not preceded by a title, salutation, sign-off or label.** Two capitalised words are also every product, city and department, so an unanchored rule would flag most of a business email. This is the largest single gap in the library. The recall-first stance closes part of it by accepting false positives; `MamoriConfig(nlp="spacy")` closes part of it without them, and neither closes all of it. |
 | `ADDRESS` | Addresses with no street type. Apartment and unit lines written separately. Non-US, non-UK formats. |
 | `COMPANY_NAME` | Trading names with no legal suffix -- "the contract is with Acme" is not detected. |
 | `SSN` | Nine bare digits, which are deliberately not matched without a label. |

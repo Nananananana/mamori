@@ -8,6 +8,100 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-09-03
+
+Nine defects, four of them leaks and one of them a wrong answer. Two
+algorithms the standard library cannot provide, behind the switch 0.31
+established. And Presidio's shapes, so trying this costs an import.
+
+### Fixed
+
+- **The proxy said it fails closed and forwarded six payload shapes.** An
+  unrecognised *shape* was neither parsed nor refused: `messages` as a string
+  or an object, the pre-`tools` `functions` array, `prediction.content`, a
+  content part with no `"type"` key, and a JSON-schema `description` all went
+  upstream verbatim with a 200. Four are walked now; the rest, and every shape
+  nobody has thought of yet, are covered by a **residue check** -- every
+  string no slot claimed is inspected, and a request whose unrecognised field
+  carries something sensitive is refused, naming the path and never the value.
+
+- **A Japanese name in half-width katakana was invisible.** NFKC is defined on
+  strings and this applied it one character at a time, so `ﾀ` + `ﾞ` became a
+  base kana plus a combining mark instead of `ダ` -- outside `[ァ-ヶー]`, and
+  therefore outside every rule. All 28 voiced pairs. `氏名: ﾔﾏﾀﾞ` produced
+  `氏名: <PERSON_001>ﾞ`, which is a leak and a corrupted document at once.
+
+- **Restoration named the wrong person.** Placeholders were substituted first
+  and surrogates searched over the *rewritten* text, so a value just put back
+  could be matched as the next mapping's surrogate -- which happens whenever
+  one document's surrogate is another document's real name in the same scope.
+  Both kinds are decided against the model's own words now and spliced once.
+
+- **Streaming did not restore surrogates at all**, so a session with them on
+  streamed the invented name to the reader as a real one.
+
+- **`Dear Jane Doe.` was not detected and `Jane Doe.` was.** The salutation
+  rule needs a trailing comma, and `Dear` is in the wide rule's stoplist -- so
+  the wide rule matched the run, the validator rejected it, and `finditer`
+  resumed past the name inside. Adding the salutation made the name invisible,
+  in the most ordinary opening line English business mail has.
+
+- **Three more ways a placeholder reached the reader whole**: a newline inside
+  a token (`_PARTIAL_BODY` excluded `
+` while the batch scanner accepts it), a
+  hold window of 96 against a grammar that permits 110, and an ordinary long
+  identifier in a model's reply raising `ValueError` out of `restore` -- which
+  0.31 introduced and this fixes.
+
+- **A window guaranteed less than it said.** `windows` clamps the overlap to
+  `size // 2`, so `max_input_characters=100` gave an effective overlap of 50
+  and lost a 52-character database URL to the gap between two windows, seen by
+  no detector. `longest_whole` is the honest question, and both the settings
+  and the pass refuse a window too small to carry a value whole.
+
+- **An environment variable could not restore a default.** `merged_with`
+  compared against the defaults, so `MAMORI_DEFAULT_ACTION=block` over a file
+  saying `allow` did nothing -- the operator was tightening, the value was the
+  fail-closed one, and it was discarded in silence. Loaders record which keys
+  they were given, and that is what overlays.
+
+### Added
+
+- **`nlp = "none" | "spacy" | "presidio"`** -- a named-entity recogniser for
+  the gap `SECURITY.md` calls the largest here. At the balanced stance it
+  finds names the rules miss **without** the over-redaction the recall-first
+  stance pays for. `PERSON` only by default: `ORG` lasted one afternoon,
+  because `en_core_web_sm` tags *"The Quarterly Business Review"* and *"Social
+  Security Number"* as organisations -- the two phrases the English stoplist
+  exists to reject.
+
+- **`phone = "patterns" | "phonenumbers"`** -- Google's libphonenumber. It
+  finds `07911123456` that the rules miss and correctly rejects
+  `98765432109`, so **recall and precision improve together**, which no wider
+  regular expression can do.
+
+- **`mamori.interop.presidio`** -- `AnalyzerEngine` and `AnonymizerEngine` in
+  Presidio's shape, `to_presidio` / `from_presidio` / `to_dict` for its data,
+  and Presidio's own analyzer usable as a recogniser here. One import instead
+  of a rewrite. The one difference is loud: placeholders are numbered and
+  reversible, and the session that can restore them is on the result.
+
+- **Settings are discovered** -- `mamori.toml`, `.mamori.toml`, `mamori.json`,
+  `.mamori.json` or a `[tool.mamori]` table in `pyproject.toml`, walking up
+  from the working directory the way `ruff` and `mypy` do. **The walk stops at
+  the repository root**, which they do not do: a `mamori.toml` in a home
+  directory would apply `default_action = "allow"` to every project on the
+  machine. The library never discovers; only the command line does.
+
+- **`PrivacySession.inspect`** -- which kinds of sensitive value are in a text,
+  allocating nothing and raising nothing, not even for a credential.
+
+### Changed
+
+- Every new dependency is an extra. The wheel still declares **zero**
+  unconditional runtime dependencies, and a test asserts neither `spacy` nor
+  `phonenumbers` reaches `sys.modules` on an ordinary protect.
+
 ## [0.31.0] - 2026-09-03
 
 Secrets as an algorithm you choose. The gap that has been documented since
@@ -2484,7 +2578,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/Nananananana/mamori/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/Nananananana/mamori/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/Nananananana/mamori/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/Nananananana/mamori/compare/v0.27.0...v0.29.0
