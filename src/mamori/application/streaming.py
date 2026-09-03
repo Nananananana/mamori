@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from ..domain.placeholder import Placeholder
 from ..domain.placeholder_matching import scan_placeholders
 from ..ports.mapping_store import MappingStore
+from .restoration import surrogate_claims
 
 __all__ = ["StreamSummary", "StreamingRestorer"]
 
@@ -70,6 +71,11 @@ _PARTIAL_BODY = (
 _PARTIAL_RE = re.compile(r"(?:[<\[{]\s*(?:" + _PARTIAL_BODY + r")?|" + _PARTIAL_BODY + r")$")
 
 
+def _flat(text: str) -> str:
+    """Case and line breaks removed, for comparing a partial surrogate."""
+    return text.replace(chr(13), "").replace(chr(10), "").casefold()
+
+
 @dataclass(frozen=True, slots=True)
 class StreamSummary:
     """What happened over the whole stream."""
@@ -94,6 +100,19 @@ class StreamingRestorer:
         mappings = store.list_scope(scope)
         self._by_placeholder = {mapping.placeholder: mapping for mapping in mappings}
         self._known = set(self._by_placeholder)
+        #: Surrogates in this scope. A surrogate has no shape -- it is a name --
+        #: so a stream has to hold back enough text for one to complete, and
+        #: this path did not hold back any: a session with surrogates on
+        #: streamed the invented name straight through, presented to a reader
+        #: as the real one. Batch and streaming are documented as producing the
+        #: same text and did not.
+        self._surrogates = [mapping for mapping in mappings if mapping.is_surrogate]
+        #: How far back a partial surrogate could reach. Twice the longest
+        #: surface, because `find_occurrences` folds a line break between any
+        #: two characters, so one can occupy up to twice its own length.
+        longest = max((len(mapping.surface) for mapping in self._surrogates), default=0)
+        self._surrogate_window = 2 * longest
+        self._flat_surrogates = tuple(_flat(mapping.surface) for mapping in self._surrogates)
         self._buffer = ""
         self._restored: list[Placeholder] = []
         self._tampered: list[Placeholder] = []
@@ -109,7 +128,8 @@ class StreamingRestorer:
         if self._finished:
             raise RuntimeError("cannot feed a finished stream")
         self._buffer += chunk
-        hold_at = self._hold_boundary(self._buffer)
+        hold_at = min(self._hold_boundary(self._buffer), self._surrogate_boundary(self._buffer))
+        hold_at = self._not_inside_a_surrogate(self._buffer, hold_at)
         ready, self._buffer = self._buffer[:hold_at], self._buffer[hold_at:]
         return self._restore(ready)
 
@@ -143,21 +163,89 @@ class StreamingRestorer:
                 return index
         return len(buffer)
 
+    def _not_inside_a_surrogate(self, buffer: str, hold_at: int) -> int:
+        """Pull a release point back out of a surrogate it would split.
+
+        The two boundaries above answer different questions and the smaller is
+        not always the safe one. `Alex Rivera ` gives a placeholder boundary of
+        5 -- `Rivera ` could still grow into a token -- and a surrogate
+        boundary of 12, because nothing at the tail is a partial name. Taking
+        the smaller released `Alex ` and held `Rivera `, cutting a complete
+        surrogate in half at a point neither check was looking at.
+        """
+        if not self._surrogates:
+            return hold_at
+        for start, end, _, _ in surrogate_claims(buffer, self._surrogates):
+            if start < hold_at < end:
+                hold_at = start
+        return hold_at
+
+    def _surrogate_boundary(self, buffer: str) -> int:
+        """Index from which the buffer could still be growing into a surrogate.
+
+        The placeholder boundary is not enough. Holding the last N characters
+        for a surrogate to arrive still releases one character per chunk once
+        the buffer is longer than N, so a surrogate straddling a release point
+        is split across two calls and matched by neither -- measured: fed one
+        character at a time, every surrogate came out un-restored while the
+        whole string at once came out right.
+
+        A surrogate has no shape, but it is a *known string*, so the boundary
+        is exact rather than a guess: hold from the earliest position whose
+        tail is a prefix of one. Line breaks and case are folded out of both
+        sides, because `find_occurrences` matches through them.
+        """
+        if not self._flat_surrogates:
+            return len(buffer)
+        for index in range(max(0, len(buffer) - self._surrogate_window), len(buffer)):
+            tail = _flat(buffer[index:])
+            if tail and any(surface.startswith(tail) for surface in self._flat_surrogates):
+                return index
+        return len(buffer)
+
     def _restore(self, text: str) -> str:
+        """Placeholders and surrogates, decided against the same text.
+
+        The same single pass `RestorationService.restore` makes, for the same
+        reason: substituting one kind and then searching the rewritten text for
+        the other lets a value just put back be matched as somebody else's
+        surrogate.
+        """
         if not text:
             return ""
 
-        pieces: list[str] = []
-        cursor = 0
+        claims: list[tuple[int, int, str, Placeholder | None, bool]] = []
         for occurrence in scan_placeholders(text, self._known):
             if not occurrence.known:
                 self._unknown.append(occurrence.surface)
                 continue
-            pieces.append(text[cursor : occurrence.span.start])
-            pieces.append(self._by_placeholder[occurrence.placeholder].original_value)
-            cursor = occurrence.span.end
-            self._restored.append(occurrence.placeholder)
-            if occurrence.tampered:
-                self._tampered.append(occurrence.placeholder)
+            claims.append(
+                (
+                    occurrence.span.start,
+                    occurrence.span.end,
+                    self._by_placeholder[occurrence.placeholder].original_value,
+                    occurrence.placeholder,
+                    occurrence.tampered,
+                )
+            )
+
+        taken = {index for start, end, _, _, _ in claims for index in range(start, end)}
+        for start, end, value, mapping in surrogate_claims(text, self._surrogates):
+            if any(index in taken for index in range(start, end)):
+                continue
+            claims.append((start, end, value, mapping.placeholder, False))
+            taken |= set(range(start, end))
+
+        claims.sort(key=lambda claim: claim[0])
+        pieces: list[str] = []
+        cursor = 0
+        for start, end, value, placeholder, tampered in claims:
+            pieces.append(text[cursor:start])
+            pieces.append(value)
+            cursor = end
+            if placeholder is not None:
+                self._restored.append(placeholder)
+            if tampered and placeholder is not None:
+                self._tampered.append(placeholder)
         pieces.append(text[cursor:])
         return "".join(pieces)

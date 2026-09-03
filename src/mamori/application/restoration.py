@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from ..domain.mapping import Mapping
 from ..domain.occurrences import find_occurrences
 from ..domain.placeholder import Placeholder
-from ..domain.placeholder_matching import scan_placeholders
+from ..domain.placeholder_matching import PlaceholderOccurrence, scan_placeholders
 from ..ports.mapping_store import MappingStore
 from .results import RestorationResult
 
@@ -37,30 +37,61 @@ class RestorationService:
 
         occurrences = scan_placeholders(text, known)
 
-        pieces: list[str] = []
-        cursor = 0
-        restored = []
-        unknown: list[str] = []
-
+        # Both kinds of substitution are decided against the **same** text and
+        # spliced once. Doing them in two passes -- placeholders, then
+        # surrogates over the rewritten result -- meant a value just put back
+        # was eligible to be matched as the next mapping's surrogate, and it
+        # happened: a surrogate allocated for one document is a real name, and
+        # if that name is another document's real value in the same scope,
+        # restoring the first rewrote the second. Two people, one name, and the
+        # reply named the wrong one.
+        # (start, end, replacement, the occurrence when a placeholder claimed
+        # it). A surrogate has no occurrence: it was found by searching for a
+        # string, not by recognising a token, and the two are reported apart.
+        claims: list[tuple[int, int, str, PlaceholderOccurrence | None, Placeholder]] = []
         for occurrence in occurrences:
             if not occurrence.known:
-                unknown.append(occurrence.surface)
                 continue
             mapping = by_placeholder[occurrence.placeholder]
-            pieces.append(text[cursor : occurrence.span.start])
-            pieces.append(mapping.original_value)
-            cursor = occurrence.span.end
-            restored.append(occurrence)
+            claims.append(
+                (
+                    occurrence.span.start,
+                    occurrence.span.end,
+                    mapping.original_value,
+                    occurrence,
+                    occurrence.placeholder,
+                )
+            )
 
+        # A placeholder wins every character it covers. It is an exact token
+        # this library minted; a surrogate is a string search over words the
+        # model wrote.
+        taken = {index for start, end, *_ in claims for index in range(start, end)}
+        for start, end, value, mapping in _surrogate_claims(
+            text, [m for m in mappings if m.is_surrogate]
+        ):
+            if any(index in taken for index in range(start, end)):
+                continue
+            claims.append((start, end, value, None, mapping.placeholder))
+            taken |= set(range(start, end))
+
+        claims.sort(key=lambda claim: claim[0])
+
+        pieces: list[str] = []
+        cursor = 0
+        restored: list[PlaceholderOccurrence] = []
+        seen: set[Placeholder] = set()
+        for start, end, value, claimed_by, placeholder in claims:
+            pieces.append(text[cursor:start])
+            pieces.append(value)
+            cursor = end
+            seen.add(placeholder)
+            if claimed_by is not None:
+                restored.append(claimed_by)
         pieces.append(text[cursor:])
         result = "".join(pieces)
 
-        seen = {occurrence.placeholder for occurrence in restored}
-        surrogates = [m for m in mappings if m.is_surrogate]
-        if surrogates:
-            result, put_back = _restore_surrogates(result, surrogates)
-            seen |= put_back
-
+        unknown = [occurrence.surface for occurrence in occurrences if not occurrence.known]
         missing = tuple(sorted(known - seen))
 
         return RestorationResult(
@@ -71,43 +102,36 @@ class RestorationService:
         )
 
 
-def _restore_surrogates(text: str, mappings: Sequence[Mapping]) -> tuple[str, set[Placeholder]]:
-    """Put originals back where a surrogate was substituted.
+def surrogate_claims(text: str, mappings: Sequence[Mapping]) -> list[tuple[int, int, str, Mapping]]:
+    """Public alias so the streaming path decides surrogates the same way.
 
-    A placeholder can be recognised by its shape, so restoration tolerates a
-    model that mangles one. A surrogate has no shape: it is a name, and the
-    only way to find it is to look for the string. That is the trade somebody
-    accepts when they turn surrogates on, and it is worth being blunt about --
-    a model that writes `山田さん` where it was given `山田一郎` has produced
-    text this cannot restore, and there is no clever way around it.
-
-    Two liberties are taken, both knowingly, and both for the same reason. `alex rivera`
-    where `Alex Rivera` was given is the same stand-in written carelessly, and
-    the alternative to putting it back is leaving an invented person's name in
-    an answer somebody is about to believe. A corpus of a thousand two hundred
-    surrogate replies puts this at 17% of the ones a model re-cases, which is
-    17% of an outcome the module docstring calls the most dangerous thing in
-    the library. A name broken by a line break -- ``Alex\nRivera`` -- is the
-    same, and another 11%. Neither changes what a surrogate *is*: the identity
-    is still the whole string, and half of one still restores nothing.
-
-    Longest first, so a surrogate that contains another is replaced whole
-    rather than being cut in half by its own substring.
+    The two paths are documented as indistinguishable. They were not: streaming
+    had no surrogate handling at all, so a session with surrogates on returned
+    the invented name whole -- presented to a reader as a real one, which the
+    surrogate module calls the most dangerous thing in the library. Sharing the
+    function is what makes the promise checkable rather than repeated.
     """
-    put_back: set[Placeholder] = set()
+    return _surrogate_claims(text, mappings)
+
+
+def _surrogate_claims(
+    text: str, mappings: Sequence[Mapping]
+) -> list[tuple[int, int, str, Mapping]]:
+    """Where each surrogate sits in ``text``, longest surface first.
+
+    Every span is found against the text as the model wrote it, so nothing
+    this function proposes can be an artefact of a substitution it made
+    earlier. Longest first so a surrogate containing another claims its
+    occurrences whole rather than being cut in half by its own substring.
+    """
+    claims: list[tuple[int, int, str, Mapping]] = []
+    taken: set[int] = set()
     for mapping in sorted(mappings, key=lambda m: -len(m.surface)):
-        spans = find_occurrences(
+        for span in find_occurrences(
             text, mapping.surface, min_length=1, fold_case=True, fold_wrapping=True
-        )
-        if not spans:
-            continue
-        pieces: list[str] = []
-        cursor = 0
-        for span in spans:
-            pieces.append(text[cursor : span.start])
-            pieces.append(mapping.original_value)
-            cursor = span.end
-        pieces.append(text[cursor:])
-        text = "".join(pieces)
-        put_back.add(mapping.placeholder)
-    return text, put_back
+        ):
+            if any(index in taken for index in range(span.start, span.end)):
+                continue
+            claims.append((span.start, span.end, mapping.original_value, mapping))
+            taken |= set(range(span.start, span.end))
+    return claims
