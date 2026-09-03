@@ -68,6 +68,18 @@ ALLOWED: dict[str, frozenset[str]] = {
     # not loosen the rule that matters -- ``infrastructure`` still cannot reach
     # here, so an adapter cannot make itself part of producing a record.
     "provenance": frozenset({"domain", "ports", "application"}),
+    # Other libraries' shapes, spoken over this one's public surface. Reads the
+    # application and the configuration the way `report` reads configuration,
+    # and nothing reaches it -- so a translation can never become part of a
+    # decision.
+    # `infrastructure` is in the list for one reason: the Presidio adapter is
+    # an adapter and lives there, and this module re-exports it so that
+    # everything Presidio-shaped is reachable from one import. The dependency
+    # runs the same way `config`'s does -- an edge layer naming an adapter --
+    # and never the other way, which is what the entry below enforces.
+    "interop": frozenset(
+        {"domain", "ports", "config", "llm_settings", "application", "infrastructure"}
+    ),
     # Frozen contract documents shipped as package data. No code in it, so
     # nothing to import: the emptiness here is the point.
     "schemas": frozenset(),

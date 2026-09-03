@@ -57,6 +57,11 @@ phone = ["phonenumbers>=8.13"]
 # download with its own licence -- `python -m spacy download en_core_web_sm`.
 nlp = ["spacy>=3.7"]
 
+# Presidio's analyzer, usable as a recogniser here. MIT. It brings its own
+# model stack, which is both why somebody would want it and why it cannot be a
+# default.
+presidio = ["presidio-analyzer>=2.2"]
+
 [project.urls]
 Homepage = "https://github.com/Nananananana/mamori"
 Repository = "https://github.com/Nananananana/mamori"
@@ -143,6 +148,8 @@ ignore_missing_imports = true
 # first; the spaCy tests skip themselves in it and measure in the second.
 [[tool.mypy.overrides]]
 module = [
+    "presidio_analyzer",
+    "presidio_analyzer.*",
     "spacy",
     "spacy.*",
     "numpy",

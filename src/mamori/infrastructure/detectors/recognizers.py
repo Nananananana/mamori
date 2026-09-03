@@ -45,10 +45,22 @@ def _phonenumbers() -> Sequence[DetectionPass]:
     return (PhoneNumberPass(),)
 
 
+def _presidio() -> Sequence[DetectionPass]:
+    from .nlp import NlpPass
+    from .presidio_recognizer import PresidioRecognizer
+
+    # Presidio's own labels, which are not spaCy's: it reports `PERSON` and
+    # also `PHONE_NUMBER`, `EMAIL_ADDRESS` and the rest. Only the ones mamori
+    # has no anchored rule for are taken -- the anchored rules are better at
+    # what they claim, and a second opinion on them is noise the resolver would
+    # have to settle anyway.
+    return (NlpPass(PresidioRecognizer(), name="nlp:presidio"),)
+
+
 _NLP = AlgorithmRegistry(
     "nlp",
     DEFAULT_NLP_ALGORITHM,
-    {DEFAULT_NLP_ALGORITHM: lambda: (), "spacy": _spacy},
+    {DEFAULT_NLP_ALGORITHM: lambda: (), "spacy": _spacy, "presidio": _presidio},
 )
 
 _PHONE = AlgorithmRegistry(

@@ -70,6 +70,7 @@ interfaces ──> application ──> domain
 | `config.py` | Every switch, and the factories that assemble them | everything above |
 | `report.py` | What a configuration does with your data | `domain`, `config` |
 | `provenance.py` | What one protected text had done to it, as a document, and the ledger that hands it to a sink | `domain`, `ports`, `application` |
+| `interop/` | Presidio-shaped input and output, so trying this costs an import | `domain`, `ports`, `config`, `application` |
 | `schemas/` | Frozen contract documents, shipped as package data | nothing; there is no code in it |
 | `interfaces/cli/` | Argument parsing, output formatting | everything above |
 | `interfaces/proxy/` | The OpenAI-compatible endpoint: payload walk, exchange, upstream | everything above |
