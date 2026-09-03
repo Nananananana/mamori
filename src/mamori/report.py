@@ -184,6 +184,12 @@ def build_report(config: MamoriConfig, *, upstream: str | None = None) -> Privac
         # whether to trust the configuration needs to know that before the
         # first refused document tells them.
         "secrets": config.secrets,
+        # Which recogniser runs, and how a phone number is decided. Reported
+        # for the same reason the secrets algorithm is: they change what is
+        # found, and an operator reading this to decide whether to trust the
+        # configuration cannot see it anywhere else.
+        "nlp": config.nlp,
+        "phone": config.phone,
         "by_action": by_action,
     }
     if config.secrets != "patterns":

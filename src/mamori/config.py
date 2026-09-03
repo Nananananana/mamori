@@ -116,6 +116,19 @@ class MamoriConfig:
             registered with
             :func:`~mamori.infrastructure.detectors.register_secret_algorithm`
             is accepted here.
+        nlp: Which recogniser looks for a personal name that has no anchor
+            beside it -- the gap `SECURITY.md` calls the largest in the
+            library. ``"none"`` (the default) adds nothing. ``"spacy"`` runs
+            spaCy's named-entity recogniser after the rules, which finds names
+            the balanced stance misses **without** the over-redaction the
+            recall-first stance pays for. It needs
+            ``pip install "mamori[nlp]"`` and a model.
+        phone: How a run of digits becomes a telephone number. ``"patterns"``
+            (the default) matches shapes and, as `SECURITY.md` states, cannot
+            match an unseparated run because an order number looks identical.
+            ``"phonenumbers"`` reads it against real numbering plans instead,
+            which raises recall and precision at once -- the move a checksum
+            makes. Needs ``pip install "mamori[phone]"``.
     """
 
     locales: tuple[str, ...] | None = None
@@ -134,6 +147,8 @@ class MamoriConfig:
     placeholder_style: str = "angle"
     uncertain: str = "discard"
     secrets: str = "patterns"
+    nlp: str = "none"
+    phone: str = "patterns"
 
     #: Which settings a loader actually saw named, as opposed to left at the
     #: default. Not a setting: it is excluded from the key check below, from
@@ -200,6 +215,14 @@ class MamoriConfig:
         # the model have first claim on every span, and a measurement only
         # speaks for what nothing with an anchor has spoken for.
         extra.extend(secret_passes(self.secrets))
+        # Both after the rules and before the corrections, for the same reason
+        # the secrets pass is: anything with an anchor has first claim on a
+        # span, and a measurement or a model speaks only for what nothing
+        # anchored has spoken for.
+        from .infrastructure.detectors.recognizers import nlp_passes, phone_passes
+
+        extra.extend(phone_passes(self.phone))
+        extra.extend(nlp_passes(self.nlp))
         log = self.correction_log()
         if log.added():
             # Last, so it sees what everything else found and adds only what
@@ -433,6 +456,10 @@ class MamoriConfig:
             kwargs["uncertain"] = _as_choice(values["uncertain"], "uncertain", Uncertain)
         if "secrets" in values:
             kwargs["secrets"] = _as_secret_algorithm(values["secrets"])
+        if "nlp" in values:
+            kwargs["nlp"] = _as_nlp_algorithm(values["nlp"])
+        if "phone" in values:
+            kwargs["phone"] = _as_phone_algorithm(values["phone"])
         # Every key this mapping carried, not every key that produced a
         # non-default value. That difference is the whole point.
         kwargs["_named"] = frozenset(values) & known
@@ -741,6 +768,19 @@ def _as_secret_algorithm(value: object) -> str:
             f"unknown secrets algorithm {value!r}; available: {', '.join(known)}"
         )
     return name
+
+
+def _as_nlp_algorithm(value: object) -> str:
+    """A registered recogniser, by name, validated when the file is read."""
+    from .infrastructure.detectors.recognizers import _NLP
+
+    return _NLP.resolve(str(value))
+
+
+def _as_phone_algorithm(value: object) -> str:
+    from .infrastructure.detectors.recognizers import _PHONE
+
+    return _PHONE.resolve(str(value))
 
 
 def _as_stance(value: object) -> Stance:

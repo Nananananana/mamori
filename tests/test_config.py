@@ -328,6 +328,8 @@ class TestEveryFieldSurvivesTheMapping:
         "placeholder_style": "square",
         "uncertain": "refuse",
         "secrets": "entropy",
+        "nlp": "spacy",
+        "phone": "phonenumbers",
     }
 
     def test_the_table_covers_every_field(self) -> None:

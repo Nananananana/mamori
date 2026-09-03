@@ -8,6 +8,7 @@ from ...domain.stance import RuleTier, Stance
 from ...ports.detection_pass import DetectionPass
 from ...ports.detector import Detector
 from .adaptive import AdaptiveLocaleDetector
+from .algorithms import AlgorithmRegistry
 from .co_occurrence import DEFAULT_SEED_TYPES, CoOccurrencePass
 from .composite import CompositeDetector
 from .entropy_pass import EntropyPass
@@ -21,6 +22,7 @@ from .locales import (
     register_locale,
     resolve_locales,
 )
+from .nlp import NlpPass, SpacyRecognizer
 from .patterns import (
     UNIVERSAL_RULES,
     PatternRule,
@@ -28,7 +30,16 @@ from .patterns import (
     luhn_valid,
     rules_for,
 )
+from .phone import PhoneNumberPass
 from .pipeline import DetectionPipeline, DetectorPass
+from .recognizers import (
+    available_nlp_algorithms,
+    available_phone_algorithms,
+    nlp_passes,
+    phone_passes,
+    register_nlp_algorithm,
+    register_phone_algorithm,
+)
 from .regex_detector import RegexDetector
 from .secrets import available_secret_algorithms, register_secret_algorithm, secret_passes
 
@@ -39,24 +50,34 @@ __all__ = [
     "JAPANESE",
     "UNIVERSAL_RULES",
     "AdaptiveLocaleDetector",
+    "AlgorithmRegistry",
     "CoOccurrencePass",
     "CompositeDetector",
     "DetectionPipeline",
     "DetectorPass",
     "EntropyPass",
     "LocalePack",
+    "NlpPass",
     "PatternRule",
+    "PhoneNumberPass",
     "RegexDetector",
     "RuleTier",
+    "SpacyRecognizer",
     "Stance",
     "available_locales",
+    "available_nlp_algorithms",
+    "available_phone_algorithms",
     "available_secret_algorithms",
     "build_pipeline",
     "compile_rule",
     "default_detectors",
     "get_locale",
     "luhn_valid",
+    "nlp_passes",
+    "phone_passes",
     "register_locale",
+    "register_nlp_algorithm",
+    "register_phone_algorithm",
     "register_secret_algorithm",
     "resolve_locales",
     "rules_for",

@@ -48,7 +48,12 @@ from ...evaluation import (
     evaluate,
 )
 from ...infrastructure.audit import JsonlAuditSink
-from ...infrastructure.detectors import available_locales, available_secret_algorithms
+from ...infrastructure.detectors import (
+    available_locales,
+    available_nlp_algorithms,
+    available_phone_algorithms,
+    available_secret_algorithms,
+)
 from ...infrastructure.storage import InMemoryMappingStore
 from ...infrastructure.storage.encrypted import (
     DEFAULT_KEY_VARIABLE,
@@ -152,6 +157,25 @@ def build_parser() -> argparse.ArgumentParser:
                 "name. patterns (the default) adds nothing; entropy also flags "
                 "long evenly-spread runs -- bare hex keys, and also commit ids and "
                 "base64 payloads -- as API_KEY, which the default policy blocks"
+            ),
+        )
+
+        p.add_argument(
+            "--nlp",
+            choices=list(available_nlp_algorithms()),
+            help=(
+                "which recogniser looks for a personal name with no anchor beside "
+                "it. none (the default) adds nothing; spacy runs a named-entity "
+                "model after the rules and needs mamori[nlp] and a model"
+            ),
+        )
+        p.add_argument(
+            "--phone",
+            choices=list(available_phone_algorithms()),
+            help=(
+                "how a run of digits becomes a telephone number. patterns (the "
+                "default) matches shapes; phonenumbers reads it against real "
+                "numbering plans and needs mamori[phone]"
             ),
         )
 
@@ -553,6 +577,10 @@ def _settings_from(args: argparse.Namespace) -> MamoriConfig:
         changes["stance"] = Stance(args.stance)
     if getattr(args, "secrets", None):
         changes["secrets"] = args.secrets
+    if getattr(args, "nlp", None):
+        changes["nlp"] = args.nlp
+    if getattr(args, "phone", None):
+        changes["phone"] = args.phone
     return settings.replace(**changes) if changes else settings
 
 
@@ -566,6 +594,8 @@ def _cmd_config(args: argparse.Namespace) -> int:
     print(f"  locales                      {', '.join(settings.locales or ['(all)'])}")
     print(f"  stance                       {settings.stance.value}")
     print(f"  secrets                      {settings.secrets}")
+    print(f"  nlp                          {settings.nlp}")
+    print(f"  phone                        {settings.phone}")
     print(f"  default action               {settings.default_action.value}")
     print(f"  min confidence               {settings.min_confidence}")
     print(f"  co-occurrence                {'on' if settings.co_occurrence else 'off'}")
@@ -617,6 +647,8 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
         "locales": list(settings.locales) if settings.locales else None,
         "stance": settings.stance.value,
         "secrets": settings.secrets,
+        "nlp": settings.nlp,
+        "phone": settings.phone,
         "rules": {name: action.value for name, action in settings.rules.items()},
         "category_defaults": {
             category.value: action.value for category, action in settings.category_defaults.items()
@@ -915,6 +947,8 @@ def _cmd_privacy(args: argparse.Namespace) -> int:
     print(f"  languages       {', '.join(locales) if isinstance(locales, list) else locales}")
     print(f"  stance          {detection['stance']}")
     print(f"  secrets         {detection['secrets']}")
+    print(f"  names           {detection['nlp']}")
+    print(f"  phone           {detection['phone']}")
     print(f"  minimum conf.   {detection['minimum_confidence']}")
     print(f"  below that      {detection['uncertain']}")
     print(f"  placeholders    {detection['placeholder_style']} brackets")

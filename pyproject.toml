@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mamori"
-version = "0.31.0"
+version = "0.32.0"
 description = "Local-first privacy layer for generative AI. Detect and pseudonymize secrets before they reach an external LLM, and restore them locally afterwards."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,12 +37,25 @@ dev = [
     "mypy>=1.10",
     # Exercised by the encrypted-store tests, which are skipped without it.
     "cryptography>=42",
+    # Small, pure Python, and the phone tests measure it against the rules.
+    # spaCy is deliberately *not* here: it pulls a compiled stack and a model
+    # download, and the recogniser tests use a fake so they run everywhere.
+    "phonenumbers>=8.13",
 ]
 
 # The encrypted mapping store, and nothing else. Optional because the default
 # store writes nothing to disk and needs no cipher, so the promise of zero
 # runtime dependencies is unchanged for anybody who does not ask for this.
 encrypted = ["cryptography>=42"]
+
+# Google's libphonenumber, Apache-2.0. Turns "a run of ten digits" from a shape
+# into a number a real plan accepts, which raises recall and precision at once.
+phone = ["phonenumbers>=8.13"]
+
+# A named-entity recogniser for the gap SECURITY.md calls the largest here: a
+# personal name with no anchor beside it. MIT, and the model is a separate
+# download with its own licence -- `python -m spacy download en_core_web_sm`.
+nlp = ["spacy>=3.7"]
 
 [project.urls]
 Homepage = "https://github.com/Nananananana/mamori"
@@ -115,6 +128,34 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tomllib"
 ignore_missing_imports = true
+
+# The optional recognisers. `follow_imports = "skip"` stops mypy reading their
+# stubs, which is not politeness: they are third-party packages this repository
+# does not own.
+#
+# `[nlp]` is deliberately **not** a dev dependency, and this is one of the
+# reasons. Installing spaCy pulls numpy, whose stubs use a 3.12 `type`
+# statement; mypy is pinned to 3.10 because that is what mamori supports, and
+# a syntax error in somebody else's stub aborts the whole run -- it cannot be
+# suppressed, because a file that will not parse never reaches the rules that
+# would ignore it. The environment this check describes is `[dev]`, and
+# `pip install -e ".[dev,nlp]"` is a different one. Run the type check in the
+# first; the spaCy tests skip themselves in it and measure in the second.
+[[tool.mypy.overrides]]
+module = [
+    "spacy",
+    "spacy.*",
+    "numpy",
+    "numpy.*",
+    "phonenumbers",
+    "phonenumbers.*",
+    "thinc",
+    "thinc.*",
+    "srsly",
+    "srsly.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.coverage.run]
 source = ["src/mamori"]
