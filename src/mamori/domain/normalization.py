@@ -12,12 +12,29 @@ same pattern as ``tanaka@example.com``). But normalization can change the
 string, the range of the original string it came from, so a span found in
 normalized coordinates can be mapped back exactly.
 
-Known limitation
-----------------
-Normalization is applied per character, so combining sequences that NFKC would
-merge across characters (``カ`` + ``゛`` -> ``ガ``) are *not* merged. Merging
-them would make a character-level offset map ambiguous. Detectors must not rely
-on such merging.
+Characters that combine
+-----------------------
+NFKC is defined on *strings*, and applying it one character at a time is not
+the same function. ``ﾀ`` + ``ﾞ`` is ``ダ`` to NFKC and is ``タ`` + U+3099 to a
+per-character loop -- a base kana followed by a *combining* mark, which is not
+in ``[ァ-ヶー]`` and therefore not in any rule this library has.
+
+That was the implementation until 0.32, and it leaked. Half-width katakana is
+how Japanese names arrive from a bank statement, a legacy database export or a
+fixed-width CSV, and **all 28** voiced and semi-voiced pairs were affected:
+
+    ﾔﾏﾀﾞさん        nothing detected at all
+    ﾀﾞｲｽｹさん       ``ﾀﾞ`` left in the text, the rest replaced
+    氏名: ﾔﾏﾀﾞ      ``氏名: <PERSON_001>ﾞ`` -- the mark stranded outside the token
+    ダイスケ / ﾀﾞｲｽｹ  two placeholders for one person, though ``normalize_value``
+                    says they are one identity
+
+So the text is normalized in **groups**: one character, plus every following
+character whose own normalized form begins with a combining mark. The offset
+map stays exact -- ``ﾀﾞ`` is a clean two-original-characters to one-normalized
+group, so a span covering it maps back to both. The old docstring said merging
+"would make a character-level offset map ambiguous"; it does not, and the map
+below is what says so.
 """
 
 from __future__ import annotations
@@ -47,15 +64,28 @@ class NormalizedText:
         chunks: list[str] = []
         starts: list[int] = []
         ends: list[int] = []
-        for index, char in enumerate(original):
-            folded = unicodedata.normalize("NFKC", char)
+        index = 0
+        length = len(original)
+        while index < length:
+            # A group is one character plus every following character that
+            # normalizes to something beginning with a combining mark. That is
+            # what makes `ﾀ` + `ﾞ` fold to `ダ` rather than to a base plus a
+            # mark nothing matches.
+            stop = index + 1
+            while stop < length and _combines_leftwards(original[stop]):
+                stop += 1
+            folded = unicodedata.normalize("NFKC", original[index:stop])
             if not folded:
-                # NFKC can delete a character (e.g. some format controls).
-                # Keep the original so offsets stay total.
-                folded = char
+                # Defensive. No lone code point folds to nothing -- checked
+                # across all 1,114,112 of them -- so a group cannot either
+                # without every character in it doing so. Keeping the original
+                # is what stops an empty fold from dropping the offsets for
+                # those characters.
+                folded = original[index:stop]
             chunks.append(folded)
             starts.extend([index] * len(folded))
-            ends.extend([index + 1] * len(folded))
+            ends.extend([stop] * len(folded))
+            index = stop
         return cls(
             original=original,
             text="".join(chunks),
@@ -71,6 +101,18 @@ class NormalizedText:
 
     def __len__(self) -> int:
         return len(self.text)
+
+
+def _combines_leftwards(char: str) -> bool:
+    """Whether ``char`` attaches to the character before it under NFKC.
+
+    Asked of the **normalized** form, not the raw one. U+FF9E, the half-width
+    voiced mark, has combining class 0 itself and folds to U+3099, which has
+    class 8 -- so a test on the raw character says no and is wrong for the
+    exact case this exists for.
+    """
+    folded = unicodedata.normalize("NFKC", char)
+    return bool(folded) and unicodedata.combining(folded[0]) != 0
 
 
 def normalize_value(value: str) -> str:
