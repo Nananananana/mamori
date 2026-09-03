@@ -530,6 +530,22 @@ def _cmd_config(args: argparse.Namespace) -> int:
     print(f"  co-occurrence                {'on' if settings.co_occurrence else 'off'}")
     print(f"  co-occurrence min confidence {settings.co_occurrence_min_confidence}")
     print(f"  mask token                   {settings.mask_token}")
+    print(f"  below min confidence         {settings.uncertain}")
+    print(f"  placeholder style            {settings.placeholder_style}")
+    surrogates = settings.surrogates
+    shown = (
+        ("all" if surrogates else "off")
+        if isinstance(surrogates, bool)
+        else ", ".join(surrogates) or "off"
+    )
+    print(f"  surrogates                   {shown}")
+    if settings.corrections:
+        where = (
+            settings.corrections
+            if isinstance(settings.corrections, str)
+            else f"{len(settings.corrections)} inline"
+        )
+        print(f"  corrections                  {where}")
     if settings.llm is not None and settings.llm.model:
         model = f"{settings.llm.model} at {settings.llm.base_url}"
     else:
@@ -560,6 +576,21 @@ def _settings_as_json(settings: MamoriConfig) -> dict[str, object]:
         "co_occurrence_min_confidence": settings.co_occurrence_min_confidence,
         "mask_token": settings.mask_token,
         "llm": settings.llm.as_mapping() if settings.llm is not None else None,
+        # Four settings `mamori config --json` never showed. A view of the
+        # effective settings that omits `uncertain` is one that cannot tell an
+        # operator whether the refusal they configured is in force.
+        "uncertain": settings.uncertain,
+        "placeholder_style": settings.placeholder_style,
+        "surrogates": (
+            settings.surrogates
+            if isinstance(settings.surrogates, bool)
+            else list(settings.surrogates)
+        ),
+        "corrections": (
+            settings.corrections
+            if isinstance(settings.corrections, str)
+            else [dict(entry) for entry in settings.corrections]
+        ),
     }
 
 

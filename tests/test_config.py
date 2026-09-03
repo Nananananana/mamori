@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
 from mamori import MamoriConfig, PrivacySession, load_config_file
 from mamori.domain.entity_types import Category
-from mamori.domain.policy import Action
+from mamori.domain.placeholder import PlaceholderStyle
+from mamori.domain.policy import Action, Uncertain
 from mamori.domain.stance import Stance
-from mamori.errors import ConfigurationError
+from mamori.errors import ConfigurationError, PolicyViolationError
 
 
 class TestDefaults:
@@ -287,3 +289,98 @@ class TestTheEnvironmentPrefixIsReserved:
     def test_a_key_variable_outside_the_prefix_is_left_alone(self) -> None:
         config = MamoriConfig.from_env({"LLM_API_KEY": "secret", "MAMORI_LOCALES": "ja"})
         assert config.locales == ("ja",)
+
+
+class TestEveryFieldSurvivesTheMapping:
+    """A field `from_mapping` accepts as known and then drops is worse than an
+    unknown key.
+
+    An unknown key is refused, loudly, because *a typo in a privacy setting
+    that silently does nothing is the worst possible outcome*. Two fields
+    managed the same outcome from the other side: `uncertain` and
+    `placeholder_style` were dataclass fields since 0.19 and 0.20, the known-key
+    check accepted them, and nothing read them. `{"uncertain": "refuse"}` in a
+    file, or `MAMORI_UNCERTAIN=refuse` in the environment, gave `discard` --
+    the safety setting the deployment believed it had turned on, and had not.
+
+    So this makes a field without a parser a failure. Every dataclass field
+    needs an entry below giving a value that differs from the default, and the
+    round trip has to produce that value. Adding a field without adding a line
+    here fails at the `KeyError`, which is the whole point: the decision
+    cannot be skipped.
+    """
+
+    #: A non-default value for every field, in the shape a config file gives.
+    SAMPLES: ClassVar[dict[str, object]] = {
+        "locales": ["ja"],
+        "stance": "balanced",
+        "rules": {"EMAIL": "allow"},
+        "category_defaults": {"pii": "mask"},
+        "default_action": "anonymize",
+        "min_confidence": 0.5,
+        "co_occurrence": False,
+        "co_occurrence_min_confidence": 0.5,
+        "mask_token": "[GONE]",
+        "prompts": {"detection": {"disable": ["any.width"]}},
+        "llm": {"model": "qwen2.5:7b"},
+        "corrections": [{"value": "Acme", "verdict": "never", "type": "COMPANY_NAME"}],
+        "surrogates": ["PERSON"],
+        "placeholder_style": "square",
+        "uncertain": "refuse",
+    }
+
+    def test_the_table_covers_every_field(self) -> None:
+        fields = set(MamoriConfig.__dataclass_fields__)
+        assert set(self.SAMPLES) == fields, (
+            f"not in the table: {sorted(fields - set(self.SAMPLES))}; "
+            f"not a field any more: {sorted(set(self.SAMPLES) - fields)}. A field "
+            "that is not in this table has no proof that from_mapping reads it."
+        )
+
+    @pytest.mark.parametrize("name", sorted(SAMPLES))
+    def test_a_field_set_through_the_mapping_is_not_the_default(self, name: str) -> None:
+        default = getattr(MamoriConfig(), name)
+        loaded = getattr(MamoriConfig.from_mapping({name: self.SAMPLES[name]}), name)
+        assert loaded != default, (
+            f"{name}: from_mapping accepted {self.SAMPLES[name]!r} as a known key and "
+            f"produced the default {default!r}. The key is read as valid and does "
+            "nothing, which is the failure this class exists for."
+        )
+
+
+class TestTheTwoFieldsThatWereDropped:
+    def test_uncertain_from_a_mapping(self) -> None:
+        assert MamoriConfig.from_mapping({"uncertain": "refuse"}).uncertain == "refuse"
+
+    def test_uncertain_from_the_environment(self) -> None:
+        """The deployment that wants to be stopped sets this in an environment
+        variable, and until 0.31 it was ignored there."""
+        assert MamoriConfig.from_env({"MAMORI_UNCERTAIN": "refuse"}).uncertainty() is (
+            Uncertain.REFUSE
+        )
+
+    def test_placeholder_style_from_a_mapping(self) -> None:
+        assert MamoriConfig.from_mapping({"placeholder_style": "square"}).style() is (
+            PlaceholderStyle.SQUARE
+        )
+
+    def test_placeholder_style_from_the_environment(self) -> None:
+        assert MamoriConfig.from_env({"MAMORI_PLACEHOLDER_STYLE": "curly"}).style() is (
+            PlaceholderStyle.CURLY
+        )
+
+    def test_a_refusal_reaches_the_session_it_configures(self) -> None:
+        """The setting is only real if the session built from it refuses."""
+        config = MamoriConfig.from_mapping({"min_confidence": 0.95, "uncertain": "refuse"})
+        with pytest.raises(PolicyViolationError, match="refuses"):
+            config.session().protect("I spoke to Jane Doe yesterday about 090-1234-5678")
+
+    @pytest.mark.parametrize("key", ["uncertain", "placeholder_style"])
+    def test_a_bad_name_is_refused_when_the_file_is_read(self, key: str) -> None:
+        """Not on the first document. `style()` and `uncertainty()` already
+        refuse at use time; a config file should fail when it is loaded."""
+        with pytest.raises(ConfigurationError, match=f"unknown {key}"):
+            MamoriConfig.from_mapping({key: "sideways"})
+
+    def test_the_names_are_case_insensitive_like_every_other_choice(self) -> None:
+        assert MamoriConfig.from_mapping({"uncertain": "REFUSE"}).uncertain == "refuse"

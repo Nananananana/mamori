@@ -30,6 +30,7 @@ import json
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -384,6 +385,21 @@ class MamoriConfig:
             kwargs["corrections"] = _as_corrections(values["corrections"])
         if "surrogates" in values:
             kwargs["surrogates"] = _as_surrogates(values["surrogates"])
+        # These two were dataclass fields since 0.19 and 0.20, and were not
+        # read here until 0.31. The key check above accepted them as known and
+        # this method then dropped them: `{"uncertain": "refuse"}` in a file,
+        # or `MAMORI_UNCERTAIN=refuse`, gave "discard" and said nothing. That
+        # is precisely the outcome the paragraph above calls the worst one --
+        # a safety setting the user believes they tightened and did not --
+        # arrived at from the other side, by a *correct* key. The structural
+        # test in `tests/test_config.py` now makes a field without a parser a
+        # failure, so the next one cannot get this far.
+        if "placeholder_style" in values:
+            kwargs["placeholder_style"] = _as_choice(
+                values["placeholder_style"], "placeholder_style", PlaceholderStyle
+            )
+        if "uncertain" in values:
+            kwargs["uncertain"] = _as_choice(values["uncertain"], "uncertain", Uncertain)
         return cls(**kwargs)  # type: ignore[arg-type]
 
     @classmethod
@@ -539,6 +555,21 @@ def _as_prompts(value: object) -> dict[str, object]:
     overlays = {str(key): item for key, item in value.items()}
     _Library.from_mapping(overlays)
     return overlays
+
+
+def _as_choice(value: object, where: str, choices: type[Enum]) -> str:
+    """One of an enum's values, as the string the dataclass field stores.
+
+    Validated here rather than left to :meth:`MamoriConfig.style` and
+    :meth:`MamoriConfig.uncertainty`, which check the same thing at use time:
+    a bad name in a config file should be refused when the file is read, not
+    on the first document, and the error should say where it came from.
+    """
+    text = str(value).strip().lower()
+    known = sorted(choice.value for choice in choices)
+    if text not in known:
+        raise ConfigurationError(f"unknown {where} {value!r}; allowed: {', '.join(known)}")
+    return text
 
 
 def _as_stance(value: object) -> Stance:
