@@ -14,6 +14,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from mamori import PrivacySession
+from mamori.infrastructure.storage import InMemoryMappingStore
 
 SETTINGS = settings(
     max_examples=250,
@@ -216,3 +217,99 @@ class TestStreamingMatchesBatch:
         with PrivacySession() as session:
             response = "Nothing was ever protected here <PERSON_001>."
             assert stream(session, chunk_every(response, 4)) == session.restore(response).text
+
+
+class TestTheStreamAndTheBatchAgreeOnEveryCut:
+    """Three ways a placeholder reached the reader whole.
+
+    All three were found by a differential fuzz -- the same reply through
+    `restore` and through `feed` at every possible cut -- and none of them by a
+    hand-written test, because a hand-written test cuts between words.
+    """
+
+    def chunkings(self, session: PrivacySession, reply: str) -> set[str]:
+        out = set()
+        for size in range(1, len(reply) + 1):
+            restorer = session.stream_restore()
+            pieces = [restorer.feed(reply[i : i + size]) for i in range(0, len(reply), size)]
+            pieces.append(restorer.finish())
+            out.add("".join(pieces))
+        return out
+
+    @pytest.mark.parametrize("separator", ["\n", "\r", "\r\n", "_", " _ ", "-"])
+    def test_a_separator_the_batch_scanner_accepts_is_holdable(self, separator: str) -> None:
+        r"""`_PARTIAL_BODY` used `[^\S
+
+        ]`, which excludes a newline, while
+                the batch scanner's class is `[\s_\-]`, which includes one. So
+                `<PERSON\n001>` was a placeholder to `restore` and not holdable here:
+                restored when the reply arrived whole, emitted verbatim when it arrived
+                in pieces, and at some cuts worse -- the `<` alone, then the value."""
+        with PrivacySession() as session:
+            session.protect("Alex Rivera signed it.")
+            reply = f"Dear <PERSON{separator}001>, hello."
+            assert self.chunkings(session, reply) == {session.restore(reply).text}
+
+    def test_a_placeholder_longer_than_the_old_window(self) -> None:
+        """`_MAX_HOLD` was 96 -- the run written without spaces. The batch
+        scanner accepts `<COMPANY _ NAME _ 001>`, where a 62-character type
+        name is 110 characters long, so the window began after the opening
+        bracket and the whole token was emitted verbatim."""
+        from mamori.domain.mapping import Mapping
+        from mamori.domain.placeholder import Placeholder
+
+        long_type = "_".join(["AB"] * 21)
+        store = InMemoryMappingStore()
+        with PrivacySession(store=store) as session:
+            store.put(
+                Mapping(
+                    scope=session.scope,
+                    placeholder=Placeholder(long_type, 1),
+                    entity_type_name=long_type,
+                    original_value="Alex Rivera",
+                    identity_key=f"{long_type}:alex",
+                )
+            )
+            reply = "<" + long_type.replace("_", " _ ") + " _ 001>"
+            assert len(reply) > 96
+            assert self.chunkings(session, reply) == {session.restore(reply).text}
+
+    def test_the_hold_window_still_covers_the_longest_legal_run(self) -> None:
+        """The constant and the batch grammar have to move together. Widening
+        one without the other is what produced the case above."""
+        from mamori.application.streaming import StreamingRestorer
+
+        longest = "<" + " _ ".join(["A"] * 63) + " _ 000001>"
+        assert StreamingRestorer._hold_is_bounded(longest), len(longest)
+
+
+class TestAModelsOwnWordsMustNotCrashRestoration:
+    """A reply is untrusted input, and an ordinary identifier in one raised."""
+
+    IDENTIFIER = "MAXIMUM_NUMBER_OF_CONCURRENT_BACKGROUND_REPLICATION_WORKERS_LIMIT_2"
+
+    def test_a_long_identifier_comes_back_unchanged(self) -> None:
+        """0.31 taught `Placeholder` to refuse a type name outside its grammar,
+        and `scan_placeholders` was handing it untrusted text -- so a 66-
+        character constant in a model's answer raised `ValueError` out of
+        `restore`. The guard that would have discarded it harmlessly sits two
+        lines below the throw."""
+        with PrivacySession() as session:
+            session.protect("Contact Alex Rivera")
+            reply = f"See {self.IDENTIFIER} in the config."
+            assert session.restore(reply).text == reply
+
+    def test_the_streaming_path_survives_it_too(self) -> None:
+        with PrivacySession() as session:
+            session.protect("Contact Alex Rivera")
+            reply = f"See {self.IDENTIFIER} in the config."
+            restorer = session.stream_restore()
+            assert restorer.feed(reply) + restorer.finish() == reply
+
+    def test_a_type_name_at_the_grammar_limit_still_resolves(self) -> None:
+        """63 characters is legal and 64 is not. The fix must not have made the
+        legal one unrecognisable."""
+        from mamori.domain.placeholder import Placeholder
+
+        assert Placeholder.parse("<" + "A" * 63 + "_001>") is not None
+        assert Placeholder.parse("<" + "A" * 64 + "_001>") is None

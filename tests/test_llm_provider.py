@@ -593,7 +593,7 @@ class TestBatching:
 
     def test_a_long_document_goes_in_one_batch(self) -> None:
         provider = self.Batching()
-        LLMDetectionPass(provider, max_input_characters=100).run(DetectionContext(text="x" * 1000))
+        LLMDetectionPass(provider, max_input_characters=200).run(DetectionContext(text="x" * 1000))
         assert len(provider.batches) == 1
         assert provider.batches[0] > 1
         assert provider.single_calls == 0
@@ -613,11 +613,11 @@ class TestBatching:
         parser would reject most of that, and 'most' is not a guarantee.
         """
         provider = self.Miscounting()
-        pass_ = LLMDetectionPass(provider, max_input_characters=100, require_model=True)
+        pass_ = LLMDetectionPass(provider, max_input_characters=200, require_model=True)
         with pytest.raises(DetectionError):
             pass_.run(DetectionContext(text="x" * 1000))
 
     def test_a_miscounted_batch_degrades_rather_than_stopping_the_request(self) -> None:
         provider = self.Miscounting()
-        pass_ = LLMDetectionPass(provider, max_input_characters=100)
+        pass_ = LLMDetectionPass(provider, max_input_characters=200)
         assert pass_.run(DetectionContext(text="x" * 1000)) == []

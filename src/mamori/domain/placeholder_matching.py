@@ -108,7 +108,16 @@ def scan_placeholders(text: str, known: AbstractSet[Placeholder]) -> list[Placeh
         index = int(match.group("index"))
         if index < 1:
             continue
-        candidate = Placeholder(type_name, index)
+        # Built through `parse`, which returns `None` instead of raising.
+        # Constructing one directly meant an ordinary long identifier in a
+        # model's reply -- `MAXIMUM_NUMBER_OF_..._LIMIT_2`, 66 characters --
+        # raised out of `restore` and `feed`, because 0.31 taught `Placeholder`
+        # to refuse a type name outside its grammar and this line hands it
+        # untrusted text. The precision guard two lines down would have
+        # discarded it harmlessly; it never got the chance.
+        candidate = Placeholder.parse(f"<{type_name}_{index:03d}>")
+        if candidate is None:
+            continue
         is_known = candidate in known
 
         # Precision guard: an unbracketed run is only treated as a placeholder

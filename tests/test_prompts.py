@@ -596,7 +596,7 @@ class TestLLMDetectionPass:
         length threshold on it.
         """
         provider = ScriptedProvider("{}")
-        pass_ = LLMDetectionPass(provider, max_input_characters=100)
+        pass_ = LLMDetectionPass(provider, max_input_characters=200)
         pass_.run(DetectionContext(text="x" * 1000))
         assert len(provider.requests) > 1
         covered = "".join(r.user.split(chr(10), 1)[1] for r in provider.requests)

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Window", "windows"]
+__all__ = ["DEFAULT_OVERLAP", "LONGEST_ENTITY", "Window", "longest_whole", "windows"]
 
 #: Characters of overlap between neighbouring windows. Comfortably longer than
 #: any single entity this library detects -- a database URL with credentials in
@@ -77,8 +77,21 @@ def windows(text: str, size: int, overlap: int = DEFAULT_OVERLAP) -> tuple[Windo
         text: The document, in the coordinates the caller will use.
         size: The most any one window may contain.
         overlap: How much of the previous window each window repeats. Clamped
-            below ``size`` -- an overlap at least as large as the window would
-            never advance, and the loop would not terminate.
+            to ``size // 2`` -- an overlap at least as large as the window
+            would never advance, and the loop would not terminate.
+
+    **The guarantee is `min(overlap, size // 2)`, not `overlap`.** Every
+    substring shorter than that is whole in some window; every substring longer
+    than it can fall in the gap and be seen by nothing. The clamp is what
+    governs, and it was invisible: `tests/test_windowing.py` asserted
+    `DEFAULT_OVERLAP > len(longest_entity) * 2` and called the guarantee
+    proven, while a caller passing `max_input_characters=100` -- a value this
+    repository's own tests use -- got an effective overlap of 50 and lost a
+    52-character database URL at offset 49 to the gap between two windows.
+    Measured: 10 losing positions at `size=100`, 210 at `size=60`.
+
+    So :func:`longest_whole` is the honest question, and the LLM settings
+    refuse a `max_input_characters` too small to carry a credential whole.
 
     Raises:
         ValueError: ``size`` is not positive, or ``overlap`` is negative.
@@ -106,6 +119,31 @@ def windows(text: str, size: int, overlap: int = DEFAULT_OVERLAP) -> tuple[Windo
         result.append(Window(start, text[start:cut]))
         start = max(cut - overlap, start + 1)
     return tuple(result)
+
+
+#: The longest single value the bundled rules can match, and therefore the
+#: shortest run a window has to carry whole.
+#:
+#: A database URL with credentials in it --
+#: ``postgres://appuser:s3cret@db.example.com:5432/orders`` -- is the longest,
+#: and `tests/test_windowing.py` measures the real figure against this so a new
+#: rule cannot quietly outgrow it. It lives here rather than beside the model
+#: settings because it is a fact about the rules, and because the layering will
+#: not let an adapter reach the settings to read it.
+LONGEST_ENTITY = 64
+
+
+def longest_whole(size: int, overlap: int = DEFAULT_OVERLAP) -> int:
+    """The longest run these settings guarantee to hand a detector intact.
+
+    A detector only ever sees one window. A value longer than this can straddle
+    the join, appear in full in no window, and be found by nothing -- silently,
+    which is the failure mode the overlap exists to prevent and the clamp
+    quietly reintroduced.
+    """
+    if size <= 0 or overlap < 0:
+        raise ValueError("size must be positive and overlap may not be negative")
+    return min(overlap, size // 2)
 
 
 def _boundary_before(text: str, end: int, seek: int) -> int:

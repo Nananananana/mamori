@@ -34,7 +34,7 @@ from ...domain.confidence import Confidence
 from ...domain.sensitive_entity import SensitiveEntity
 from ...domain.span import Span
 from ...domain.windowing import Window, windows
-from ...errors import DetectionError, ProviderError
+from ...errors import ConfigurationError, DetectionError, ProviderError
 from ...ports.detection_pass import DetectionContext
 from ...ports.llm import BatchLLMProvider, LLMProvider, LLMRequest, LLMResponse
 from ...prompts.library import DETECTION_PROMPT_ID, PromptLibrary, default_library
@@ -85,6 +85,20 @@ class LLMDetectionPass:
         self._locales = tuple(locales) if locales is not None else None
         self._confidence = confidence
         self._require_model = require_model
+        # The same floor `LLMSettings` applies, here as well because a pass can
+        # be built directly and this is where the windowing happens. A window
+        # too small to carry a value whole hands every detector half of one and
+        # finds it in no window at all -- and the overlap that covers a join is
+        # clamped to half the window, so the window is what decides.
+        from ...domain.windowing import LONGEST_ENTITY, longest_whole
+
+        whole = longest_whole(max_input_characters)
+        if whole < LONGEST_ENTITY:
+            raise ConfigurationError(
+                f"max_input_characters={max_input_characters} guarantees only {whole} "
+                f"characters reach a detector whole, and a credential can be "
+                f"{LONGEST_ENTITY}. Use at least {LONGEST_ENTITY * 2}."
+            )
         self._max_input = max_input_characters
         self._name = name
         self._last: ParseOutcome | None = None

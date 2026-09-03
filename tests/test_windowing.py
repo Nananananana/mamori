@@ -13,7 +13,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from mamori.domain.windowing import DEFAULT_OVERLAP, Window, windows
+from mamori.domain.windowing import DEFAULT_OVERLAP, Window, longest_whole, windows
 
 
 class TestTheEasyCase:
@@ -157,3 +157,90 @@ class TestBadArguments:
         """A database URL with credentials in it is the longest, by a distance."""
         longest = "postgres://appuser:s3cret@db.example.com:5432/orders"
         assert DEFAULT_OVERLAP > len(longest) * 2
+
+
+class TestTheGuaranteeIsTheClampNotTheConstant:
+    """`DEFAULT_OVERLAP` is 400 and the guarantee was never 400.
+
+    `windows` clamps the overlap to `size // 2`, because an overlap as large as
+    the window would never advance. That clamp is what governs, and it was
+    invisible: the test above asserts `DEFAULT_OVERLAP > len(longest) * 2` and
+    calls the guarantee proven, while a caller passing a smaller window got a
+    smaller overlap and lost whole entities to the join.
+
+    Measured with a 52-character database URL, walking its offset:
+
+        size 8000   0 losing positions
+        size  200   0
+        size  100   8      <- a value in no window at all
+        size   60  274
+    """
+
+    LONGEST = "postgres://appuser:s3cret@db.example.com:5432/orders"
+
+    def losing_positions(self, size: int, span: int = 400) -> list[int]:
+        return [
+            offset
+            for offset in range(span)
+            if not any(
+                self.LONGEST in window.text
+                for window in windows("x" * offset + self.LONGEST + "y" * span, size)
+            )
+        ]
+
+    def test_the_default_window_loses_nothing(self) -> None:
+        assert self.losing_positions(8000) == []
+
+    def test_a_small_window_loses_entities(self) -> None:
+        """Not a regression -- the property being made visible. `windows` is a
+        domain function and may be called with any size; what changed is that
+        the settings refuse to configure one."""
+        assert self.losing_positions(100)
+
+    def test_longest_whole_predicts_it_exactly(self) -> None:
+        """The honest question, answerable before a document is cut."""
+        for size in (60, 100, 200, 8000):
+            guaranteed = longest_whole(size)
+            lost = self.losing_positions(size)
+            assert bool(lost) == (guaranteed < len(self.LONGEST)), (size, guaranteed, len(lost))
+
+    def test_it_is_the_clamp_and_not_the_overlap(self) -> None:
+        assert longest_whole(100, overlap=400) == 50
+        assert longest_whole(8000, overlap=400) == 400
+
+    def test_the_longest_bundled_entity_still_fits_the_floor(self) -> None:
+        """The floor `LLMSettings` enforces is a number, and this is what keeps
+        it honest against the rules that actually ship: a new rule matching
+        something longer must move the floor with it."""
+        from mamori.domain.windowing import LONGEST_ENTITY
+
+        assert len(self.LONGEST) <= LONGEST_ENTITY
+
+
+class TestSettingsRefuseAWindowThatCannotCarryAValue:
+    def test_a_window_too_small_is_refused(self) -> None:
+        from mamori.errors import ConfigurationError
+        from mamori.llm_settings import LLMSettings
+
+        with pytest.raises(ConfigurationError, match="whole"):
+            LLMSettings(model="m", max_input_characters=100)
+
+    def test_the_smallest_safe_window_is_accepted(self) -> None:
+        from mamori.domain.windowing import LONGEST_ENTITY
+        from mamori.llm_settings import LLMSettings
+
+        assert LLMSettings(model="m", max_input_characters=LONGEST_ENTITY * 2)
+
+    def test_the_pass_refuses_it_too(self) -> None:
+        """A pass can be built directly, and it is where the windowing happens."""
+        from mamori.errors import ConfigurationError
+        from mamori.infrastructure.detectors.llm_pass import LLMDetectionPass
+
+        class Silent:
+            name = "silent"
+
+            def complete(self, request: object) -> object:  # pragma: no cover
+                raise AssertionError("not reached")
+
+        with pytest.raises(ConfigurationError, match="whole"):
+            LLMDetectionPass(Silent(), max_input_characters=100)  # type: ignore[arg-type]

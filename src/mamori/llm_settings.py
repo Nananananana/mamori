@@ -91,6 +91,25 @@ class LLMSettings:
             raise ConfigurationError(f"llm.retries must be >= 0, got {self.retries}")
         if self.max_input_characters < 1:
             raise ConfigurationError("llm.max_input_characters must be positive")
+        # A window that cannot carry the longest thing the rules look for hands
+        # every detector a value cut in half, and finds it in no window at all.
+        # The overlap is what covers a join, and it is clamped to half the
+        # window -- so the window, not the overlap constant, is what decides.
+        # `max_input_characters=100` was accepted, and lost a 52-character
+        # database URL at offset 49 to the gap between two windows: measured,
+        # 10 losing positions at 100 and 210 at 60. This is where that stops
+        # being possible to configure by accident.
+        from .domain.windowing import LONGEST_ENTITY, longest_whole
+
+        whole = longest_whole(self.max_input_characters)
+        if whole < LONGEST_ENTITY:
+            raise ConfigurationError(
+                f"llm.max_input_characters={self.max_input_characters} guarantees only "
+                f"{whole} characters are handed to a detector whole, and a credential "
+                f"can be {LONGEST_ENTITY}. A value that straddles a window join is "
+                f"found by nothing and reported by nothing. Use at least "
+                f"{LONGEST_ENTITY * 2}."
+            )
 
     def endpoint(self) -> LLMEndpoint:
         """The endpoint these settings describe."""

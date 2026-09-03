@@ -37,11 +37,23 @@ from .restoration import surrogate_claims
 
 __all__ = ["StreamSummary", "StreamingRestorer"]
 
-#: The longest run that could still become a placeholder: a 63-character type
-#: name, a separator, six digits, brackets and a little whitespace. Nothing
-#: further back in the buffer can be changed by more input, so the scan for a
-#: partial match never has to look past this.
-_MAX_HOLD = 96
+#: How far back a partial placeholder can reach, derived rather than guessed.
+#:
+#: It was 96, described as *"a 63-character type name, a separator, six digits,
+#: brackets and a little whitespace"* -- which is that run written **without**
+#: spaces. The batch scanner was widened in 0.14 to accept
+#: ``<COMPANY _ NAME _ 001>``, where each separator costs three characters
+#: instead of one, so a legal 62-character type name written that way is 110
+#: characters long. Past 96 the window began after the opening bracket, the
+#: bracket was never a hold candidate, and the whole placeholder was emitted
+#: verbatim. Measured, fed one character at a time: a 110-character placeholder
+#: came out untouched.
+#:
+#: The bound: 63 type-name characters, each able to carry `` _ `` after it,
+#: plus six digits, two brackets and their inner spaces. The arithmetic is
+#: written out so that whoever widens the batch scanner next can see what has
+#: to move with it.
+_MAX_HOLD = 63 * 4 + 6 + 8
 
 #: A type name being spelled out, with its separator and index part-way in.
 #:
@@ -53,11 +65,16 @@ _MAX_HOLD = 96
 #: **this was not widened with it**. The corpus that chunks at arbitrary
 #: boundaries is what showed it; no hand-written test would have, because a
 #: hand-written test cuts between words.
-_PARTIAL_BODY = (
-    r"[A-Za-z][A-Za-z0-9]*"
-    r"(?:[^\S\r\n]*[_\-][^\S\r\n]*[A-Za-z0-9]*)*"
-    r"[^\S\r\n]*\d*[^\S\r\n]*"
-)
+#:
+#: The whitespace class is ``\s`` and not ``[^\S\r\n]``. The batch scanner's
+#: separator class is ``[\s_\-]``, which matches a newline, so ``<PERSON\n001>``
+#: **is** a placeholder to `restore` and was not holdable here: a model that
+#: broke the line inside a token had it restored when the reply arrived whole
+#: and emitted verbatim when it arrived in pieces. Worse at some chunk sizes --
+#: the ``<`` released alone, then the value, giving ``<Alex Rivera>``. Exactly
+#: the defect the paragraph above records for ``_``, still open for ``\n``, and
+#: found the same way: a differential fuzz over every cut.
+_PARTIAL_BODY = r"[A-Za-z][A-Za-z0-9]*(?:\s*[_\-]\s*[A-Za-z0-9]*)*\s*\d*\s*"
 
 #: Matches a run that reaches the end of the buffer and could still grow into a
 #: placeholder. Two shapes: an opening bracket with anything or nothing after it
@@ -162,6 +179,18 @@ class StreamingRestorer:
             if _PARTIAL_RE.fullmatch(candidate):
                 return index
         return len(buffer)
+
+    @staticmethod
+    def _hold_is_bounded(buffer: str) -> bool:
+        """Whether the hold window still reaches the start of ``buffer``.
+
+        Not used in the normal path. `tests/test_streaming.py` calls it with
+        the longest run the batch scanner accepts, so widening one without the
+        other turns the build red instead of producing a stream that silently
+        emits a placeholder verbatim -- which is what happened when 0.14
+        widened the scanner and left this constant where it was.
+        """
+        return len(buffer) <= _MAX_HOLD
 
     def _not_inside_a_surrogate(self, buffer: str, hold_at: int) -> int:
         """Pull a release point back out of a surrogate it would split.
