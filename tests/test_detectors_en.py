@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from mamori.domain.stance import Stance
 from mamori.infrastructure.detectors.locales.en import ssn_valid
 
 from .helpers import types_in, values_of
@@ -143,3 +144,75 @@ class TestUniversalRulesStillApply:
 
     def test_internal_url(self) -> None:
         assert "INTERNAL_URL" in en_types("see https://wiki.corp.local/page")
+
+
+class TestASalutationMustNotHideTheName:
+    """`Jane Doe.` was detected and `Dear Jane Doe.` was not.
+
+    Two decisions collided. The salutation-anchored rule requires a trailing
+    comma or newline, so it does not fire on `Dear Jane Doe.` -- and `Dear` is
+    in the wide rule's stoplist, so the wide rule matched the three-word run
+    `Dear Jane Doe`, the validator rejected it for containing `Dear`, and
+    `finditer` resumed *after* the rejected span. The name inside it was never
+    reconsidered.
+
+    **Adding the salutation made the name invisible**, which is backwards: an
+    anchor is supposed to raise confidence, and this one removed the detection
+    that would have happened without it. `Dear Jane Doe.` is the most ordinary
+    opening line English business mail has, and `Dear Jane Doe.` is the exact
+    string in this project's own README.
+
+    The fix is in the pattern rather than the validator, because a validator
+    cannot un-consume. A leading negative lookahead means the match never
+    starts on a stop word, so the scan advances one character and finds the
+    name. Measured on all four English corpora at both stances: every
+    published figure unchanged.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Dear Jane Doe.",
+            "Dear Jane Doe",
+            "Dear Jane Doe!",
+            "Dear Jane Doe?",
+            "Hi Jane Doe.",
+            "Hello Jane Doe.",
+            "Hey Jane Doe.",
+            "Thanks Jane Doe.",
+            "Dear Jane Doe. Thanks for the update.",
+        ],
+        ids=lambda t: t[:24],
+    )
+    def test_a_name_after_a_stoplist_word_is_still_found(self, text: str) -> None:
+        assert "PERSON" in types_in(text, "en", Stance.RECALL_FIRST)
+
+    def test_the_comma_form_still_works(self) -> None:
+        """It went through the anchored rule and still does."""
+        assert "PERSON" in types_in("Dear Jane Doe, thanks.", "en")
+
+    def test_the_name_itself_is_what_is_reported(self) -> None:
+        """Not `Dear Jane Doe` -- the salutation is context, and replacing it
+        would put `<PERSON_001>` where the word `Dear` was."""
+        assert values_of("Dear Jane Doe.", "PERSON", "en", Stance.RECALL_FIRST) == {"Jane Doe"}
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "The Quarterly Business Review is Monday",
+            "Social Security Number is required",
+            "Meeting Notes Draft",
+            "Next Steps Agenda",
+        ],
+        ids=lambda t: t[:24],
+    )
+    def test_the_stoplist_still_costs_the_false_positives_it_bought(self, text: str) -> None:
+        """The lookahead stops a match *beginning* on a stop word. The
+        validator still rejects one that contains a stop word later, which is
+        what these rely on."""
+        assert "PERSON" not in types_in(text, "en", Stance.RECALL_FIRST)
+
+    def test_a_legal_suffix_is_still_a_company_not_a_person(self) -> None:
+        found = types_in("Please contact Umbrella Ltd", "en", Stance.RECALL_FIRST)
+        assert "COMPANY_NAME" in found
+        assert "PERSON" not in found

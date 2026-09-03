@@ -351,11 +351,22 @@ class TestItFailsClosedOnBrokenJson:
         }
 
         class BreaksJson:
+            # The `Detector` protocol requires a name, and this fake did not
+            # have one. It went unnoticed while the only path through it was
+            # `protect`, which never reached the error-wrapping branch that
+            # reads it; `session.inspect` does. A fake that does not satisfy
+            # the protocol it stands in for is exercising a path no real
+            # implementation takes -- which is the reason `mypy` covers the
+            # tests, and this class is untyped enough to have slipped past it.
+            name = "breaks-json"
+
             def detect(self, text: str) -> list[Any]:
                 from mamori.domain.entity_types import EMAIL as EMAIL_TYPE
                 from mamori.domain.sensitive_entity import SensitiveEntity
                 from mamori.domain.span import Span
 
+                if EMAIL not in text:
+                    return []
                 start = text.index(EMAIL) - 1  # eat the opening quote
                 return [
                     SensitiveEntity(
@@ -365,7 +376,9 @@ class TestItFailsClosedOnBrokenJson:
                     )
                 ]
 
-        with PrivacySession(detectors=[BreaksJson()]) as session:  # type: ignore[list-item]
+        # The ignore that used to be here is gone: with a `name`, the fake now
+        # satisfies the `Detector` protocol and mypy accepts it directly.
+        with PrivacySession(detectors=[BreaksJson()]) as session:
             with pytest.raises(MamoriError, match="valid JSON"):
                 protect_request(session, payload, add_guidance=False)
 

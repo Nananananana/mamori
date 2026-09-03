@@ -153,6 +153,43 @@ class ProtectionService:
 
         return self._apply(text, decided, scope, trace)
 
+    def inspect(self, text: str) -> tuple[str, ...]:
+        """The entity types in ``text`` this policy would act on.
+
+        Allocates nothing, stores nothing, raises nothing -- not even for a
+        credential, which :meth:`protect` refuses. It answers one question:
+        *is there anything here this configuration considers sensitive, and of
+        what kind*.
+
+        It exists because the proxy has to ask that about text it cannot
+        rewrite. A payload field this library does not know the shape of
+        cannot be protected in place without risking a request that no longer
+        parses -- so the proxy asks what is in it and refuses to forward when
+        the answer is not "nothing". Doing that through :meth:`protect` would
+        allocate placeholders for a request that is about to be refused, and
+        would raise on exactly the case that matters most.
+        """
+        if not text:
+            return ()
+        normalized = NormalizedText.of(text)
+        detections = list(self._run_detectors(normalized))
+        detections.extend(self._detect_placeholder_literals(text))
+        confident = [
+            entity
+            for entity in detections
+            if self._policy.accepts(entity.confidence.value)
+            and not self._corrections.excludes(entity)
+        ]
+        return tuple(
+            sorted(
+                {
+                    entity.entity_type.name
+                    for entity in resolve_overlaps(confident)
+                    if self._policy.action_for(entity.entity_type) is not Action.ALLOW
+                }
+            )
+        )
+
     # -- internals ---------------------------------------------------------
 
     def _run_detectors(self, normalized: NormalizedText) -> list[SensitiveEntity]:

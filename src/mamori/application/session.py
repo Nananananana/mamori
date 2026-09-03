@@ -141,6 +141,20 @@ class PrivacySession:
         """
         return self._protection.protect(text, self._scope)
 
+    def inspect(self, text: str) -> tuple[str, ...]:
+        """Which kinds of sensitive value are in ``text``, allocating nothing.
+
+        A question rather than a step: no placeholder is minted, no mapping is
+        stored, and a credential is reported rather than refused. Use it to
+        decide *about* a text -- whether to send it, whether to refuse, whether
+        to warn -- without that decision having already half-happened.
+
+            >>> with PrivacySession(locales=["en"]) as session:
+            ...     session.inspect("Mail jane.doe@example.com about it.")
+            ('EMAIL',)
+        """
+        return self._protection.inspect(text)
+
     def restore(self, text: str) -> RestorationResult:
         """Replace this session's placeholders in ``text`` with real values.
 

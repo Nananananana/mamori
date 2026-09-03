@@ -263,6 +263,28 @@ def _plausible_latin_name(value: str) -> bool:
     return words[-1] not in _PLACE_WORDS if words else False
 
 
+#: Refuses to *begin* a name on a stoplist word.
+#:
+#: The validator above rejects a match containing one, and a rejected match has
+#: already been consumed -- `finditer` resumes after it and never reconsiders
+#: the words inside. So `Dear Jane Doe.` matched as the three-word run
+#: `Dear Jane Doe`, was rejected for containing `Dear`, and took `Jane Doe`
+#: down with it. Measured: `Jane Doe.` was detected and `Dear Jane Doe.` was
+#: not, which is the wrong way round in the most ordinary sentence English
+#: business mail has -- **adding the salutation made the name invisible**.
+#:
+#: A lookahead fixes it where the validator cannot: the match never starts on
+#: the stop word, so the scan advances one character and finds the name. The
+#: validator stays for a stop word appearing *later* in a run, where consuming
+#: it costs nothing -- a single trailing word is not a name either way.
+#:
+#: Longest first so `Regards` is tried before `Re`; the trailing lookahead
+#: makes the order redundant and the explicit sort makes it readable.
+_NOT_NAME_START = (
+    r"(?!(?:" + "|".join(sorted(_NOT_NAME_WORDS, key=len, reverse=True)) + r")(?![A-Za-z]))"
+)
+
+
 WIDE_RULES: tuple[PatternRule, ...] = (
     # Two capitalised words. Also every product, city, department and sentence
     # opener -- which is exactly why the core rules are all anchored. Under a
@@ -270,7 +292,13 @@ WIDE_RULES: tuple[PatternRule, ...] = (
     # running prose and not; the stoplist buys back most of the precision.
     compile_rule(
         t.PERSON,
-        r"(?<![A-Za-z0-9.])" + _NAME + r"(?:" + _GAP + _NAME + r"){1,2}(?![A-Za-z0-9])",
+        r"(?<![A-Za-z0-9.])"
+        + _NOT_NAME_START
+        + _NAME
+        + r"(?:"
+        + _GAP
+        + _NAME
+        + r"){1,2}(?![A-Za-z0-9])",
         LOW,
         validator=_plausible_latin_name,
         tier=RuleTier.WIDE,

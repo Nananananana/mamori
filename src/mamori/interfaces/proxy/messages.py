@@ -52,6 +52,7 @@ __all__ = [
     "map_tool_arguments",
     "request_texts",
     "tool_argument_slots",
+    "unclaimed_texts",
     "with_texts",
 ]
 
@@ -82,6 +83,76 @@ def request_texts(payload: object) -> tuple[TextSlot, ...]:
     Order is stable and matches :func:`with_texts`, so the two compose.
     """
     return tuple(_walk_request(payload))
+
+
+def unclaimed_texts(payload: object) -> tuple[TextSlot, ...]:
+    """Every string in a request that :func:`request_texts` did **not** claim.
+
+    The walk above is an allow-list of the fields this module knows, and an
+    allow-list of somebody else's evolving API is a list that is out of date
+    between releases. The module docstring has always said an unrecognised
+    shape is *"left alone and reported"* -- and nothing reported anything, so
+    what actually happened was left alone and forwarded. Six shapes went
+    upstream verbatim, measured: `messages` as a string, `messages` as an
+    object, the legacy `functions` array, `prediction.content`, a content part
+    with no `type` key, and a JSON-schema `description`.
+
+    This is the reporting half. It walks the **whole** payload -- every string
+    value and every object key, at any depth -- and returns what no slot
+    covers, so a caller can decide. `exchange.protect_request` decides by
+    refusing when one of them carries something sensitive, which is the
+    fail-closed rule reaching the one place it was not applied.
+
+    Object keys are included because a key is a place a caller can write:
+    `{"metadata": {"Priya Raman": "..."}}` puts a name somewhere no rewrite
+    can reach, and silence about it would be the same defect one level down.
+    """
+    claimed = {slot.path for slot in request_texts(payload) if slot.path}
+    found: list[TextSlot] = []
+    for path, text, is_key in _every_string(payload):
+        if not text or (not is_key and path in claimed):
+            continue
+        # A key carries no path. Nothing can rewrite an object key without
+        # changing the shape of the request, so it is reported and never
+        # offered as a slot -- `with_texts` refuses a pathless slot, which is
+        # the same rule seen from the other side.
+        found.append(
+            TextSlot(
+                f"{_describe(path)} (key)" if is_key else _describe(path),
+                text,
+                () if is_key else path,
+            )
+        )
+    return tuple(found)
+
+
+def _every_string(node: object, path: Path = ()) -> Iterator[tuple[Path, str, bool]]:
+    """Every string in a parsed JSON tree: its path, and whether it is a key.
+
+    Keys and values are reported separately because they can be the same
+    string at what would otherwise be the same path. The first version of this
+    gave both `("metadata", "Priya Raman")`, so a name written as a key was
+    filtered out as already claimed by the walk of its own value -- the exact
+    silence this function exists to remove, reproduced inside it.
+    """
+    if isinstance(node, str):
+        yield path, node, False
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str):
+                yield (*path, key), key, True
+            yield from _every_string(value, (*path, str(key)))
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            yield from _every_string(item, (*path, index))
+
+
+def _describe(path: Path) -> str:
+    """A JSON path as a person reads it. Never contains the text."""
+    out = ""
+    for step in path:
+        out += f"[{step}]" if isinstance(step, int) else (f".{step}" if out else str(step))
+    return out or "(root)"
 
 
 def with_texts(payload: object, texts: Sequence[str]) -> dict[str, Any]:
@@ -137,7 +208,13 @@ def _walk_request(payload: object) -> Iterator[TextSlot]:
         return
     yield from _walk_messages(payload.get("messages"))
     yield from _walk_tools(payload.get("tools"))
+    # The pre-`tools` spelling of the same thing. Every OpenAI-compatible
+    # server still accepts it, and this module walked `tools[].function`
+    # *specifically* because a description carries an example address -- while
+    # its own predecessor went upstream untouched.
+    yield from _walk_functions(payload.get("functions"))
     yield from _walk_metadata(payload.get("metadata"))
+    yield from _walk_prediction(payload.get("prediction"))
 
     # The end-user identifier. OpenAI describes it as an opaque id and callers
     # routinely put an email address or a login in it, which is a value this
@@ -196,6 +273,57 @@ def _walk_tool_calls(calls: object, base: Path, role: str) -> Iterator[TextSlot]
                 arguments,
                 (*base, "tool_calls", call_index, "function", "arguments"),
             )
+
+
+def _walk_functions(functions: object) -> Iterator[TextSlot]:
+    """The pre-``tools`` spelling: ``functions[].description`` and its schema.
+
+    Written out rather than delegating to :func:`_walk_tools` because the paths
+    differ -- ``functions[0].description`` against
+    ``tools[0].function.description`` -- and a slot whose path is wrong writes
+    a protected string into the wrong place, which is worse than not walking
+    at all.
+    """
+    if not isinstance(functions, list):
+        return
+    for index, function in enumerate(functions):
+        if not isinstance(function, dict):
+            continue
+        description = function.get("description")
+        if isinstance(description, str) and description:
+            yield TextSlot(
+                f"functions[{index}].description",
+                description,
+                ("functions", index, "description"),
+            )
+        yield from _walk_descriptions(
+            function.get("parameters"),
+            ("functions", index, "parameters"),
+            f"functions[{index}].parameters",
+        )
+
+
+def _walk_prediction(prediction: object) -> Iterator[TextSlot]:
+    """Predicted Outputs: a draft the caller supplies to speed up a rewrite.
+
+    It is the caller's own document, which makes it exactly the text this
+    library exists to keep local -- and being a *prediction* it is usually the
+    full prior version of what is being edited.
+    """
+    if not isinstance(prediction, dict):
+        return
+    content = prediction.get("content")
+    if isinstance(content, str) and content:
+        yield TextSlot("prediction.content", content, ("prediction", "content"))
+    elif isinstance(content, list):
+        for index, part in enumerate(content):
+            text = _part_text(part)
+            if text is not None:
+                yield TextSlot(
+                    f"prediction.content[{index}].text",
+                    text,
+                    ("prediction", "content", index, "text"),
+                )
 
 
 def _walk_tools(tools: object) -> Iterator[TextSlot]:
@@ -262,8 +390,19 @@ def _walk_metadata(metadata: object) -> Iterator[TextSlot]:
 
 
 def _part_text(part: object) -> str | None:
+    """The words in one content part, or ``None``.
+
+    A part carrying ``text`` and **no** ``type`` counts. The field is optional
+    in several clients and omitting it is common; requiring it meant a part
+    written that way was forwarded verbatim. Erring towards reading a part as
+    text is the safe direction -- the cost is a protected string where none
+    was needed, and the cost of the other direction is the value going out.
+    """
     if not isinstance(part, dict):
         return None
+    if "type" not in part and isinstance(part.get("text"), str):
+        text = part["text"]
+        return text if text else None
     if str(part.get("type", "")) not in _TEXTUAL_PART_KINDS:
         return None
     text = part.get("text")

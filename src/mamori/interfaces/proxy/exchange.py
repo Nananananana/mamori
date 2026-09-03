@@ -40,6 +40,7 @@ from .messages import (
     map_choice_strings,
     map_tool_arguments,
     request_texts,
+    unclaimed_texts,
     with_texts,
 )
 
@@ -99,7 +100,17 @@ def protect_request(
             upstream. This is the fail-closed rule of ADR 0002 reaching the
             proxy: a blocked request is a visible error, and a forwarded
             credential is a silent one.
+        MamoriError: A field this module cannot rewrite carries something
+            sensitive. See :func:`_refuse_unwalked_text`.
     """
+    if not isinstance(payload, dict):
+        # A top-level array or string. `with_texts` refused this with a bare
+        # `ValueError`, which `do_POST` does not catch, so the client got a
+        # connection reset and a traceback went to stderr -- one unauthenticated
+        # line of JSON was enough. A MamoriError becomes a 400 in the shape the
+        # caller's OpenAI client already understands.
+        raise MamoriError("a chat completion request must be a JSON object; nothing was forwarded")
+    _refuse_unwalked_text(session, payload)
     slots = request_texts(payload)
     protected: list[str] = []
     counts: dict[str, int] = {}
@@ -127,6 +138,41 @@ def protect_request(
         guidance_added = True
 
     return rebuilt, ExchangeReport(slots=slots, replaced=counts, guidance_added=guidance_added)
+
+
+def _refuse_unwalked_text(session: PrivacySession, payload: object) -> None:
+    """Refuse a request whose unrecognised fields carry sensitive values.
+
+    The walk in :mod:`~mamori.interfaces.proxy.messages` is an allow-list of
+    somebody else's evolving API, so it is out of date by construction. The
+    server's own docstring has always said this proxy fails closed -- *"a
+    payload it cannot parse... none of them forward anything"* -- and until
+    0.32 an unrecognised **shape** was neither parsed nor refused: it was
+    forwarded verbatim, with a 200. Six shapes did, measured. Four of them are
+    walked now; this is what covers the seventh, whatever it turns out to be.
+
+    Why refuse rather than protect in place. A field whose meaning is unknown
+    cannot be rewritten safely: replacing an enum value or a stop sequence
+    turns a valid request into one the upstream rejects or, worse, answers
+    differently. Refusing is the only move that is right for a field nobody
+    has looked at yet.
+
+    The error names the JSON path and the kinds found. **Never the value** --
+    an error message crosses process boundaries and lands in logs, which is
+    the leak this whole library exists to prevent, arrived at through the
+    complaint about a leak.
+    """
+    for slot in unclaimed_texts(payload):
+        kinds = session.inspect(slot.text)
+        if not kinds:
+            continue
+        raise MamoriError(
+            f"{slot.where} carries {', '.join(kinds)} and this proxy does not know how "
+            "to rewrite that field, so nothing was forwarded. Move the value into a "
+            "message, or drop the field. This is the fail-closed rule: a field whose "
+            "shape is unrecognised cannot be protected in place, and forwarding it "
+            "unprotected is the one outcome that must not happen."
+        )
 
 
 def restore_reply(session: PrivacySession, payload: object) -> dict[str, Any]:
