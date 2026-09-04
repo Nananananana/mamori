@@ -118,20 +118,30 @@ def test_protecting_twice_is_stable(text: str) -> None:
         assert first.protected_text == second.protected_text
 
 
-def test_the_sensitive_strategy_actually_produces_detections() -> None:
-    """The two properties below loop over `protected.entities` and say nothing
-    when it is empty -- which is correct per example and useless if it is empty
-    every time. Measured: with detection returning `[]`, both passed.
+@SETTINGS
+@given(text=sensitive_text())
+def test_the_sensitive_strategy_always_produces_something_detectable(text: str) -> None:
+    """Every text this strategy draws has at least one detectable value in it.
 
-    `assert protected.entities` inside them would be wrong, because a generated
-    text legitimately has none. So the strategy's promise is checked once,
-    here, against fixed inputs: if `sensitive_text()` stops producing anything
-    detectable, this fails and names the reason instead of two properties
-    quietly checking nothing.
+    The properties below loop over `protected.entities` and say nothing when it
+    is empty -- correct for one input, useless if it is empty every time.
+    Measured: with detection returning `[]`, both passed.
+
+    Asserting a population *inside* them would be wrong; a generated text may
+    legitimately have none. But `sensitive_text` is not that strategy: it
+    appends an email or an honorific-anchored name on every iteration of its
+    loop, and the loop runs at least once. So this is the link between the two,
+    checked on the same draws they see.
+
+    **The first version of this checked two hand-written samples instead**, and
+    a sibling project predicted the hole before it was measured: the companion
+    guarded a list rather than the *bond* between the list and the strategy.
+    Point `sensitive_text` at `filler` only and all eight tests in this file
+    stayed green -- the poison landed, it worked, and the guard was looking
+    somewhere else.
     """
     with PrivacySession(policy=PrivacyPolicy.permissive()) as session:
-        for sample in ("田中太郎さんへ tanaka@example.com", "Dear Jane Doe, call 415-555-0198"):
-            assert session.protect(sample).entities, sample
+        assert session.protect(text).entities, text
 
 
 @SETTINGS
