@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Sequence
 
 from ..domain.confidence import CERTAIN
@@ -62,6 +63,19 @@ class ProtectionService:
         self._detectors = tuple(detectors)
         self._policy = policy
         self._store = store
+        #: Allocation is `find_by_identity`, then `next_index`, then `put` --
+        #: three separately-locked store calls with no lock spanning them. The
+        #: store is thread-safe and the *transaction* was not: 32 threads
+        #: protecting one document produced up to five placeholders for one
+        #: value, and over HTTP two placeholders for one person went upstream
+        #: in the same conversation. That breaks the invariant `_allocate`
+        #: states -- the same value seen twice must map to the same token, or
+        #: the model cannot tell that two mentions are one person.
+        #:
+        #: A lock here rather than a new store method, because it is this
+        #: sequence that has to be atomic and not any one call in it. It is
+        #: held only around the lookup and the insert, never around detection.
+        self._allocation = threading.Lock()
 
     @property
     def surrogate_types(self) -> frozenset[str]:
@@ -318,10 +332,14 @@ class ProtectionService:
         cannot tell that two mentions refer to one person.
         """
         identity = entity.identity_key
-        existing = self._store.find_by_identity(scope, identity)
-        if existing is not None:
-            return existing
+        with self._allocation:
+            existing = self._store.find_by_identity(scope, identity)
+            if existing is not None:
+                return existing
+            return self._mint(entity, scope, text, identity)
 
+    def _mint(self, entity: SensitiveEntity, scope: str, text: str, identity: str) -> Mapping:
+        """Allocate a new placeholder. Caller holds the allocation lock."""
         type_name = entity.entity_type.name
         index = self._store.next_index(scope, type_name)
         placeholder = Placeholder(type_name, index)

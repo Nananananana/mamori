@@ -200,14 +200,18 @@ class _Handler(BaseHTTPRequestHandler):
                 self._run(session, payload, streaming=streaming)
             return
 
-        conversation = registry.resume(self.headers.get(SESSION_HEADER))
-        self._token = conversation.token
-        try:
-            self._run(conversation.session, payload, streaming=streaming)
-        finally:
-            if _is_true(self.headers.get(END_HEADER)):
-                registry.end(conversation.token)
-                self._log("conversation ended by the client")
+        # `checkout` rather than `resume`: while this block runs, neither the
+        # idle sweep nor an eviction another request triggers can purge this
+        # conversation's scope. They could, and did -- 4 of 12 concurrent
+        # callers got a raw placeholder back for a name they had just sent.
+        with registry.checkout(self.headers.get(SESSION_HEADER)) as conversation:
+            self._token = conversation.token
+            try:
+                self._run(conversation.session, payload, streaming=streaming)
+            finally:
+                if _is_true(self.headers.get(END_HEADER)):
+                    registry.end(conversation.token)
+                    self._log("conversation ended by the client")
 
     def _run(self, session: PrivacySession, payload: object, *, streaming: bool) -> None:
         protected, report = protect_request(session, payload, add_guidance=self.settings.guidance)

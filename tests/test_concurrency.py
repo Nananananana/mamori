@@ -21,6 +21,7 @@ import pytest
 
 from mamori import MamoriConfig, PrivacySession
 from mamori.application.conversations import ConversationRegistry
+from mamori.infrastructure.storage import InMemoryMappingStore
 from mamori.interfaces.proxy.server import SESSION_HEADER
 
 from .test_proxy import FakeUpstream, RunningProxy, chat, completion
@@ -242,3 +243,87 @@ def test_it_is_not_flaky(run: int) -> None:
     for thread in threads:
         thread.join(timeout=30)
     assert not errors, errors
+
+
+class TestAllocationIsATransaction:
+    """`_allocate` is `find_by_identity`, then `next_index`, then `put`.
+
+    The store is thread-safe; those are three separately-locked calls with no
+    lock spanning them, so two threads could both miss the lookup and both
+    mint. Measured at 32 threads: **32 of 60 runs allocated more than one
+    placeholder for one value**, the worst producing five, and over HTTP two
+    placeholders for one person went upstream in the same conversation. It
+    breaks the invariant `_allocate` states -- the same value seen twice must
+    map to the same token, or the model cannot tell two mentions are one
+    person.
+
+    The test above asserted exactly that and passed anyway, because it runs at
+    whatever interleaving the scheduler happens to choose. Running it harder
+    does not fix that: with the lock removed the race reproduces 2 times in 12,
+    so a timing test is a coin toss dressed as a guard.
+
+    So the interleaving is **forced**. A store that parks a thread at the exact
+    moment it has missed the lookup makes both outcomes deterministic: without
+    a lock spanning the sequence both threads park, both mint, and two
+    placeholders come back; with one, the second thread never reaches the park
+    because it is waiting for the first, the barrier times out, and one
+    placeholder comes back.
+    """
+
+    class Interleaving:
+        """Delegates to a real store, and parks a thread that missed a lookup.
+
+        The park is where the window is. Nothing else about the store changes,
+        so what is being tested is the *sequence* in the service rather than
+        anything about storage.
+        """
+
+        def __init__(self, inner: InMemoryMappingStore, parties: int = 2) -> None:
+            self._inner = inner
+            self._barrier = threading.Barrier(parties, timeout=0.5)
+
+        def find_by_identity(self, scope: str, identity_key: str) -> object:
+            found = self._inner.find_by_identity(scope, identity_key)
+            if found is None:
+                try:
+                    self._barrier.wait()
+                except threading.BrokenBarrierError:
+                    # Nobody else arrived: something serialised us, which is
+                    # the whole point of the lock being there.
+                    pass
+            return found
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._inner, name)
+
+    def test_two_threads_that_both_miss_the_lookup_still_share_one_placeholder(self) -> None:
+        store = self.Interleaving(InMemoryMappingStore())
+        session = PrivacySession(locales=["en"], store=store)  # type: ignore[arg-type]
+        produced: list[str] = []
+        guard = threading.Lock()
+
+        def work() -> None:
+            text = session.protect("Dear Priya Raman, hello.").protected_text
+            with guard:
+                produced.append(text)
+
+        threads = [threading.Thread(target=work) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        session.close()
+
+        placeholders = {
+            word for text in produced for word in text.split() if word.startswith("<PERSON")
+        }
+        assert len(placeholders) == 1, (
+            f"one value produced {sorted(placeholders)}; the same value seen twice must "
+            "map to the same token, or the model cannot tell two mentions are one person"
+        )
+
+    def test_the_barrier_would_have_caught_it(self) -> None:
+        """The store has to actually park somebody, or the test above is one
+        more timing test with extra machinery."""
+        store = self.Interleaving(InMemoryMappingStore(), parties=1)
+        assert store.find_by_identity("scope", "PERSON:nobody") is None

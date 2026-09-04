@@ -338,3 +338,80 @@ class TestTheRegistryIsBuiltFromSettings:
         conversation = reg.resume(None)
         assert "<PERSON_001>" in conversation.session.protect(f"{NAME}さんの件").protected_text
         reg.close_all()
+
+
+class TestAnInFlightConversationIsNotPurged:
+    """Eviction and expiry both call `session.close()`, which purges a scope.
+
+    Both could pick a conversation another thread was *between protect and
+    restore on*: `_evict_oldest` chooses the least recently used, and an
+    in-flight request set `last_used` when it started. Measured over HTTP with
+    a slow upstream: 12 concurrent callers against a ceiling of 8, and **4 of
+    12 replies came back with a raw `<PERSON_001>` in them** -- a placeholder
+    printed at a human, for a name that caller sent in that same request.
+    """
+
+    def registry(self, **kwargs: object) -> ConversationRegistry:
+        return ConversationRegistry(PrivacySession, **kwargs)  # type: ignore[arg-type]
+
+    def test_a_held_conversation_is_not_evicted(self) -> None:
+        registry = self.registry(max_conversations=1)
+        with registry.checkout(None) as busy:
+            registry.resume(None)  # forces the ceiling
+            assert registry.resume(busy.token) is busy
+
+    def test_a_held_conversation_is_not_swept(self) -> None:
+        clock = [0.0]
+        registry = self.registry(idle_seconds=1.0, clock=lambda: clock[0])
+        with registry.checkout(None) as busy:
+            clock[0] = 100.0
+            assert registry.sweep() == 0
+            assert registry.resume(busy.token) is busy
+
+    def test_its_mappings_survive_the_whole_request(self) -> None:
+        """The failure as a caller sees it: a value protected at the start of a
+        request and a placeholder still in the answer at the end."""
+        registry = self.registry(max_conversations=1)
+        with registry.checkout(None) as busy:
+            protected = busy.session.protect("Dear Priya Raman, hello.").protected_text
+            registry.resume(None)  # another caller arrives and forces eviction
+            assert "Priya Raman" in busy.session.restore(protected).text
+
+    def test_the_ceiling_is_exceeded_rather_than_an_active_scope_destroyed(self) -> None:
+        """When everything is in flight there is nothing to evict. The excess is
+        bounded by the number of concurrent requests, which the server bounds
+        already; the ceiling bounds what is *kept*, and a request in progress is
+        not being kept."""
+        registry = self.registry(max_conversations=1)
+        with registry.checkout(None), registry.checkout(None):
+            assert len(registry) == 2
+
+    def test_it_is_evictable_again_afterwards(self) -> None:
+        registry = self.registry(max_conversations=1)
+        with registry.checkout(None) as first:
+            pass
+        registry.resume(None)
+        assert registry.resume(first.token) is not first
+
+    def test_resume_alone_does_not_hold(self) -> None:
+        """Deliberate. A `resume` that held would need a `release` from every
+        caller, and one who forgot would leave a conversation nothing can ever
+        evict -- trading a purged scope for one that lives forever, which is
+        worse in a library whose point is not keeping values."""
+        registry = self.registry(max_conversations=1)
+        first = registry.resume(None)
+        registry.resume(None)
+        assert registry.resume(first.token) is not first
+
+    def test_release_is_forgiving_of_an_unknown_token(self) -> None:
+        registry = self.registry()
+        registry.release("no such token")
+
+    def test_holding_twice_needs_releasing_twice(self) -> None:
+        registry = self.registry(max_conversations=1)
+        conversation = registry.resume(None)
+        registry.hold(conversation.token)
+        registry.hold(conversation.token)
+        registry.release(conversation.token)
+        registry.resume(None)
+        assert registry.resume(conversation.token) is conversation

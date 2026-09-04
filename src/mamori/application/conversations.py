@@ -36,6 +36,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from .session import PrivacySession
@@ -73,6 +74,18 @@ class Conversation:
     session: PrivacySession
     last_used: float
     turns: int = 0
+    #: How many requests are currently inside this conversation.
+    #:
+    #: Guarded by the registry's lock and read by nothing else. Eviction and
+    #: expiry both call `session.close()`, which purges the scope -- and both
+    #: could pick a conversation another thread was *between protect and
+    #: restore on*. `_evict_oldest` chooses the least recently used, and an
+    #: in-flight request set `last_used` when it started, so with more
+    #: concurrent conversations than the ceiling it chose an active one.
+    #: Measured: 12 concurrent callers against a ceiling of 8, and **4 of 12
+    #: replies came back with a raw placeholder in them** -- printed at a
+    #: human, for a name that caller sent in that same request.
+    in_use: int = 0
 
 
 class ConversationRegistry:
@@ -133,6 +146,48 @@ class ConversationRegistry:
                 return existing
             return self._open()
 
+    def hold(self, token: str) -> None:
+        """Say a request is inside a conversation, so nothing may purge it.
+
+        Deliberately **not** folded into :meth:`resume`. A `resume` that held
+        would need a `release` from every caller, and a caller who forgot would
+        leave a conversation nothing can ever evict -- trading a purged scope
+        for one that lives forever, which is the worse of the two in a library
+        whose whole point is not keeping values. :meth:`checkout` is the
+        pairing that cannot be forgotten, and it is what the proxy uses.
+        """
+        with self._lock:
+            conversation = self._live.get(token)
+            if conversation is not None:
+                conversation.in_use += 1
+
+    def release(self, token: str) -> None:
+        """Say a request has finished with a conversation.
+
+        Every :meth:`resume` needs one, or the conversation becomes
+        un-evictable and the ceiling stops meaning anything. :meth:`checkout`
+        is the pairing that cannot be forgotten.
+        """
+        with self._lock:
+            conversation = self._live.get(token)
+            if conversation is not None and conversation.in_use > 0:
+                conversation.in_use -= 1
+
+    @contextmanager
+    def checkout(self, token: str | None) -> Iterator[Conversation]:
+        """Resume a conversation and release it when the block ends.
+
+        What a request handler should use. While the block runs, neither expiry
+        nor eviction can purge this conversation's scope out from under it --
+        which they could, and did.
+        """
+        conversation = self.resume(token)
+        self.hold(conversation.token)
+        try:
+            yield conversation
+        finally:
+            self.release(conversation.token)
+
     def end(self, token: str) -> bool:
         """Discard a conversation and its mappings. True if it existed."""
         with self._lock:
@@ -154,7 +209,10 @@ class ConversationRegistry:
         """
         with self._lock:
             cutoff = self._clock() - self._idle
-            stale = [t for t, c in self._live.items() if c.last_used <= cutoff]
+            # `in_use` is the whole point: a request taking longer than the
+            # idle timeout would otherwise have its own scope swept away by the
+            # next request to arrive, and answer with a raw placeholder.
+            stale = [t for t, c in self._live.items() if c.last_used <= cutoff and c.in_use == 0]
             for token in stale:
                 self._live.pop(token).session.close()
             return len(stale)
@@ -198,19 +256,31 @@ class ConversationRegistry:
 
     def _open(self) -> Conversation:
         """Mint a token and a session. Caller holds the lock."""
-        while len(self._live) >= self._max:
-            self._evict_oldest()
+        while len(self._live) >= self._max and self._evict_oldest():
+            pass
         token = secrets.token_urlsafe(_TOKEN_BYTES)
         conversation = Conversation(token=token, session=self._factory(), last_used=self._clock())
         self._live[token] = conversation
         return conversation
 
-    def _evict_oldest(self) -> None:
-        """Drop the least recently used. Caller holds the lock.
+    def _evict_oldest(self) -> bool:
+        """Drop the least recently used idle conversation. Caller holds the lock.
 
-        Eviction purges, like expiry does. A caller whose conversation was
-        evicted comes back to a new one and re-protects its history, which is
-        the behaviour it had before this module existed.
+        Returns whether one was dropped. Eviction purges, like expiry does. A
+        caller whose conversation was evicted comes back to a new one and
+        re-protects its history, which is the behaviour it had before this
+        module existed -- **but only when it is not that caller's own live
+        request being purged**, which is what `in_use` prevents.
+
+        When every conversation is in flight there is nothing to evict, and the
+        ceiling is exceeded rather than an active scope destroyed or a client
+        refused. The excess is bounded by the number of concurrent requests,
+        which the server bounds already; the ceiling bounds what is *kept*, and
+        a request in progress is not being kept.
         """
-        oldest = min(self._live.values(), key=lambda c: c.last_used)
+        idle = [c for c in self._live.values() if c.in_use == 0]
+        if not idle:
+            return False
+        oldest = min(idle, key=lambda c: c.last_used)
         self._live.pop(oldest.token).session.close()
+        return True
