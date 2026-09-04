@@ -222,3 +222,42 @@ same question without keeping anything: ask before you send, and decide.
 
 **What would settle it:** a measurement that says what a budget should be, and
 a place to keep the counter that is not worse than what it protects.
+
+
+## Two scopes both mint `<EMAIL_001>`
+
+Placeholder numbering restarts per scope. So two independent sessions -- two
+`mamori.protect()` calls, two conversations on a proxy -- both give their first
+address the token `<EMAIL_001>`, and feeding one session's answer to the
+other's `restore` returns *the other value*, silently: `unknown` is empty,
+`is_clean` is true, and the restoration record says `clean`. The token is
+perfectly well known. It just means somebody else.
+
+Measured, and pinned in `tests/test_quickstart.py` so it is a stated property
+rather than a surprise. An external review raised the same thing independently,
+which is how it got written down here instead of only in a docstring.
+
+**Why it is not fixed.** The only actual fix is distinct token names across
+scopes, and every way of getting them costs something worse:
+
+- A **process-wide counter** makes `<EMAIL_1043>` tell the external model
+  roughly how many addresses this process has protected. That is metadata,
+  leaked to exactly the party the library exists to keep things from, and in a
+  long-running proxy it also walks towards the six-digit ceiling on a
+  placeholder index.
+- **The scope in the token** -- `<EMAIL_a3f9_001>` -- makes every placeholder
+  longer and uglier in text a model has to read and reproduce intact, which is
+  the thing tamper-tolerance already struggles with.
+- **Detecting the crossing at restore time** is impossible from inside a scope:
+  a token another scope also minted is indistinguishable from one's own.
+
+So the rule is the boring one -- restore the text with the session that
+protected it -- and it is stated in `SECURITY.md`, in
+`mamori.quickstart`'s docstring, and in the test.
+
+**What would settle it:** a case where the crossing happens without a caller
+mixing up two sessions. The proxy binds a response to its conversation by
+token, and `mamori.protect` hands back the session that made the placeholders;
+if there is a path where the two get crossed without somebody passing the wrong
+object, that is a defect in the path rather than in the numbering, and it
+changes this answer.
