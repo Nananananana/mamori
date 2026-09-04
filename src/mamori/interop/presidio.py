@@ -90,13 +90,30 @@ class RecognizerResult:
 
         For a pipeline that speaks Presidio over a wire rather than in
         process -- a dashboard, a stored fixture, another language.
+
+        **`analysis_explanation` is always `None`, and that is the honest
+        answer.** In Presidio it is an `AnalysisExplanation`, carrying
+        `recognizer`, `original_score`, `pattern_name`, `pattern`,
+        `validation_result` and `textual_explanation`. mamori produces none of
+        those, and the first version of this method put
+        `{"recognizer_name": ...}` there because the key was free -- a
+        consumer reading `analysis_explanation.pattern_name` would have found
+        nothing, and one reading it as truthy would have believed an
+        explanation existed.
+
+        The detector's name goes in `recognition_metadata`, which is where
+        Presidio puts a recogniser's name too. A compatibility layer's real
+        danger is not the field it cannot fill; it is the field it fills with
+        something that does not mean that -- a sibling project put it as
+        *never invent provenance*, and this was an invented one.
         """
         return {
             "entity_type": self.entity_type,
             "start": self.start,
             "end": self.end,
             "score": self.score,
-            "analysis_explanation": self.recognition_metadata or None,
+            "analysis_explanation": None,
+            "recognition_metadata": self.recognition_metadata or None,
         }
 
 

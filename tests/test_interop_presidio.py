@@ -137,7 +137,33 @@ class TestTheJsonShape:
     def test_a_finding_serialises_to_presidios_keys(self) -> None:
         (finding, *_) = AnalyzerEngine().analyze(TEXT)
         payload = json.loads(json.dumps(finding.to_dict()))
-        assert set(payload) == {"entity_type", "start", "end", "score", "analysis_explanation"}
+        assert set(payload) == {
+            "entity_type",
+            "start",
+            "end",
+            "score",
+            "analysis_explanation",
+            "recognition_metadata",
+        }
+
+    def test_it_does_not_invent_an_explanation(self) -> None:
+        """In Presidio `analysis_explanation` is an `AnalysisExplanation` with
+        `recognizer`, `original_score`, `pattern_name`, `pattern`,
+        `validation_result` and `textual_explanation`. mamori produces none of
+        them, so the honest value is `None`.
+
+        The first version put `{"recognizer_name": ...}` there because the key
+        was free. A consumer reading `analysis_explanation.pattern_name` would
+        have found nothing, and one reading it as truthy would have believed an
+        explanation existed. A compatibility layer's real danger is not the
+        field it cannot fill -- it is the field it fills with something that
+        does not mean that."""
+        for finding in AnalyzerEngine().analyze(TEXT):
+            assert finding.to_dict()["analysis_explanation"] is None
+
+    def test_the_detector_name_goes_where_presidio_puts_one(self) -> None:
+        (finding, *_) = AnalyzerEngine().analyze(TEXT)
+        assert finding.to_dict()["recognition_metadata"]["recognizer_name"]
 
     def test_it_never_carries_the_value(self) -> None:
         """A finding says *where*. One that carried the value would be one that
