@@ -122,7 +122,16 @@ class MamoriConfig:
             spaCy's named-entity recogniser after the rules, which finds names
             the balanced stance misses **without** the over-redaction the
             recall-first stance pays for. It needs
-            ``pip install "mamori[nlp]"`` and a model.
+            ``pip install "mamori[nlp]"`` and a model. ``"gliner"`` runs a
+            zero-shot recogniser instead: it found six of six English names
+            where spaCy found five, and it takes the entity types as *words*,
+            so a deployment adds ``"medication"`` without training anything.
+            It needs ``pip install "mamori[gliner]"``, several hundred
+            megabytes of torch, and about 90ms a sentence -- and it is
+            measurably wrong on Japanese, which
+            :mod:`mamori.infrastructure.detectors.gliner` shows rather than
+            summarises. ``"presidio"`` uses Presidio's analyzer, for a
+            deployment that already runs one.
         phone: How a run of digits becomes a telephone number. ``"patterns"``
             (the default) matches shapes and, as `SECURITY.md` states, cannot
             match an unseparated run because an order number looks identical.

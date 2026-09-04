@@ -45,6 +45,18 @@ def _phonenumbers() -> Sequence[DetectionPass]:
     return (PhoneNumberPass(),)
 
 
+def _gliner() -> Sequence[DetectionPass]:
+    from .gliner import GlinerRecognizer
+    from .nlp import NlpPass
+
+    # `MEDIUM`, the same as spaCy's, and not higher despite scoring 0.96-0.98
+    # on the sentences it was measured on. A model's own confidence and what
+    # this library will stake on a model are different questions, and six
+    # sentences is not a population -- `DEFAULT_CONFIDENCE` in `nlp.py` says
+    # why that number is what it is.
+    return (NlpPass(GlinerRecognizer(), name="nlp:gliner"),)
+
+
 def _presidio() -> Sequence[DetectionPass]:
     from .nlp import NlpPass
     from .presidio_recognizer import PresidioRecognizer
@@ -60,7 +72,12 @@ def _presidio() -> Sequence[DetectionPass]:
 _NLP = AlgorithmRegistry(
     "nlp",
     DEFAULT_NLP_ALGORITHM,
-    {DEFAULT_NLP_ALGORITHM: lambda: (), "spacy": _spacy, "presidio": _presidio},
+    {
+        DEFAULT_NLP_ALGORITHM: lambda: (),
+        "spacy": _spacy,
+        "gliner": _gliner,
+        "presidio": _presidio,
+    },
 )
 
 _PHONE = AlgorithmRegistry(

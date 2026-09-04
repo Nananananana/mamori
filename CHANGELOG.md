@@ -10,6 +10,17 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **GLiNER as a switchable recogniser: `MamoriConfig(nlp="gliner")`.**
+  Zero-shot named-entity recognition (Apache-2.0, Apache-2.0 models), which
+  takes the entity types as *words* rather than having them fixed at training
+  time -- so `labels=("medication", "medical condition")` works with no
+  training. Measured on the sentences the English rules are measured on: six
+  of six names, where spaCy finds five and the balanced stance finds none, and
+  nothing on either of the two phrases the English stoplist exists to reject.
+  Measured and stated in the same place: it is **wrong on Japanese** -- wrong
+  spans, not just low recall -- and it does not close the internal-codename
+  gap `SECURITY.md` describes. `pip install "mamori[gliner]"`.
+
 - **`mamori.protect(text)` -- the two-line version.** Every library in this
   space has a one-liner and all of them return a string with the values gone
   and no way back. This one returns the string **and the way home**:

@@ -341,6 +341,224 @@ class TestSpacyWhenItIsInstalled:
             SpacyRecognizer("no_such_model_exists")
 
 
+#: One loaded model for the whole file. `GLiNER.from_pretrained` takes about
+#: ten seconds even with the weights already on disk, and every test below
+#: would otherwise pay it again.
+_LOADED: dict[str, object] = {}
+
+
+def _every_index(text: str, needle: str) -> list[int]:
+    found, start = [], text.find(needle)
+    while start != -1:
+        found.append(start)
+        start = text.find(needle, start + 1)
+    return found
+
+
+class Stub:
+    """A recogniser that finds one fixed word in whatever it is handed.
+
+    Enough to exercise this library's half of the adapter -- windowing,
+    deduplication, offset translation -- without several hundred megabytes of
+    torch, and it records what it was asked so a test can prove the text was
+    actually cut up.
+    """
+
+    def __init__(self, needle: str = "Okonkwo") -> None:
+        self.needle = needle
+        self.seen: list[str] = []
+
+    def predict_entities(
+        self, text: str, labels: Sequence[str], threshold: float = 0.5
+    ) -> list[dict[str, object]]:
+        self.seen.append(text)
+        return [
+            {
+                "start": index,
+                "end": index + len(self.needle),
+                "label": labels[0],
+                "text": self.needle,
+                "score": 0.9,
+            }
+            for index in _every_index(text, self.needle)
+        ]
+
+
+class TestGlinerWindowing:
+    """The half of the adapter that is this library's code.
+
+    A recogniser that silently truncates its input answers *"nothing here"*
+    for the far end of a document, in the same shape as a clean document.
+    That is the fail-open failure the whole library is arranged against, and
+    it is a property of `GlinerRecognizer` rather than of GLiNER -- so it is
+    checked with a stub, and runs everywhere.
+    """
+
+    def test_a_name_past_the_first_window_is_still_found(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mamori.infrastructure.detectors.gliner import GlinerRecognizer
+
+        stub = Stub()
+        monkeypatch.setattr(GlinerRecognizer, "_load", staticmethod(lambda model: stub))
+        recognizer = GlinerRecognizer()
+        text = ("filler. " * 900) + "I spoke to Sarah Okonkwo yesterday."
+        assert len(text) > 2000, "the point of this test is a text that does not fit"
+
+        found = recognizer.entities(text)
+        assert len(stub.seen) > 1, "the text went over whole, so the model would truncate it"
+        assert len(found) == 1, found
+        assert text[found[0].span.start : found[0].span.end] == "Okonkwo"
+
+    def test_the_same_span_seen_twice_is_reported_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Windows overlap by design, so a name near a cut is read twice."""
+        from mamori.infrastructure.detectors.gliner import GlinerRecognizer
+
+        stub = Stub()
+        monkeypatch.setattr(GlinerRecognizer, "_load", staticmethod(lambda model: stub))
+        recognizer = GlinerRecognizer()
+        text = ("filler. " * 130) + "Okonkwo" + (" filler." * 130)
+        assert len(stub.seen) == 0
+        found = recognizer.entities(text)
+        assert len(stub.seen) > 1, "one window, so nothing could have been double-counted"
+        assert len(found) == 1, [(entity.span.start, entity.span.end) for entity in found]
+
+    def test_a_span_outside_the_text_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A model is untrusted input in the same sense a model's answer is.
+
+        Nothing is emitted, rather than a span spliced out of characters that
+        are not there -- the failure that puts the wrong value in a document.
+        """
+        from mamori.infrastructure.detectors.gliner import GlinerRecognizer
+
+        class Liar:
+            def predict_entities(
+                self, text: str, labels: Sequence[str], **_: object
+            ) -> list[dict[str, object]]:
+                return [{"start": 0, "end": len(text) + 50, "label": labels[0], "score": 1.0}]
+
+        monkeypatch.setattr(GlinerRecognizer, "_load", staticmethod(lambda model: Liar()))
+        with pytest.raises(DetectionError):
+            GlinerRecognizer().entities("short")
+
+    def test_no_labels_is_refused_at_construction(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """It is told what to look for rather than trained on it, so an empty
+        list is a recogniser that looks for nothing and says so cleanly."""
+        from mamori.infrastructure.detectors.gliner import GlinerRecognizer
+
+        monkeypatch.setattr(GlinerRecognizer, "_load", staticmethod(lambda model: Stub()))
+        with pytest.raises(ConfigurationError):
+            GlinerRecognizer(labels=())
+
+    def test_it_satisfies_the_port(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mamori.infrastructure.detectors.gliner import GlinerRecognizer
+
+        monkeypatch.setattr(GlinerRecognizer, "_load", staticmethod(lambda model: Stub()))
+        assert isinstance(GlinerRecognizer(), NlpRecognizer)
+
+
+class TestGlinerWhenItIsInstalled:
+    """The measurements in `gliner.py`'s docstring, as tests.
+
+    Skipped without the package and the model, like the spaCy class above.
+    Those numbers were taken by hand once; this is what keeps them true, and
+    what fails if a model release changes its mind about a sentence.
+    """
+
+    def recognizer(self, **kwargs: object) -> object:
+        pytest.importorskip("gliner")
+        from mamori.infrastructure.detectors import GlinerRecognizer
+
+        key = repr(sorted(kwargs.items()))
+        if key not in _LOADED:
+            try:
+                _LOADED[key] = GlinerRecognizer(**kwargs)  # type: ignore[arg-type]
+            except ConfigurationError as exc:
+                pytest.skip(str(exc))
+        return _LOADED[key]
+
+    def session(self) -> object:
+        """A balanced-stance session with the recogniser switched on.
+
+        Balanced, not the default recall-first stance: the claim is that a
+        model finds these names *without* the over-redaction the wide tier
+        pays for, and a wide-tier session would find them either way and prove
+        nothing.
+        """
+        pytest.importorskip("gliner")
+        if "session" not in _LOADED:
+            try:
+                _LOADED["session"] = MamoriConfig(stance=Stance.BALANCED, nlp="gliner").session()
+            except ConfigurationError as exc:
+                pytest.skip(str(exc))
+        return _LOADED["session"]
+
+    def test_it_satisfies_the_port(self) -> None:
+        assert isinstance(self.recognizer(), NlpRecognizer)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "I spoke to Sarah Okonkwo yesterday about the contract.",
+            "Attendees: Yuki Tanaka, Marcus Lindqvist, and Priya Raman.",
+            "Reported by: Nguyen Thi Hoa",
+            "Aleksandr Volkov signed off on the migration.",
+        ],
+        ids=["in prose", "in a list", "after a label", "the one spacy misses"],
+    )
+    def test_it_finds_names_the_balanced_stance_misses(self, text: str) -> None:
+        assert "PERSON" not in MamoriConfig(stance=Stance.BALANCED).session().inspect(text)
+        assert "PERSON" in self.session().inspect(text)  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize(
+        "text",
+        ["The Quarterly Business Review is Monday.", "Social Security Number is required."],
+        ids=["a heading", "a labelled phrase"],
+    )
+    def test_it_does_not_pay_the_wide_tier_price(self, text: str) -> None:
+        """The recall-first stance buys those names by accepting false
+        positives. A recogniser is supposed to buy them without that."""
+        assert "PERSON" not in self.session().inspect(text)  # type: ignore[attr-defined]
+
+    def test_a_category_it_was_never_trained_on_is_a_string(self) -> None:
+        """The reason this adapter exists beside the spaCy one.
+
+        spaCy finds what its model was trained to find and that list is fixed
+        forever. Here a category is a word: `medication` is in no standard NER
+        label set, and no rule can match a drug name by shape.
+        """
+        recognizer = self.recognizer(labels=("medication", "medical condition"))
+        text = "Patient reported chest pain; started on metoprolol."
+        seen = {
+            (entity.label.lower(), text[entity.span.start : entity.span.end])
+            for entity in recognizer.entities(text)  # type: ignore[attr-defined]
+        }
+        assert ("medication", "metoprolol") in seen
+        assert ("medical condition", "chest pain") in seen
+
+    def test_the_codename_gap_is_still_open(self) -> None:
+        """Measured, and stated because it is the claim somebody would make.
+
+        *"Zero-shot, so it finds anything you can name"* is not true: neither
+        model found `Project Nightingale` as an `internal project codename`, at
+        any threshold. `SECURITY.md` says rules cannot close that gap, and this
+        does not close it either. If a model release changes that, this test
+        fails and the docstring gets rewritten with a number.
+        """
+        recognizer = self.recognizer(labels=("internal project codename",), threshold=0.3)
+        text = "Ship Project Nightingale to the Osaka plant by Q3."
+        assert list(recognizer.entities(text)) == []  # type: ignore[attr-defined]
+
+    def test_a_model_that_does_not_exist_is_refused_when_the_session_is_built(self) -> None:
+        pytest.importorskip("gliner")
+        from mamori.infrastructure.detectors import GlinerRecognizer
+
+        with pytest.raises(ConfigurationError, match="could not load"):
+            GlinerRecognizer("no-such-org/no-such-gliner-model")
+
+
 class TestTheZeroDependencyPromiseHolds:
     def test_neither_library_is_imported_unless_asked_for(self) -> None:
         """The promise is that `import mamori` needs nothing. A module-level
@@ -355,7 +573,8 @@ class TestTheZeroDependencyPromiseHolds:
                 "-c",
                 "import sys, mamori; from mamori import PrivacySession;"
                 "PrivacySession().protect('Dear Jane Doe, mail x@example.com');"
-                "print([m for m in ('spacy', 'phonenumbers') if m in sys.modules])",
+                "print([m for m in ('spacy', 'phonenumbers', 'gliner', 'torch',"
+                " 'transformers', 'presidio_analyzer') if m in sys.modules])",
             ],
             capture_output=True,
             text=True,

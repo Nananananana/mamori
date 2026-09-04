@@ -12,6 +12,7 @@ from .algorithms import AlgorithmRegistry
 from .co_occurrence import DEFAULT_SEED_TYPES, CoOccurrencePass
 from .composite import CompositeDetector
 from .entropy_pass import EntropyPass
+from .gliner import GlinerRecognizer
 from .locales import (
     CHINESE,
     ENGLISH,
@@ -56,6 +57,7 @@ __all__ = [
     "DetectionPipeline",
     "DetectorPass",
     "EntropyPass",
+    "GlinerRecognizer",
     "LocalePack",
     "NlpPass",
     "PatternRule",

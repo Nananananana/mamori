@@ -57,6 +57,13 @@ phone = ["phonenumbers>=8.13"]
 # download with its own licence -- `python -m spacy download en_core_web_sm`.
 nlp = ["spacy>=3.7"]
 
+# GLiNER: zero-shot named-entity recognition, Apache-2.0, with Apache-2.0
+# models. The entity types are given as words rather than fixed at training
+# time, so a deployment adds "medication" or "financial figure" without
+# training anything. It pulls torch and transformers -- several hundred
+# megabytes -- which is exactly why it is an extra and not a default.
+gliner = ["gliner>=0.2.13"]
+
 # Presidio's analyzer, usable as a recogniser here. MIT. It brings its own
 # model stack, which is both why somebody would want it and why it cannot be a
 # default.
@@ -160,6 +167,12 @@ ignore_missing_imports = true
 # first; the spaCy tests skip themselves in it and measure in the second.
 [[tool.mypy.overrides]]
 module = [
+    "gliner",
+    "gliner.*",
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
     "presidio_analyzer",
     "presidio_analyzer.*",
     "spacy",
