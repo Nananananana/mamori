@@ -10,6 +10,24 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **Detection rules in the configuration file, and every one of them timed
+  before it is accepted.** Everything this library detected was something it
+  shipped; an organisation whose case references look like `CS/2026/0041` had
+  to write a locale pack in Python, rule on each value with `mamori correct`,
+  or accept the miss. A rule is now four lines of TOML, running beside the
+  built-in rules under the same overlap resolution rather than in a later pass
+  that would lose every argument to a shipped one. A type nothing has
+  registered needs a `category`, which is what the policy falls back to.
+
+  A regular expression in a configuration file is a performance decision
+  somebody made without meaning to, so each pattern is run against ten
+  adversarial shapes at two sizes and one whose cost grows faster than its
+  input is refused at startup -- with the shape that did it and the two fixes
+  that worked on this library's own email rules. Empirical rather than
+  analytical, deliberately: deciding whether a pattern backtracks
+  catastrophically is hard, and running it on four thousand characters of
+  `aaaa...` and looking at the clock is not.
+
 - **`mamori.restoration-scope/1`: the return half of the audit record.** A
   protection record said what was replaced on the way out and nothing said
   what came back, so an audit trail could show that a value had been protected

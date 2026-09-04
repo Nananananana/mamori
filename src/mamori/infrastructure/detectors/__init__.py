@@ -93,6 +93,7 @@ def build_pipeline(
     co_occurrence: CoOccurrencePass | None = None,
     stance: Stance = Stance.RECALL_FIRST,
     extra_passes: Sequence[DetectionPass] = (),
+    patterns: Sequence[PatternRule] = (),
 ) -> DetectionPipeline:
     """Assemble the standard detection pipeline.
 
@@ -106,12 +107,24 @@ def build_pipeline(
         co_occurrence: The second pass, or ``None`` to leave it out. Leaving it
             out costs recall on repeated names; there is no case where it costs
             safety.
+        patterns: Rules this deployment wrote, already compiled and already
+            checked -- see
+            :func:`~mamori.infrastructure.detectors.custom.compile_custom_rules`.
+            They run in the first pass, beside the universal rules.
 
     Raises:
         ConfigurationError: a locale code has no registered pack.
     """
     universal = RegexDetector("universal", rules_for(UNIVERSAL_RULES, stance))
-    rules = AdaptiveLocaleDetector(resolve_locales(locales), always=[universal], stance=stance)
+    # Custom rules run beside the universal ones and not after them: an
+    # organisation's rule is a rule, arbitrated by the same resolution as
+    # everything else. Running them in a later pass would have made them lose
+    # every overlap to a built-in rule, which is precisely backwards for
+    # somebody who wrote one because the built-ins were not enough.
+    always: list[Detector] = [universal]
+    if patterns:
+        always.append(RegexDetector("custom", rules_for(patterns, stance)))
+    rules = AdaptiveLocaleDetector(resolve_locales(locales), always=always, stance=stance)
     passes: list[DetectionPass] = [DetectorPass(rules, name="rules")]
     if co_occurrence is not None:
         passes.append(co_occurrence)

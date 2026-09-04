@@ -72,6 +72,7 @@ decide anything about one.
 | **[Without changing your application](#without-changing-your-application)** | the proxy: change `base_url`, change nothing else |
 | [Languages](#languages) | Japanese, English and Chinese, in one document |
 | [Switching things](#switching-things) | settings, and the recall dial |
+| **[Your own rules](#your-own-rules-in-the-configuration-file)** | four lines of TOML, timed before they are accepted |
 | [When it gets something wrong](#when-it-gets-something-wrong) | corrections: your last word |
 | [Readable values](#readable-values-instead-of-tokens) | surrogates, and why they are off by default |
 | [Why was this replaced?](#why-was-this-replaced-why-was-that-not) | and why was that **not** |
@@ -691,6 +692,65 @@ asked one question per candidate, a filter of known-leaked keys — is
 `register_secret_algorithm("name", factory)` and a config value, not an edit.
 `mamori privacy` reports which one is running and what that means for what
 blocks. [ADR 0033](docs/adr/0033-secrets-are-an-algorithm-you-choose.md).
+
+### Your own rules, in the configuration file
+
+Everything above is something this library ships. Your case references are not.
+
+```toml
+# mamori.toml
+[[patterns]]
+type = "EMPLOYEE_ID"
+pattern = 'ACME-\d{6}'
+confidence = 0.95
+
+[[patterns]]
+type = "CASE_REFERENCE"   # a type nothing has heard of
+category = "PII"          # so it needs a category, which is what the policy falls back to
+pattern = 'CS/\d{4}/\d{4}'
+```
+
+```bash
+echo "Case CS/2026/0041 belongs to ACME-004512" | mamori inspect -c mamori.toml
+```
+```text
+2 detected:
+      5:17    CASE_REFERENCE   <CASE_REFERENCE_001> C***********         (custom, 0.90)
+     29:40    EMPLOYEE_ID      <EMPLOYEE_ID_001>  A**********          (custom, 0.95)
+```
+
+They run **beside** the built-in rules, in the same pass, under the same
+overlap resolution — a rule you wrote is not a second-class rule that loses
+every argument to a shipped one. `tier = "wide"` puts it behind the
+[recall dial](#the-recall-dial) like the shipped shape-only rules;
+`group = 1` redacts a capture rather than the whole match, so
+`'(?i)case ref[:#]?\s*([A-Z0-9-]{4,20})'` replaces the reference and not the
+words in front of it.
+
+**Every pattern is timed before it is accepted.** A regular expression in a
+configuration file is a performance decision somebody made without meaning to.
+`v0.33` spent a release removing two quadratics from this library's own rules —
+a 128KB answer with one base64 blob in it took **456 seconds** to restore — and
+holding that door open for everybody else would have been a poor joke. So each
+pattern is run against ten adversarial shapes at two sizes, and one whose cost
+grows faster than its input is refused at startup:
+
+```text
+error: patterns[0]: '[A-Za-z0-9._%+-]+@corp\.local' costs 16x more for four
+times the input on dotted, which means the length of a document decides how
+long a request takes. Bound the repetitions -- `{1,64}` rather than `+` -- or
+add a boundary such as `(?<![A-Za-z0-9])` so the scan cannot restart inside a
+run it has already rejected. Both fixes are what this library's own email
+rules needed.
+```
+
+The check is empirical rather than analytical, deliberately. Deciding whether a
+regular expression backtracks catastrophically is genuinely hard; running it on
+four thousand characters of `aaaa...` and looking at the clock is not. It
+cannot prove a pattern is safe — and it catches every shape that broke this
+library's own rules, which is the population it was built from.
+
+---
 
 ### Recognisers that need a library
 

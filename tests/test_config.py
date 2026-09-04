@@ -338,6 +338,7 @@ class TestEveryFieldSurvivesTheMapping:
         "surrogates": ["PERSON"],
         "placeholder_style": "square",
         "uncertain": "refuse",
+        "patterns": [{"type": "EMPLOYEE_ID", "pattern": "ACME-[0-9]{6}"}],
         "secrets": "entropy",
         "nlp": "spacy",
         "phone": "phonenumbers",

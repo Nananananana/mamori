@@ -105,6 +105,18 @@ class MamoriConfig:
             covers. Off by default. It buys answer quality and costs the thing
             that makes a placeholder safe: an unrestored token is obvious, and
             an unrestored surrogate reads as a fact about the wrong person.
+        patterns: Detection rules this deployment writes, as a list of
+            mappings -- ``{"type": "EMPLOYEE_ID", "pattern": "ACME-\\d{6}"}``.
+            They run beside the built-in rules, in the same pass and under the
+            same resolution, because a rule an organisation wrote is not a
+            special case with its own precedence. A type nothing has
+            registered also needs a ``category``, which is what the policy
+            falls back to. Every pattern is **timed against adversarial input
+            before it is accepted**: one whose cost grows faster than its
+            length is refused at startup, because a regular expression in a
+            configuration file is a performance decision somebody made without
+            meaning to, and 0.33 spent a release removing two of those from
+            this library's own rules.
         secrets: Which algorithm looks for the credentials the pattern rules
             cannot name. ``"patterns"`` (the default) adds nothing: a key with
             no vendor prefix and no keyword is missed, and no content hash is
@@ -155,6 +167,7 @@ class MamoriConfig:
     surrogates: bool | Sequence[str] = False
     placeholder_style: str = "angle"
     uncertain: str = "discard"
+    patterns: Sequence[Mapping[str, object]] = ()
     secrets: str = "patterns"
     nlp: str = "none"
     phone: str = "patterns"
@@ -195,6 +208,16 @@ class MamoriConfig:
         applies, run on every config however it was built. A value neither
         path can read is refused where it was written, with the message that
         names the allowed values.
+
+        **The annotations still say `Stance`, not `Stance | str`,** and that is
+        deliberate. They describe what the object *holds* -- after this method
+        every field is the narrow type, which is what every reader downstream
+        depends on. A type checker will therefore flag
+        `MamoriConfig(stance="balanced")`, and the caller who sees that flag is
+        a caller with the enum already in scope. The coercion is for the ones
+        who do not: a config file, a notebook, an environment variable, a shell
+        one-liner. Nobody is broken and one group is told, which is the right
+        way round.
         """
         for name, coerce in _COERCIONS.items():
             current = getattr(self, name)
@@ -208,6 +231,8 @@ class MamoriConfig:
                 object.__setattr__(self, name, value)
         if self.prompts:
             object.__setattr__(self, "prompts", _as_prompts(self.prompts))
+        if self.patterns:
+            object.__setattr__(self, "patterns", _as_patterns(self.patterns))
         if self.corrections:
             object.__setattr__(self, "corrections", _as_corrections(self.corrections))
         # Read through an `object` so this stays code rather than a branch the
@@ -287,12 +312,18 @@ class MamoriConfig:
             # nothing covers. An operator saying "this is sensitive" is adding
             # evidence, not relabelling a detection that already exists.
             extra.append(CorrectionsPass(log))
+        custom: tuple[Any, ...] = ()
+        if self.patterns:
+            from .infrastructure.detectors.custom import compile_custom_rules
+
+            custom = compile_custom_rules(self.patterns)
         return (
             build_pipeline(
                 self.locales,
                 co_occurrence=pass_,
                 stance=self.stance,
                 extra_passes=extra,
+                patterns=custom,
             ),
         )
 
@@ -512,6 +543,8 @@ class MamoriConfig:
             )
         if "uncertain" in values:
             kwargs["uncertain"] = _as_choice(values["uncertain"], "uncertain", Uncertain)
+        if "patterns" in values:
+            kwargs["patterns"] = _as_patterns(values["patterns"])
         if "secrets" in values:
             kwargs["secrets"] = _as_secret_algorithm(values["secrets"])
         if "nlp" in values:
@@ -796,6 +829,31 @@ def _as_corrections(value: object) -> str | Sequence[Mapping[str, object]]:
         if all(isinstance(entry, Mapping) for entry in entries):
             return entries
     raise ConfigurationError("corrections must be a path to a log, or a list of correction objects")
+
+
+def _as_patterns(value: object) -> tuple[Mapping[str, object], ...]:
+    """Detection rules from a configuration file.
+
+    Compiled here rather than stored raw and compiled later, for the reason
+    every other eager check in this module exists: a rule that only fails when
+    a document arrives is a rule nobody notices is broken. The compiled rules
+    are thrown away and rebuilt by :meth:`MamoriConfig.detectors` -- this call
+    is the validation, and the cost of doing it twice is microseconds against
+    a startup that has already read a file.
+    """
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ConfigurationError("patterns must be a list of rule mappings")
+    entries = tuple(value)
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise ConfigurationError(
+                f"each entry in patterns must be a mapping, got {type(entry).__name__}"
+            )
+
+    from .infrastructure.detectors.custom import compile_custom_rules
+
+    compile_custom_rules(entries)  # raises ConfigurationError, naming the entry
+    return entries
 
 
 def _as_prompts(value: object) -> dict[str, object]:
