@@ -77,9 +77,30 @@ class TestTheRecognizerPort:
         assert not hasattr(RecognizedEntity("PERSON", Span(0, 1)), "value")
 
 
+class Adapting:
+    """A recogniser that reports the first four characters, when there are four.
+
+    A fixed span would be outside every hostile input the contract feeds it --
+    and a real recogniser never reports a span outside the text it was given,
+    so a fake that does is testing the pass against something no
+    implementation does.
+    """
+
+    name = "adapting"
+
+    def entities(self, text: str) -> Sequence[RecognizedEntity]:
+        return [RecognizedEntity("PERSON", Span(0, 4))] if len(text) >= 4 else []
+
+
 class TestNlpPassContract(DetectionPassContract):
+    #: A recogniser that reports something, so the coverage check has findings
+    #: to feed back. `Fake()` with no entities reports nothing, and a check
+    #: over nothing checks nothing.
     def make_pass(self) -> NlpPass:
-        return NlpPass(Fake())
+        return NlpPass(Adapting())
+
+    def sample(self) -> str:
+        return "田中太郎さんへ tanaka@example.com"
 
 
 class TestWhatThePassDoesWithALabel:
@@ -260,6 +281,9 @@ class TestPhonePassContract(DetectionPassContract):
     def make_pass(self) -> PhoneNumberPass:
         pytest.importorskip("phonenumbers")
         return PhoneNumberPass()
+
+    def sample(self) -> str:
+        return "call (415) 555-0198 tomorrow"
 
 
 class TestSpacyWhenItIsInstalled:

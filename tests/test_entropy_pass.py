@@ -37,6 +37,11 @@ class TestItSatisfiesTheContract(DetectionPassContract):
     def make_pass(self) -> DetectionPass:
         return EntropyPass()
 
+    def sample(self) -> str:
+        """The contract's default text holds no run long enough to judge, so
+        the coverage check over it would pass while checking nothing."""
+        return f"Authorization: Bearer {HEX_KEY}"
+
 
 class TestWhatItFinds:
     """Phrasings measured against the default rules first, at both stances,

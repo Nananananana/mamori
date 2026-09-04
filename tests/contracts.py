@@ -12,6 +12,7 @@ inherit the contract rather than guessing at it.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import ClassVar
 
 import pytest
 
@@ -237,8 +238,35 @@ class DetectionPassContract:
     def make_pass(self) -> DetectionPass:  # pragma: no cover - overridden
         raise NotImplementedError
 
+    #: Whether this pass reads what earlier passes found.
+    #:
+    #: A pass that does must not re-report a span something anchored already
+    #: claimed. That was checked by looking at :meth:`seeds` and skipping when
+    #: it was empty -- so a pass that *does* read prior findings, written by
+    #: somebody who did not know to override `seeds`, skipped the one check
+    #: that matters and reported green. Three of the four passes here were in
+    #: exactly that state: the entropy pass, the recogniser pass and the phone
+    #: pass all call `context.covered()`, and all three skipped.
+    #:
+    #: Declaring it is the fix. `DetectorPass` sets it to `False` because it
+    #: wraps a plain `Detector`, which by design cannot see prior findings --
+    #: a statement somebody made, rather than an override somebody forgot.
+    consumes_prior_findings: ClassVar[bool] = True
+
+    def sample(self) -> str:
+        """Text this pass finds something in. Override when it finds nothing
+        in the default -- a check over a sample with no findings in it passes
+        while checking nothing."""
+        return "田中太郎さんへ tanaka@example.com / 田中太郎"
+
     def seeds(self, text: str) -> tuple[SensitiveEntity, ...]:
-        """Prior findings to hand the pass. Override for passes that need them."""
+        """Prior findings needed before this pass can report anything at all.
+
+        Only for a pass that reasons *from* earlier results -- co-occurrence
+        propagates a confirmed value, and finds nothing without one. Most
+        passes need none, and the coverage check below builds its own from
+        what the pass reports.
+        """
         return ()
 
     def test_it_satisfies_the_protocol(self) -> None:
@@ -270,15 +298,33 @@ class DetectionPassContract:
             assert text[entity.span.start : entity.span.end] == entity.value
 
     def test_it_does_not_re_report_what_is_already_covered(self) -> None:
-        """Prior findings are kept by the pipeline; duplicating them is noise."""
-        text = "田中太郎さんへ tanaka@example.com / 田中太郎"
-        seeds = self.seeds(text)
-        if not seeds:
-            pytest.skip("this pass does not consume prior findings")
-        claimed = DetectionContext(text=text, found=seeds).covered()
-        for entity in self.make_pass().run(DetectionContext(text=text, found=seeds)):
+        """Prior findings are kept by the pipeline; duplicating them is noise.
+
+        The priors are **what this pass itself reported**, fed back. That
+        removes the failure the previous version had -- it asked the subclass
+        for seeds and skipped when there were none, so a pass whose test class
+        forgot to write them skipped silently. It also cannot be vacuous: the
+        first run has to find something, or there is nothing to feed back.
+        """
+        if not self.consumes_prior_findings:
+            pytest.skip("declared as not reading prior findings")
+
+        text = self.sample()
+        priors = self.seeds(text)
+        found = tuple(self.make_pass().run(DetectionContext(text=text, found=priors)))
+        assert found, (
+            f"{type(self).__name__}.sample() gives text this pass finds nothing in, "
+            "so feeding its own findings back would check nothing. Override sample()."
+        )
+
+        again = self.make_pass().run(DetectionContext(text=text, found=(*priors, *found)))
+        claimed = DetectionContext(text=text, found=(*priors, *found)).covered()
+        for entity in again:
             overlap = set(range(entity.span.start, entity.span.end)) & claimed
-            assert not overlap
+            assert not overlap, (
+                f"re-reported {entity.entity_type.name} at "
+                f"{entity.span.start}:{entity.span.end}, which was already covered"
+            )
 
     def test_it_is_repeatable(self) -> None:
         text = "田中太郎さんへ / 田中太郎 / Dear Jane Doe, cc Jane Doe"

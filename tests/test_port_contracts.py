@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mamori.domain.sensitive_entity import SensitiveEntity
+from mamori.domain.stance import Stance
 from mamori.infrastructure.detectors import (
     CHINESE,
     ENGLISH,
@@ -69,6 +70,11 @@ class TestInMemoryMappingStore(MappingStoreContract):
 
 
 class TestRulesPass(DetectionPassContract):
+    #: A `DetectorPass` wraps a plain `Detector`, whose contract is
+    #: deliberately narrow: it is handed a text and nothing else. Declared
+    #: rather than skipped by accident.
+    consumes_prior_findings = False
+
     def make_pass(self) -> DetectionPass:
         return DetectorPass(
             AdaptiveLocaleDetector(
@@ -83,13 +89,41 @@ class TestCoOccurrencePassContract(DetectionPassContract):
     def make_pass(self) -> DetectionPass:
         return CoOccurrencePass()
 
+    def sample(self) -> str:
+        """A name settled by an honorific in one sentence and unanchored in the
+        next -- the case this pass exists for.
+
+        The contract's default text is not it. There the rules already find
+        both occurrences of the name, so this pass correctly adds nothing, and
+        a coverage check over nothing passes while checking nothing. That was
+        the fifth vacuous case in this contract and the only one that was not
+        a skip.
+
+        English rather than Chinese, which was the first attempt: the Chinese
+        pack has a rule for a *repeated* surname, so both mentions are found by
+        rules at either stance and this pass is genuinely redundant there. The
+        salutation is the anchor, the second mention has none, and propagation
+        is the only thing that reaches it.
+        """
+        return "Dear Jane Doe,\nthe report from Jane Doe is attached."
+
     def seeds(self, text: str) -> tuple[SensitiveEntity, ...]:
-        """Whatever the rules find first, which is what the pipeline hands it."""
+        """Whatever the rules find first, which is what the pipeline hands it.
+
+        At the **balanced** stance, deliberately. The wide tier reports a
+        Chinese surname plus one or two characters wherever it appears, so at
+        the recall-first stance the rules already find both mentions and this
+        pass correctly adds nothing -- which made the coverage check below pass
+        while checking nothing. The balanced stance is where propagation is the
+        only thing that finds the second mention, and is the case the pass was
+        written for.
+        """
         return tuple(
             DetectorPass(
                 AdaptiveLocaleDetector(
                     [JAPANESE, ENGLISH, CHINESE],
                     always=[RegexDetector("universal", UNIVERSAL_RULES)],
+                    stance=Stance.BALANCED,
                 )
             ).run(DetectionContext(text=text))
         )
