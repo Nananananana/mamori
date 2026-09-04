@@ -31,6 +31,20 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **An ordinary document could take minutes.** Two unbounded quantifiers made
+  the cost quadratic in the length of the input, so the *shape* of a document
+  decided how long a request took -- reachable by a base64 attachment, an
+  identifier column, or a rule of hyphens in a Markdown file. Measured at four
+  times the input: `protect` on 8KB→32KB of one alphanumeric run, 260ms →
+  4,057ms; `restore` on 8KB→128KB, 1,298ms → **455,890ms**. Both are bounded
+  now by somebody else's number rather than by a preference -- RFC 5321 says a
+  local part is at most 64 characters, RFC 1035 says a DNS label is at most
+  63, and this library's own `TYPE_NAME_RE` says a placeholder type is at most
+  63. Every shape is linear afterwards: 512KB of anything restores in about
+  260ms. A survey of all ~100 shipped rules against sixteen adversarial shapes
+  found the two email rules and nothing else; `tests/test_scaling.py` is what
+  keeps that true.
+
 - **Resuming a saved conversation answered about the wrong person.** The
   placeholder counter lived beside the mappings and no load touched it, so
   `mamori load` of a file holding `<EMAIL_001>` followed by one more protect

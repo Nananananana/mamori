@@ -29,25 +29,67 @@ from .span import Span
 
 __all__ = ["PlaceholderOccurrence", "scan_placeholders"]
 
+#: Whitespace inside one line, and how much of it a mangled placeholder may
+#: carry. **Bounded, and the bound is what makes this scan linear.**
+#:
+#: Every mutation this scanner exists for inserts at most one space per
+#: position -- `< PERSON _ 001 >` is the worst observed. Four is that with
+#: room, and it is a limit rather than a preference: unbounded, the engine
+#: matched `PERSON`, ran `[^\S\n]*` to the end of a 8,000-space run, failed
+#: on the separator, and backtracked once per space. Measured before this
+#: line: 9ms at 500 characters, 2,292ms at 8,000 -- four times the work for
+#: twice the input, all the way up.
+_GAP = r"[^\S\n]{0,4}"
+
+#: The same, where an underscore or hyphen may not be consumed as the gap.
+_GAP_NO_JOIN = r"[^\S\n_\-]{0,4}"
+
+#: How long a type name can be, and how many `_`-separated parts it can have.
+#: Not chosen: `TYPE_NAME_RE` is `[A-Z][A-Z0-9_]{0,62}`, so 63 characters is
+#: the longest name that can ever have been allocated, and 63 characters hold
+#: at most 32 parts. A candidate longer than this is not a mangled placeholder
+#: -- it is a word that begins like one, and reading the rest of the document
+#: to find that out is exactly the cost this bound removes.
+_TYPE_TAIL = "{0,62}"
+_PARTS = "{0,31}"
+
 _LENIENT_RE = re.compile(
     r"""
-    (?:(?P<open>[<\[\{])[^\S
-
-]*)?
-    (?P<type>[A-Za-z][A-Za-z0-9]*(?:[^\S
-
-_\-]*[_\-][^\S
-
-]*[A-Za-z0-9]+)*?)
-    [^\S
-
-_\-]*[\s_\-][^\S
-
-]*
+    # A bracket, or a boundary. Without one of the two the engine starts a
+    # candidate at every position of a long alphanumeric run -- `restore` on a
+    # 128KB response holding one base64 blob took 456 seconds, measured, and a
+    # model emitting a long token is ordinary rather than adversarial.
+    #
+    # The alternation matters and the first version got it wrong: a bare
+    # lookbehind in front of the optional bracket refused `A<PERSON_001>`,
+    # because the character before `<` is alphanumeric. A bracket **is** the
+    # boundary; only the unbracketed form needs one in front of it. Found by
+    # `test_restore_undoes_protect`, on `田中太郎さんA田中太郎さん`.
+    (?:
+        (?P<open>[<\[\{])"""
+    + _GAP
+    + r"""
+      |
+        (?<![A-Za-z0-9])
+    )
+    (?P<type>[A-Za-z][A-Za-z0-9]"""
+    + _TYPE_TAIL
+    + r"""(?:"""
+    + _GAP_NO_JOIN
+    + r"""[_\-]"""
+    + _GAP
+    + r"""[A-Za-z0-9]{1,62})"""
+    + _PARTS
+    + r"""?)
+    """
+    + _GAP_NO_JOIN
+    + r"""[\s_\-]"""
+    + _GAP
+    + r"""
     (?P<index>\d{1,6})
-    (?:[^\S
-
-]*(?P<close>[>\]\}]))?
+    (?:"""
+    + _GAP
+    + r"""(?P<close>[>\]\}]))?
     """,
     re.VERBOSE,
 )

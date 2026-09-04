@@ -121,10 +121,46 @@ def _private_ip(value: str) -> bool:
 
 # --- Contact details -------------------------------------------------------
 
+#: The parts of an address, with the limits the standards already put on them.
+#:
+#: **The bounds are not tuning; they are the reason this is linear.** With
+#: `+` on the local part, `finditer` starts a candidate at every character of
+#: a long run, consumes the whole rest of the run looking for `@`, fails, and
+#: backs off one character at a time -- quadratic. Measured on the two email
+#: rules, which were the *only* superlinear rules of the 100-odd in this
+#: library: at 4,000 characters of `aaaa...`, 53ms; at 16,000, 856ms. Sixteen
+#: times the work for four times the input. A document holding one base64
+#: attachment or one long identifier column is ordinary, and `protect` on
+#: 32KB of it took four seconds.
+#:
+#: Every number here is somebody else's:
+#:   * 64  -- RFC 5321 §4.5.3.1.1, the longest local part
+#:   * 63  -- RFC 1035 §2.3.4, the longest DNS label
+#:   * 20  -- labels between the first and the suffix. The real ceiling is 127
+#:            (253 characters at two per label); no address anybody sends has
+#:            more than a handful, and the bound has to be finite to matter.
+#: An address longer than these is not one, so nothing that could be an email
+#: stops matching.
+_LOCAL_PART = r"[A-Za-z0-9._%+\-]{1,64}"
+_DOMAIN_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0-9])?"
+_DOMAIN_TAIL = r"(?:\.[A-Za-z0-9\-]{1,63}){0,20}\.[A-Za-z]{2,24}"
+
+#: Only where a local part could actually begin. The engine otherwise starts a
+#: candidate inside a run it has already rejected, and an address does not
+#: begin in the middle of one, so refusing costs nothing.
+#:
+#: **Either this or the length bound above removes the quadratic; measured,
+#: separately.** With the bound alone, sixteen shapes stay linear. With this
+#: alone, the same. With neither, eight of the sixteen go superlinear. Both
+#: are kept because both are independently true of an email address, and
+#: because a later edit to one then leaves the other standing -- which is what
+#: you want from the bound between an ordinary document and a four-second
+#: request.
+_NOT_MID_LOCAL = r"(?<![A-Za-z0-9._%+\-])"
+
 _EMAIL = compile_rule(
     t.EMAIL,
-    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
-    r"(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,24}",
+    _NOT_MID_LOCAL + _LOCAL_PART + r"@" + _DOMAIN_LABEL + _DOMAIN_TAIL,
     CERTAIN,
 )
 
@@ -142,8 +178,7 @@ _EMAIL = compile_rule(
 #: would let this reach across a line break into an unrelated word.
 _SPACED_EMAIL = compile_rule(
     t.EMAIL,
-    r"[A-Za-z0-9._%+\-]+[^\S\r\n]@[^\S\r\n][A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
-    r"(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,24}",
+    _NOT_MID_LOCAL + _LOCAL_PART + r"[^\S\r\n]@[^\S\r\n]" + _DOMAIN_LABEL + _DOMAIN_TAIL,
     MEDIUM,
 )
 
