@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 
@@ -291,6 +291,17 @@ class TestTheEnvironmentPrefixIsReserved:
         assert config.locales == ("ja",)
 
 
+def _built(**settings: Any) -> MamoriConfig:
+    """`MamoriConfig(**one_setting)`, through a signature a checker can read.
+
+    The tests below build a config from a name chosen at run time, which is
+    a `dict[str, object]` and matches no single field's type. The point of
+    them is precisely that the constructor takes what a config file holds, so
+    the `Any` is the subject rather than a way around it.
+    """
+    return MamoriConfig(**settings)
+
+
 class TestEveryFieldSurvivesTheMapping:
     """A field `from_mapping` accepts as known and then drops is worse than an
     unknown key.
@@ -375,7 +386,7 @@ class TestEveryFieldSurvivesTheMapping:
         path was tested against itself.
         """
         written = self.SAMPLES[name]
-        assert MamoriConfig(**{name: written}) == MamoriConfig.from_mapping({name: written}), (
+        assert _built(**{name: written}) == MamoriConfig.from_mapping({name: written}), (
             f"{name}: MamoriConfig({name}={written!r}) and "
             f"from_mapping({{{name!r}: {written!r}}}) are different objects. One of "
             "the two paths is not coercing, and the caller cannot tell which."
@@ -394,12 +405,10 @@ class TestEveryFieldSurvivesTheMapping:
         nonsense = {"llm": 7, "prompts": 7, "corrections": 7, "surrogates": 7}.get(
             name, "no-such-value"
         )
-        for build in (
-            lambda: MamoriConfig(**{name: nonsense}),
-            lambda: MamoriConfig.from_mapping({name: nonsense}),
-        ):
-            with pytest.raises(ConfigurationError):
-                build()
+        with pytest.raises(ConfigurationError):
+            _built(**{name: nonsense})
+        with pytest.raises(ConfigurationError):
+            MamoriConfig.from_mapping({name: nonsense})
 
 
 class TestALayerCanRestoreADefault:

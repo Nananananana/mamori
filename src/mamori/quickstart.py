@@ -56,6 +56,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from types import TracebackType
+from typing import Any
 
 from .application.results import EntityReport
 from .application.session import PrivacySession
@@ -93,13 +94,20 @@ class Protected:
     #: result.
     session: PrivacySession
 
-    def __iter__(self) -> Iterator[object]:
+    def __iter__(self) -> Iterator[Any]:
         """`text, restore = protect(...)`, and nothing else.
 
         Two items rather than four on purpose. Unpacking is positional and
         silent, so every name it yields is a name that can never be reordered;
         `entities` and `session` are attributes, where adding a third costs
         nobody anything.
+
+        `Any` rather than `object`, and it is the honest annotation rather
+        than a loosening: the two items have different types, and a type
+        checker reading `Iterator[object]` concludes that `restore` is an
+        `object` and refuses to call it. Nothing can express "a `str` then a
+        callable" through `__iter__`; the attributes above are typed exactly,
+        and this is the shortcut being paid for.
         """
         yield self.text
         yield self.restore

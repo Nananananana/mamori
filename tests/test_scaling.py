@@ -25,7 +25,8 @@ email rules and nothing else. This file is what keeps that true.
 from __future__ import annotations
 
 import time
-from typing import ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import pytest
 
@@ -66,20 +67,20 @@ LARGE = 16_000
 MAX_GROWTH = 8.0
 
 
-def _fastest(work: object, repeats: int = 3) -> float:
+def _fastest(work: Callable[[], object], repeats: int = 3) -> float:
     """The best of a few runs. Scheduling noise only ever adds time."""
-    return min(_once(work) for _ in range(repeats))  # type: ignore[arg-type]
+    return min(_once(work) for _ in range(repeats))
 
 
-def _once(work: object) -> float:
+def _once(work: Callable[[], object]) -> float:
     start = time.perf_counter()
-    work()  # type: ignore[operator]
+    work()
     return time.perf_counter() - start
 
 
-def _scan(pattern: object, text: str) -> object:
+def _scan(pattern: Any, text: str) -> Callable[[], object]:
     """A closure over *this* pattern, not over the loop variable."""
-    return lambda: list(pattern.finditer(text))  # type: ignore[attr-defined]
+    return lambda: list(pattern.finditer(text))
 
 
 def _all_rules() -> list[tuple[str, object]]:
