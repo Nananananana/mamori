@@ -17,7 +17,7 @@ protected, restore = mamori.protect("请联系王小明，手机 13800138000")
 
 answer = call_your_favourite_llm(protected)
 
-print(restore(answer))          # 姓名和手机号都回来了
+print(restore(answer))  # 姓名和手机号都回来了
 ```
 
 面前是一封客户邮件，手边是一个几秒钟就能起草回复的模型。于是你把姓名删掉、

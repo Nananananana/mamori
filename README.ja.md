@@ -17,7 +17,7 @@ protected, restore = mamori.protect("田中太郎さんに tanaka@example.com �
 
 answer = call_your_favourite_llm(protected)
 
-print(restore(answer))          # 田中太郎 とアドレスが戻ってくる
+print(restore(answer))  # 田中太郎 とアドレスが戻ってくる
 ```
 
 顧客からのメールが目の前にあり、返信の下書きを数秒で書けるモデルもある。

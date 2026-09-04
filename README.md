@@ -17,7 +17,7 @@ protected, restore = mamori.protect("田中太郎さんに tanaka@example.com �
 
 answer = call_your_favourite_llm(protected)
 
-print(restore(answer))          # 田中太郎 and the address are back
+print(restore(answer))  # 田中太郎 and the address are back
 ```
 
 You have a customer email in front of you and a model that could draft the
@@ -698,8 +698,8 @@ The pattern rules find what has a shape. Two things have no shape, and the
 standard library cannot close either:
 
 ```python
-MamoriConfig(nlp="spacy")           # a name with no anchor beside it
-MamoriConfig(nlp="gliner")          # the same, and any category you can name
+MamoriConfig(nlp="spacy")  # a name with no anchor beside it
+MamoriConfig(nlp="gliner")  # the same, and any category you can name
 MamoriConfig(phone="phonenumbers")  # a run of digits that is really a number
 ```
 
