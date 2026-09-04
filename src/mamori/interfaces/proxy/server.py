@@ -238,13 +238,26 @@ class _Handler(BaseHTTPRequestHandler):
         stops is flushed as a final chunk per run.
         """
         restoration = StreamRestoration(session)
+
+        # The generator is lazy, so nothing has been sent upstream yet. Pull
+        # the first line **before** the status line goes out: the upstream
+        # connection is opened by that pull, and an `UpstreamError` from it
+        # used to surface after `200 OK` and `Content-Type: text/event-stream`
+        # were already on the wire. `do_POST` then wrote a second, complete
+        # HTTP response into the body of the first -- measured, two status
+        # lines in one response. An OpenAI client sees a successful stream
+        # whose first event is unparseable and never learns the upstream
+        # failed.
+        lines = self.upstream.stream(UPSTREAM_CHAT_PATH, protected, headers)
+        first = next(lines, None)
+
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self._send_token()
         self.end_headers()
 
-        for line in self.upstream.stream(UPSTREAM_CHAT_PATH, protected, headers):
+        for line in [] if first is None else [first, *lines]:
             for out in _restored_event(line, restoration.feed):
                 self.wfile.write(out)
                 self.wfile.flush()

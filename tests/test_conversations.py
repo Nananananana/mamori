@@ -415,3 +415,54 @@ class TestAnInFlightConversationIsNotPurged:
         registry.release(conversation.token)
         registry.resume(None)
         assert registry.resume(conversation.token) is conversation
+
+
+class TestOneConversationIsBoundedToo:
+    """The ceiling counts conversations. Each held a store with no cap.
+
+    This module said it was *"bounded in both directions"*, and it was bounded
+    in one: 400 requests on a single token with two fresh addresses each left
+    **800 mappings in one scope**, registry length 1 of a capacity of 64.
+    Sixty-four tokens kept warm held every value ever sent, for as long as the
+    process ran.
+    """
+
+    def test_a_conversation_that_outgrows_the_bound_is_started_again(self) -> None:
+        registry = ConversationRegistry(PrivacySession, max_mappings=3)
+        first = registry.resume(None)
+        for index in range(5):
+            first.session.protect(f"mail user{index}@example.com")
+        assert registry.resume(first.token) is not first
+
+    def test_the_replacement_starts_empty(self) -> None:
+        registry = ConversationRegistry(PrivacySession, max_mappings=3)
+        first = registry.resume(None)
+        for index in range(5):
+            first.session.protect(f"mail user{index}@example.com")
+        assert registry.resume(first.token).session.mappings() == ()
+
+    def test_an_ordinary_conversation_is_untouched(self) -> None:
+        """The bound exists for a client that never stops, not to shape use."""
+        registry = ConversationRegistry(PrivacySession)
+        conversation = registry.resume(None)
+        for index in range(20):
+            conversation.session.protect(f"mail user{index}@example.com")
+        assert registry.resume(conversation.token) is conversation
+
+    def test_it_is_checked_before_a_request_and_never_during_one(self) -> None:
+        """Ending a conversation mid-request is the defect the in-flight hold
+        fixed, reached from the other side."""
+        registry = ConversationRegistry(PrivacySession, max_mappings=1)
+        with registry.checkout(None) as busy:
+            for index in range(5):
+                busy.session.protect(f"mail user{index}@example.com")
+            assert registry.resume(busy.token) is busy
+
+    def test_a_nonsense_bound_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="max_mappings"):
+            ConversationRegistry(PrivacySession, max_mappings=0)
+
+    def test_a_session_can_say_what_it_holds(self) -> None:
+        with PrivacySession() as session:
+            session.protect("mail jane@example.com")
+            assert len(session.mappings()) == 1

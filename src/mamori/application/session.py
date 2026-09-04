@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 from types import TracebackType
 
 from ..domain.corrections import CorrectionLog
+from ..domain.mapping import Mapping
 from ..domain.placeholder import PlaceholderStyle
 from ..domain.policy import PrivacyPolicy
 from ..ports.detector import Detector
@@ -154,6 +155,22 @@ class PrivacySession:
             ('EMAIL',)
         """
         return self._protection.inspect(text)
+
+    def mappings(self) -> Sequence[Mapping]:
+        """Everything allocated in this scope so far.
+
+        A count, mostly: the conversation registry reads it to bound what one
+        conversation may hold, having claimed to be bounded while each store
+        grew without limit. It returns the mappings rather than a number
+        because a caller that wants to write them out already has to reach the
+        store, and one entry point is better than two.
+
+        Security note:
+            These carry original values. Nothing in this library logs, prints
+            or serialises the result; a caller who does has taken on the same
+            responsibility `--save-mapping` states.
+        """
+        return self._store.list_scope(self._scope)
 
     def restore(self, text: str) -> RestorationResult:
         """Replace this session's placeholders in ``text`` with real values.

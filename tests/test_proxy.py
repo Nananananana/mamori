@@ -495,3 +495,66 @@ class TestNothingIsRetained:
                 proxy.post(chat(f"{NAME}さんへ"))
                 _, second = proxy.post(chat("nothing sensitive here"))
         assert second["choices"][0]["message"]["content"] == "<PERSON_001> said so"
+
+
+class TestAStreamingErrorIsOneResponse:
+    """The status line went out before the upstream was contacted.
+
+    `upstream.stream` is a generator, so nothing was sent until the first pull
+    -- which happened *after* `200 OK` and `Content-Type: text/event-stream`
+    were already on the wire. An `UpstreamError` then reached `do_POST`, which
+    wrote a second complete HTTP response into the body of the first. Measured
+    on a raw socket: two status lines in one response. An OpenAI client sees a
+    successful stream whose first event is unparseable and never learns the
+    upstream failed.
+    """
+
+    def raw_post(self, url: str, payload: dict[str, Any]) -> bytes:
+        """Bytes off the socket. `urllib` parses the first response and
+        hides the second, which is exactly what made this invisible."""
+        import socket
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        payload_bytes = json.dumps(payload).encode()
+        eol = chr(13) + chr(10)
+        request = (
+            f"POST {parsed.path} HTTP/1.1{eol}"
+            f"Host: x{eol}"
+            f"Content-Type: application/json{eol}"
+            f"Connection: close{eol}"
+            f"Content-Length: {len(payload_bytes)}{eol}{eol}"
+        ).encode() + payload_bytes
+        with socket.create_connection(
+            (parsed.hostname or "", parsed.port or 80), timeout=10
+        ) as sock:
+            sock.sendall(request)
+            chunks = []
+            while chunk := sock.recv(4096):
+                chunks.append(chunk)
+        return b"".join(chunks)
+
+    def test_a_failing_upstream_gives_one_status_line(self) -> None:
+        with FakeUpstream() as upstream:
+            upstream.status = 500
+            with RunningProxy(upstream.url) as proxy:
+                raw = self.raw_post(proxy.url, chat("Dear Jane Doe,", stream=True))
+
+        assert raw.count(b"HTTP/1.") == 1, raw[:400]
+        assert b"200" not in raw.split((chr(13) + chr(10)).encode(), 1)[0]
+
+    def test_a_working_stream_is_unaffected(self) -> None:
+        with FakeUpstream() as upstream:
+            upstream.stream_chunks = ["Dear <PERSON_001>,", " thanks."]
+            with RunningProxy(upstream.url) as proxy:
+                lines = list(proxy.post_stream(chat("Dear Jane Doe,", stream=True)))
+        assert any("Jane Doe" in line for line in lines)
+
+    def test_nothing_is_sent_upstream_before_the_request_is_protected(self) -> None:
+        """The ordering the fix depends on: the first pull opens the upstream
+        connection, and everything mamori does happens before it."""
+        with FakeUpstream() as upstream:
+            upstream.stream_chunks = ["ok"]
+            with RunningProxy(upstream.url) as proxy:
+                list(proxy.post_stream(chat("Dear Jane Doe,", stream=True)))
+        assert "Jane Doe" not in upstream.raw

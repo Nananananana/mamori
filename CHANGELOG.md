@@ -10,7 +10,7 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [0.32.0] - 2026-09-03
 
-Nine defects, four of them leaks and one of them a wrong answer. Two
+Thirteen defects, four of them leaks and one of them a wrong answer. Two
 algorithms the standard library cannot provide, behind the switch 0.31
 established. And Presidio's shapes, so trying this costs an import.
 
@@ -58,6 +58,34 @@ established. And Presidio's shapes, so trying this costs an import.
   and lost a 52-character database URL to the gap between two windows, seen by
   no detector. `longest_whole` is the honest question, and both the settings
   and the pass refuse a window too small to carry a value whole.
+
+- **A streaming error arrived as two HTTP responses in one.** `200 OK` and
+  `Content-Type: text/event-stream` went out before the upstream was
+  contacted, because the stream is a generator and nothing is sent until the
+  first pull. An `UpstreamError` then wrote a second, complete response into
+  the body of the first: measured on a raw socket, two status lines. An
+  OpenAI client saw a successful stream whose first event was unparseable and
+  never learned the upstream had failed.
+
+- **A conversation grew without limit.** The registry's ceiling counts
+  conversations, and each held a store with no cap and a retention of forever,
+  while the module said it was *"bounded in both directions"*. 400 requests on
+  one token left 800 mappings in one scope, registry length 1 of a capacity of
+  64. `max_mappings` bounds it, checked before a request rather than during
+  one, and exceeding it starts the conversation again -- which is what
+  eviction already does and what a client already handles.
+
+- **One value got several placeholders under concurrency.** Allocation is
+  three separately-locked store calls with no lock spanning them: at 32
+  threads, 32 of 60 runs allocated more than one placeholder for one value,
+  and over HTTP two placeholders for one person went upstream in the same
+  conversation.
+
+- **A concurrent request purged an in-flight one.** Eviction and expiry both
+  purge a scope, and both could pick a conversation another thread was between
+  protect and restore on. Measured: 12 concurrent callers against a ceiling of
+  8, and **4 of 12 replies came back with a raw placeholder in them** --
+  printed at a human, for a name that caller sent in that same request.
 
 - **An environment variable could not restore a default.** `merged_with`
   compared against the defaults, so `MAMORI_DEFAULT_ACTION=block` over a file

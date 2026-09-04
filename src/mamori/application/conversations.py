@@ -60,6 +60,20 @@ DEFAULT_IDLE_SECONDS = 30 * 60
 #: value it has ever seen.
 DEFAULT_MAX_CONVERSATIONS = 64
 
+#: How many mappings one conversation may hold before it is started again.
+#:
+#: The ceiling above counts *conversations*, and this module claimed to be
+#: "bounded in both directions" while each one held a store with no cap and a
+#: retention of forever. Measured: 400 requests on one token, two fresh
+#: addresses each, **800 mappings in one scope**, registry length 1 of a
+#: capacity of 64. Sixty-four tokens kept warm held every value ever sent, for
+#: as long as the process ran.
+#:
+#: Generous on purpose: a long working session over one document is nowhere
+#: near it, and the number exists to bound a client that never stops rather
+#: than to shape ordinary use.
+DEFAULT_MAX_MAPPINGS = 5000
+
 #: Bytes of entropy in a conversation token. 16 is 128 bits, which is not
 #: guessable; the token is the only thing standing between one caller and
 #: another caller's mappings.
@@ -114,15 +128,19 @@ class ConversationRegistry:
         *,
         idle_seconds: float = DEFAULT_IDLE_SECONDS,
         max_conversations: int = DEFAULT_MAX_CONVERSATIONS,
+        max_mappings: int = DEFAULT_MAX_MAPPINGS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if idle_seconds <= 0:
             raise ValueError("idle_seconds must be positive")
         if max_conversations < 1:
             raise ValueError("max_conversations must be at least 1")
+        if max_mappings < 1:
+            raise ValueError("max_mappings must be at least 1")
         self._factory = factory
         self._idle = idle_seconds
         self._max = max_conversations
+        self._max_mappings = max_mappings
         self._clock = clock
         self._lock = threading.RLock()
         self._live: dict[str, Conversation] = {}
@@ -140,10 +158,12 @@ class ConversationRegistry:
         with self._lock:
             self.sweep()
             existing = self._live.get(token) if token else None
-            if existing is not None:
+            if existing is not None and not self._outgrown(existing):
                 existing.last_used = self._clock()
                 existing.turns += 1
                 return existing
+            if existing is not None:
+                self._live.pop(existing.token).session.close()
             return self._open()
 
     def hold(self, token: str) -> None:
@@ -262,6 +282,34 @@ class ConversationRegistry:
         conversation = Conversation(token=token, session=self._factory(), last_used=self._clock())
         self._live[token] = conversation
         return conversation
+
+    def _outgrown(self, conversation: Conversation) -> bool:
+        """Whether a conversation holds more mappings than it is allowed to.
+
+        The ceiling above counts *conversations*, and this module claimed to be
+        *"bounded in both directions"* while each one held an
+        `InMemoryMappingStore` with no cap and a retention of forever.
+        Measured: 400 requests on one token, two fresh addresses each, **800
+        mappings in one scope**, registry length 1 of a capacity of 64. Sixty
+        four tokens kept warm held every value ever sent, for as long as the
+        process ran.
+
+        Checked at `resume`, before a request begins, and never mid-request --
+        so nothing a live call depends on is taken away. Exceeding it ends the
+        conversation and starts a fresh one, which is exactly what eviction
+        already does and what a client already handles: it comes back to a new
+        conversation and re-protects its history.
+
+        Expiring individual mappings instead would be worse. A conversation
+        exists so that turn fifty can be restored with a value from turn one;
+        dropping the oldest would break that silently, at a moment nobody
+        chose.
+        """
+        if conversation.in_use:
+            # A request is inside it. Ending it here is the defect this module
+            # fixed one commit ago, arrived at from the other side.
+            return False
+        return len(conversation.session.mappings()) > self._max_mappings
 
     def _evict_oldest(self) -> bool:
         """Drop the least recently used idle conversation. Caller holds the lock.
