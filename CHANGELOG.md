@@ -77,6 +77,24 @@ While the version is below `1.0.0`, the public API may change in a minor release
   `mamori.inspect(text)` answers *"is there anything in this"* without
   allocating a placeholder.
 
+### Documentation
+
+- **How long a mapping lives, as a table with numbers in it.** `SECURITY.md`
+  said four bullets; it now says where the table lives, the eight things that
+  end it, what a crash costs, and the one sharp edge -- two sessions both mint
+  `<EMAIL_001>`, so restoring one session's answer with another's returns the
+  other value with nothing reported. `tests/test_security_figures.py` fails the
+  build when a default named there stops being the default.
+
+- **[docs/adding-a-language.md](docs/adding-a-language.md)**, the checklist the
+  first three language packs earned: corpus before rules, bounded patterns,
+  negative tests first, floors measured and ceilings tightened.
+
+- **The streaming section shows the whole thing**, against an
+  OpenAI-compatible endpoint, including what `summary()` says afterwards and
+  why a support agent watching an answer arrive with the customer's real name
+  in it is the case the path exists for.
+
 ### Fixed
 
 - **An ordinary document could take minutes.** Two unbounded quantifiers made

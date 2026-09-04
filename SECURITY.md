@@ -406,6 +406,57 @@ The long form, including what is in and out of scope for each threat, is in
 - The library emits no log records, so there is nothing to configure away.
 - No telemetry, no network calls, no model downloads.
 
+### The mapping table: where it is, how long, and what ends it
+
+The mapping table is the highest-value object here — it is the only thing that
+holds the values, and it is what makes restoration possible at all. So this
+section is the whole of its life, and not a summary.
+
+**Where it lives.** In this process's memory, in a dict, in an
+`InMemoryMappingStore` created per session. Nothing else is written unless a
+caller asks. `mamori protect --save-mapping PATH` writes JSON in plain text and
+prints a warning to stderr every time; `--encrypt-mapping PATH` writes a Fernet
+envelope whose key comes from an environment variable and never from the file
+beside it.
+
+**How long it lasts, and what ends it:**
+
+| what happens | what becomes of the mappings |
+|---|---|
+| `session.close()`, or leaving a `with` block | that scope is purged immediately |
+| the process exits | the memory goes with it; nothing is flushed anywhere |
+| `mamori.protect(text)` result is garbage-collected | its session goes with it |
+| a `Retention` was set and the period passes | the mapping stops answering, dropped on the next read or write of the store |
+| a conversation sits idle for `--conversation-idle` (30 minutes by default) | the session is closed and its scope purged |
+| a conversation grows past `max_mappings` (5,000) | it is closed and a new one opened, so the old scope is purged |
+| more than `--max-conversations` (64) are live | the least recently used **idle** one is closed and purged; when every conversation is in flight the ceiling is exceeded rather than a live scope destroyed |
+| the process crashes | the memory is gone; there is nothing to recover and nothing left behind |
+
+The last row is the design, not an accident. There is no write-ahead log and no
+flush-on-exit, because a mapping table that survived a crash would be a mapping
+table on a disk somebody has to remember to delete. The cost is that a crash
+costs you the restoration, and a saved mapping file is the opt-in for anybody
+who would rather pay the other way.
+
+**Retention is a rule you can read, not a thread you cannot see.** It is
+enforced on every read and write of the store rather than by a sweeper, so the
+contents never depend on how long the process has been running. `mamori
+privacy` prints the rule in force.
+
+**What is *not* in the table:** nothing derived from the model's answer, and
+nothing about the request. It maps a placeholder to the exact original text and
+an identity key, in one scope, and holds no timestamps beyond what retention
+needs.
+
+**One sharp edge, measured and stated rather than smoothed over.** Placeholder
+numbering restarts per scope, so two independent sessions both mint
+`<EMAIL_001>`. Feeding one session's response to another session's `restore`
+therefore returns *the other value*, with nothing reported — the token is
+perfectly well known, it just means somebody else. Restoration takes a scope
+for exactly this reason, and the rule is that the text you restore must come
+from the session that protected it. There is no fix from inside a scope: a
+token another scope also minted is indistinguishable.
+
 ## Supported versions
 
 The latest `0.x` only, while the project is pre-1.0. Fixes land on `main`.

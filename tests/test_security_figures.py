@@ -249,3 +249,44 @@ class TestTheRecogniserTableIsAlsoTheMeasuredOne:
             f"{name}: SECURITY.md says {row['gliner_over']}% over-redacted with the "
             f"recogniser on; `mamori eval` says {report.over_redaction_rate * 100:.2f}%"
         )
+
+
+class TestTheMappingLifecycleTableIsTrue:
+    """`SECURITY.md` now states how long a mapping lives, in a table with
+    numbers in it. A number in a security document that has drifted is the
+    same defect as a check that cannot fail: it reads as evidence and is a
+    memory of evidence.
+
+    The defaults are the ones that could move without anybody noticing --
+    somebody tuning a proxy for throughput would change all three.
+    """
+
+    def test_the_defaults_named_in_the_table_are_the_defaults(self) -> None:
+        from mamori.application.conversations import (
+            DEFAULT_IDLE_SECONDS,
+            DEFAULT_MAX_CONVERSATIONS,
+            DEFAULT_MAX_MAPPINGS,
+        )
+
+        text = SECURITY.read_text(encoding="utf-8")
+        assert f"({DEFAULT_IDLE_SECONDS // 60} minutes by default)" in text
+        assert f"`--max-conversations` ({DEFAULT_MAX_CONVERSATIONS})" in text
+        assert f"`max_mappings` ({DEFAULT_MAX_MAPPINGS:,})" in text
+
+    def test_closing_a_session_really_purges_the_scope(self) -> None:
+        """The first row of the table, which every other row rests on."""
+        from mamori import PrivacySession
+        from mamori.infrastructure.storage import InMemoryMappingStore
+
+        store = InMemoryMappingStore()
+        with PrivacySession(store=store, scope="x") as session:
+            session.protect("mail tanaka@example.com")
+            assert store.list_scope("x"), "nothing was stored, so the purge proved nothing"
+        assert store.list_scope("x") == ()
+
+    def test_the_document_still_says_retention_is_a_rule_and_not_a_thread(self) -> None:
+        """A claim withdrawn from the document would leave this checking a
+        sentence nobody makes any more."""
+        text = SECURITY.read_text(encoding="utf-8")
+        assert "not a thread you cannot see" in text
+        assert "on every read and write of the store rather than by a sweeper" in text

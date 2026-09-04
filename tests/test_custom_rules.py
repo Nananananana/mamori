@@ -177,9 +177,27 @@ class TestTheTierIsHonoured:
 
 
 class TestFromAFileOnDisk:
+    def test_a_json_file_carries_them(self, tmp_path: Path) -> None:
+        """JSON first, because it is the format that works on every version
+        this library supports. `tomllib` arrived in 3.11 and mamori runs on
+        3.10, which is why `load_config_file` says *use a .json config
+        instead* -- and why the TOML test below skips rather than fails."""
+        import json as _json
+
+        from mamori.config import load_config_file
+
+        path = tmp_path / "mamori.json"
+        path.write_text(
+            _json.dumps({"stance": "balanced", "patterns": [ACME, CASE]}), encoding="utf-8"
+        )
+        config = load_config_file(path)
+        assert len(config.patterns) == 2
+        assert set(config.session().inspect(TEXT)) == {"EMPLOYEE_ID", "CASE_REFERENCE"}
+
     def test_a_toml_file_carries_them(self, tmp_path: Path) -> None:
         """The shape an operator actually writes, single-quoted so TOML does
         not eat the backslashes before this ever sees them."""
+        pytest.importorskip("tomllib")
         from mamori.config import load_config_file
 
         path = tmp_path / "mamori.toml"

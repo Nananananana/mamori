@@ -250,6 +250,55 @@ whole response — checked with Hypothesis over every split, because a streaming
 path that *usually* agrees with the batch path breaks at whichever token
 boundary the model happens to pick.
 
+**The whole of it, against an OpenAI-compatible endpoint**, since that is the
+shape most people are actually holding:
+
+```python
+import mamori
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:11434/v1/", api_key="unused")
+
+with mamori.PrivacySession() as session:
+    protected = session.protect(draft)  # the customer email
+    stream = session.stream_restore()
+
+    answer = client.chat.completions.create(
+        model="qwen3:8b",
+        messages=[
+            {"role": "system", "content": session.external_system_prompt()},
+            {"role": "user", "content": protected.protected_text},
+        ],
+        stream=True,
+    )
+
+    for part in answer:
+        piece = part.choices[0].delta.content or ""
+        print(stream.feed(piece), end="", flush=True)  # real names, as they arrive
+    print(stream.finish())
+
+    summary = stream.summary()
+    if not summary.is_clean:
+        # A placeholder-shaped run this scope never allocated. The model
+        # invented one, or the answer is fishing for a value it was not given.
+        # It was left standing in the output rather than substituted.
+        report(summary.unknown)
+```
+
+`feed` holds back only as much text as a placeholder could still be — a couple
+of hundred characters at most — so the user sees the answer arrive at the speed
+the model produces it, with real names in it. `summary()` afterwards says what
+was restored, what came back altered, and what was never allocated;
+`mamori.provenance.restoration_record` turns the same three facts into
+[an audit line](#what-left-this-machine-and-when).
+
+**What this is for.** A support agent drafting a reply watches it appear with
+the customer's actual name in it, while the model that wrote it was never told
+who the customer is. Without the streaming path you either wait for the whole
+answer before showing anything, or you show the user `<PERSON_001>` and correct
+it afterwards — and the second of those is how a placeholder ends up pasted
+into a real email.
+
 ### From the shell
 
 ```bash
@@ -1651,6 +1700,12 @@ Language priority is Japanese and English first, Chinese second. The Chinese
 rules exist and are measured; the design for making them good is written up in
 `docs/adr/0008-language-packs.md` and is honest that regular expressions cannot
 finish the job.
+
+A fourth language is a pack, and
+[docs/adding-a-language.md](docs/adding-a-language.md) is the checklist the
+first three earned — corpus before rules, bounded patterns, negative tests
+first, floors measured and ceilings tightened. It exists so that the fourth
+pack is as good as the third rather than as good as the first one was.
 
 ---
 
