@@ -75,6 +75,54 @@ class TestWideUniversalRules:
     def test_a_short_digit_run_is_left_alone(self) -> None:
         assert "IDENTIFIER" not in wide_types("item 4021")
 
+    def test_a_prefixed_identifier_is_flagged(self) -> None:
+        """`E-45033` was the last uncovered entity in `en-context`.
+
+        The anchored EMPLOYEE_ID rule wants the words *employee id* beside it
+        and the document said *"Review notes for E-45033"*. Nothing in the
+        library had a shape for a short prefix, a separator and a number --
+        which is how half the internal identifiers in the world are written.
+        """
+        assert "IDENTIFIER" in wide_types("Review notes for E-45033 follow")
+        assert "IDENTIFIER" not in types_in("Review notes for E-45033 follow")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "see RFC-5321 section 4",
+            "dates are ISO-8601",
+            "the SHA-256 digest",
+            "IEEE-754 rounding",
+            "tracked as CVE-2021-44228",
+            "described in PEP-0008",
+        ],
+    )
+    def test_a_public_standard_is_not_an_identifier(self, text: str) -> None:
+        """The line the rule draws, and why it is drawable.
+
+        Not *"looks technical"* -- these name a document anyone can read,
+        where `E-45033` names a record about somebody. Redacting the citation
+        out of a design note is a real cost, and this list is what stops it.
+        """
+        assert "IDENTIFIER" not in wide_types(text), text
+
+    @pytest.mark.parametrize("text", ["the H-1B visa", "encoded as UTF-8", "an MD-5 sum"])
+    def test_two_digits_are_not_enough(self, text: str) -> None:
+        """Three digits at least. `H-1B` and `UTF-8` are the reason."""
+        assert "IDENTIFIER" not in wide_types(text), text
+
+    def test_a_ticket_number_is_taken_too_and_that_is_the_trade(self) -> None:
+        """Stated, not hidden. `SUP-40127` in the agent corpus is a support
+        ticket and it becomes a placeholder under this stance.
+
+        Measured: adding this rule took `en-context` from 6.31% leaked to
+        0.00% and `zh-docs` from 2.37% to 0.00%, and cost `en-agent` 9
+        characters of over-redaction -- that ticket. The recall-first stance
+        made this trade already for order numbers, and this is the same trade
+        with letters in front.
+        """
+        assert "IDENTIFIER" in wide_types('{"ticket": "SUP-40127"}')
+
 
 class TestWideEnglishRules:
     def test_an_unanchored_name_is_now_found(self) -> None:

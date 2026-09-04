@@ -120,15 +120,48 @@ table was hand-copied until 0.28 and three of its rows had drifted:
 | `en-core` | 53 fragments | 0.62% | 0.71% | 0.980 / 0.980 |
 | `ja-core` | 54 fragments | 0.00% | 2.44% | 0.955 / 1.000 |
 | `zh-core` | 27 fragments | 0.00% | 2.94% | 0.875 / 1.000 |
-| `en-docs` | 8 documents | **3.50%** | 0.90% | 0.946 / 0.883 |
+| `en-docs` | 8 documents | **2.65%** | 0.90% | 0.930 / 0.883 |
 | `ja-docs` | 8 documents | **0.33%** | 1.06% | 0.938 / 0.984 |
-| `zh-docs` | 6 documents | **2.37%** | 1.12% | 0.900 / 0.978 |
-| `en-context` | 2 packages | **6.31%** | 0.92% | 1.000 / 0.900 |
+| `zh-docs` | 6 documents | **0.00%** | 1.12% | 0.882 / 0.978 |
+| `en-context` | 2 packages | **0.00%** | 0.92% | 0.900 / 0.900 |
 | `ja-context` | 2 packages | **0.00%** | 0.00% | 1.000 / 1.000 |
 | `zh-context` | 1 package | **0.00%** | 0.53% | 0.889 / 1.000 |
-| `en-agent` | 3 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
+| `en-agent` | 3 payloads | **0.00%** | 2.07% | 0.900 / 1.000 |
 | `ja-agent` | 2 payloads | **0.00%** | 0.00% | 1.000 / 1.000 |
 | `zh-agent` | 1 payload | **0.00%** | 0.00% | 1.000 / 1.000 |
+
+### With the zero-shot recogniser switched on
+
+`MamoriConfig(nlp="gliner")`, same corpora, same command, on the same day as
+the table above. The rules are unchanged; this is what the model adds:
+
+| Set | Leak, rules | Leak, `+gliner` | Over-redaction, rules | `+gliner` |
+|---|---|---|---|---|
+| `en-core` | 0.62% | **0.00%** | 0.71% | 1.20% |
+| `en-docs` | 2.65% | **0.00%** | 0.90% | 1.56% |
+| `ja-core` | 0.00% | 0.00% | 2.44% | 2.95% |
+| `ja-docs` | 0.33% | **0.00%** | 1.06% | 3.95% |
+| `zh-core` | 0.00% | 0.00% | 2.94% | 4.25% |
+| `zh-docs` | 0.00% | 0.00% | 1.12% | 1.12% |
+| the other six | 0.00% | 0.00% | unchanged | unchanged |
+
+Twelve of twelve at zero leaked characters, bought with between zero and 2.9
+further points of over-redaction. **Read that as a floor and not as a
+probability.** These corpora were written by mamori, they are small, and a
+model that scores perfectly on twelve small sets written by the project
+measuring it has demonstrated that it does not regress, not that it is safe.
+The unshipped thousand-document corpus is where the bugs come from, and this
+configuration has not been through it.
+
+Two things this does not do, measured in the same run and stated in
+[`gliner.py`](src/mamori/infrastructure/detectors/gliner.py) with the numbers:
+it is **wrong on Japanese sentences taken alone** -- wrong spans, not merely
+low recall -- and it does not find an internal project codename at any
+threshold. The Japanese rows above improve because the Japanese *rules* claim
+those names first and this pass only takes what nothing anchored claimed.
+
+It costs `pip install "mamori[gliner]"`, several hundred megabytes of torch,
+and roughly 90ms a sentence against 4ms for the whole rule pipeline.
 
 A third corpus of a thousand generated documents across twelve genres is not
 shipped -- it lives in the development repository, because the bundled sets are
@@ -138,10 +171,27 @@ first run, and four more in Chinese the run after that. See the 0.14.0 and
 
 **The `-agent` rows are payloads rather than prose**: tool-call arguments and
 tool definitions, where the label is a *key* rather than a word in a sentence.
-They score perfectly because a key is a stronger anchor than any prose, which
-is worth reading as "the rules read keys now" rather than as a claim about
-agent payloads being easy -- before 0.18 the same rows would have been most of
-the way to a total loss. See [ADR 0030](docs/adr/0030-a-tool-call-is-text.md).
+A key is a stronger anchor than any prose, which is worth reading as "the rules
+read keys now" rather than as a claim about agent payloads being easy -- before
+0.18 the same rows would have been most of the way to a total loss. See
+[ADR 0030](docs/adr/0030-a-tool-call-is-text.md).
+
+**Three of those rows changed in 0.33, and one of them got worse.** A wide-tier
+rule for an identifier written as a prefix, a separator and a number --
+`E-45033` -- took `en-context` from 6.31% leaked to 0.00%, `zh-docs` from 2.37%
+to 0.00%, and `en-docs` from 3.50% to 2.65%. It also took a support ticket
+number out of an agent payload, which is the whole of `en-agent`'s new 2.07%
+over-redaction. That is the wide tier working as described rather than
+misfiring: it accepts false positives, the balanced stance does not run it, and
+a deployment that needs its ticket numbers intact says so with `mamori correct`
+or with `stance = "balanced"`.
+
+Two entity-precision figures fell without anything leaking, and the reason is
+worth stating because the numbers look like a regression. `E-45033` is labelled
+`EMPLOYEE_ID` and is now found by a rule that reports `IDENTIFIER`. The
+characters are covered -- the leak rate is what says so -- and the *type* is
+coarser than the label. A value protected under a more general name is
+protected; a value with the right name and no placeholder is not.
 
 **The `-context` rows are assembled prompts** -- what a retrieval layer or an
 agent framework renders, rather than what a person typed. They leak more than

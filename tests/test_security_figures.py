@@ -181,3 +181,71 @@ class TestTheLabelSetTheFiguresAreARateAgainst:
         for name in ("COMPANY_NAME", "EMPLOYEE_ID", "PROJECT_NAME"):
             assert name in BUILTIN_TYPES
             assert f"`{name}`" in SECURITY.read_text(encoding="utf-8")
+
+
+#: `| `en-docs` | 2.65% | **0.00%** | 0.90% | 1.56% |`
+GLINER_ROW = re.compile(
+    r"^\| `(?P<set>[a-z]{2}-\w+)` \| "
+    r"\*{0,2}(?P<rules_leak>[\d.]+)%\*{0,2} \| "
+    r"\*{0,2}(?P<gliner_leak>[\d.]+)%\*{0,2} \| "
+    r"\*{0,2}(?P<rules_over>[\d.]+)%\*{0,2} \| "
+    r"\*{0,2}(?P<gliner_over>[\d.]+)%\*{0,2} \|$",
+    re.MULTILINE,
+)
+
+
+class TestTheRecogniserTableIsAlsoTheMeasuredOne:
+    """The second table in SECURITY.md, under the same rule as the first.
+
+    It arrived in 0.33 and the regex for the first table does not match its
+    shape, so publishing it added six rows of numbers that nothing checked --
+    the exact defect the module docstring above is about, reintroduced by the
+    change that documented a fix. This is that gap closed in the same commit.
+
+    Skipped without `gliner` and the model. A check that cannot run in CI is
+    weaker than one that can, and is not nothing: it runs wherever the
+    configuration it describes is actually installed, which is the only place
+    the numbers mean anything.
+    """
+
+    def published(self) -> dict[str, dict[str, float]]:
+        text = SECURITY.read_text(encoding="utf-8")
+        return {
+            match["set"]: {
+                "rules_leak": float(match["rules_leak"]),
+                "gliner_leak": float(match["gliner_leak"]),
+                "rules_over": float(match["rules_over"]),
+                "gliner_over": float(match["gliner_over"]),
+            }
+            for match in GLINER_ROW.finditer(text)
+        }
+
+    def test_the_table_was_found_at_all(self) -> None:
+        rows = self.published()
+        assert len(rows) >= 6, f"found {sorted(rows)}; the recogniser table is not being read"
+
+    @pytest.mark.parametrize(
+        "name", ["en-core", "en-docs", "ja-core", "ja-docs", "zh-core", "zh-docs"]
+    )
+    def test_the_published_figures_are_the_measured_ones(self, name: str) -> None:
+        pytest.importorskip("gliner")
+        from mamori import MamoriConfig
+        from mamori.errors import ConfigurationError
+
+        try:
+            config = MamoriConfig(nlp="gliner")
+            detectors = config.detectors()
+        except ConfigurationError as exc:  # no model on this machine
+            pytest.skip(str(exc))
+
+        dataset = next(one for one in bundled_datasets() if one.name == name)
+        report = evaluate(dataset, detectors=detectors)
+        row = self.published()[name]
+        assert round(report.leak_rate * 100, 2) == row["gliner_leak"], (
+            f"{name}: SECURITY.md says {row['gliner_leak']}% leaked with the "
+            f"recogniser on; `mamori eval` says {report.leak_rate * 100:.2f}%"
+        )
+        assert round(report.over_redaction_rate * 100, 2) == row["gliner_over"], (
+            f"{name}: SECURITY.md says {row['gliner_over']}% over-redacted with the "
+            f"recogniser on; `mamori eval` says {report.over_redaction_rate * 100:.2f}%"
+        )

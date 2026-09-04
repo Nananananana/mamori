@@ -10,6 +10,18 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **An identifier written as a prefix, a separator and a number is found.**
+  `E-45033` in *"Review notes for E-45033"* was the last uncovered entity in
+  `en-context`: the anchored `EMPLOYEE_ID` rule wants the words *employee id*
+  beside it, and no rule in the library had a shape for the way half the
+  internal identifiers in the world are written. Wide tier, so the balanced
+  stance does not run it, and prefixes that name a public standard -- `RFC`,
+  `ISO`, `SHA`, `CVE` -- are refused, because those identify a document anyone
+  can read rather than a record about somebody. Measured: `en-context` 6.31%
+  leaked → **0.00%**, `zh-docs` 2.37% → **0.00%**, `en-docs` 3.50% → **2.65%**.
+  It costs one support ticket number in the agent corpus, which is `en-agent`'s
+  new 2.07% over-redaction and is the trade the wide tier exists to make.
+
 - **GLiNER as a switchable recogniser: `MamoriConfig(nlp="gliner")`.**
   Zero-shot named-entity recognition (Apache-2.0, Apache-2.0 models), which
   takes the entity types as *words* rather than having them fixed at training

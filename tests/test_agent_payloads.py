@@ -155,7 +155,16 @@ class TestWhatUsedToGoUpstream:
         with PrivacySession() as session:
             protected, _ = protect_request(session, payload, add_guidance=False)
         assert NAME not in sent(protected)
-        assert protected["metadata"]["ticket"] == "SUP-4127"
+        # The ticket is replaced too, since 0.33 -- and restored wherever it
+        # appears in the answer, which is not the same as reaching the
+        # provider intact. The wide-tier rule that finds
+        # `E-45033` cannot tell it from `SUP-4127` -- nothing can, from the
+        # shape alone -- and the measured trade was `en-context` 6.31% leaked
+        # to zero and `zh-docs` 2.37% to zero against this one substitution.
+        # A deployment that needs its ticket numbers to reach the provider
+        # intact says so: `stance = "balanced"` does not run the wide tier at
+        # all, and `mamori correct` rules on one value for good.
+        assert protected["metadata"]["ticket"].startswith("<IDENTIFIER_")
 
     def test_every_slot_is_counted_in_the_report(self) -> None:
         with PrivacySession() as session:

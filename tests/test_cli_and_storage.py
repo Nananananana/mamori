@@ -676,13 +676,13 @@ class TestEvalTakesTheStanceFromTheConfig:
     ) -> None:
         config = self._config(tmp_path, stance="balanced")
         assert main(["eval", "--locale", "en", "--config", config, "--stance", "recall_first"]) == 0
-        assert "3.50%" in capsys.readouterr().out
+        assert "2.65%" in capsys.readouterr().out
 
     def test_recall_first_is_still_the_default_with_no_config(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         assert main(["eval", "--locale", "en"]) == 0
-        assert "3.50%" in capsys.readouterr().out
+        assert "2.65%" in capsys.readouterr().out
 
     def test_the_compare_baseline_keeps_everything_but_the_model(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

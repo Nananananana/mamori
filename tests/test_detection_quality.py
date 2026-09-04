@@ -53,7 +53,18 @@ FLOORS = (
     # pinned at zero because they are anchored by construction -- a key is a
     # stronger anchor than any word in prose -- and a number that moves off
     # zero here means a rule stopped reading keys.
-    Floor("en-agent", _RECALL, 0.010, 0.010, 0.990, 0.990),
+    #
+    # `en-agent` is no longer pinned at zero on the *cost* side, and the
+    # loosening is deliberate rather than a floor lowered to fit. 0.33 added a
+    # wide-tier rule for an identifier written as a prefix, a separator and a
+    # number -- `E-45033` -- which took `en-context` from 6.31% leaked to zero
+    # and `zh-docs` from 2.37% to zero. In this corpus the same shape is
+    # `SUP-40127`, a support ticket, and it becomes a placeholder: nine
+    # characters, one false positive out of ten. That is the wide tier doing
+    # what it says -- it accepts false positives, `_BALANCED` below does not
+    # run it, and the leak floor stays at zero, which is the number that says
+    # the rules still read keys.
+    Floor("en-agent", _RECALL, 0.010, 0.025, 0.990, 0.890),
     Floor("ja-agent", _RECALL, 0.010, 0.010, 0.990, 0.990),
     Floor("zh-agent", _RECALL, 0.010, 0.010, 0.990, 0.990),
     Floor("en-agent", _BALANCED, 0.010, 0.010, 0.990, 0.990),
@@ -66,7 +77,13 @@ FLOORS = (
     # number to watch here rather than the leak rate, because the thing being
     # over-redacted is a content hash or an item id, and a package whose id no
     # longer verifies is indistinguishable from one that was tampered with.
-    Floor("en-context", _RECALL, 0.100, 0.020, 0.850, 0.950),
+    # Precision 0.95 -> 0.89, and nothing leaked to pay for it. `E-45033` is
+    # labelled `EMPLOYEE_ID` and the rule that now finds it reports
+    # `IDENTIFIER`, so the characters are covered and the *type* is coarser
+    # than the label -- a false positive by the scorer's arithmetic and a
+    # value that no longer leaves the machine. The leak floor, tightened here
+    # from 0.100 to 0.010, is the one that says which happened.
+    Floor("en-context", _RECALL, 0.010, 0.020, 0.850, 0.890),
     Floor("ja-context", _RECALL, 0.020, 0.010, 0.950, 0.950),
     Floor("zh-context", _RECALL, 0.020, 0.020, 0.950, 0.850),
     # -- the shipping default ------------------------------------------------
@@ -88,7 +105,10 @@ FLOORS = (
     # 4.41% -> 2.37%, recall 0.913 -> 0.978, over-redaction 1.84% -> 1.68%,
     # precision 0.894 -> 0.918. The lesson is that the first measurement of
     # a change is not the last word on it.
-    Floor("zh-docs", _RECALL, 0.030, 0.020, 0.960, 0.890),
+    # Same trade, same direction: 2.37% leaked -> 0.00%, precision 0.900 ->
+    # 0.882. The leak ceiling comes down from 0.030 to 0.010 in the same
+    # change, so the gain is pinned and not merely permitted.
+    Floor("zh-docs", _RECALL, 0.010, 0.020, 0.960, 0.870),
     # -- anchored rules only -------------------------------------------------
     # en-context leaks 47% here, which is worse than en-docs at 20% and is the
     # clearest measurement in the project of what *selection* costs. A passage
@@ -158,8 +178,21 @@ class TestTheTwoScalesDisagree:
     """
 
     @pytest.mark.parametrize(("core", "docs"), [("en-core", "en-docs"), ("zh-core", "zh-docs")])
-    def test_documents_leak_more_than_fragments(self, core: str, docs: str) -> None:
-        assert report_for(docs).leak_rate > report_for(core).leak_rate
+    def test_documents_are_never_easier_than_fragments(self, core: str, docs: str) -> None:
+        """`>=`, since 0.33, and only because `zh-docs` reached zero.
+
+        The claim was `>` for both pairs and that was the stronger statement
+        while it was true. It stopped being true from the good direction: the
+        prefixed-identifier rule took `zh-docs` to 0.00%, which is where
+        `zh-core` already was. Weakening this to `>=` would be a bad trade on
+        its own, so the English pair -- which carries the argument, and where
+        the gap is still 2.65% against 0.62% -- keeps the strict form below.
+        """
+        assert report_for(docs).leak_rate >= report_for(core).leak_rate
+
+    def test_english_documents_still_leak_more_than_english_fragments(self) -> None:
+        """The strict form, on the pair the recall-first default rests on."""
+        assert report_for("en-docs").leak_rate > report_for("en-core").leak_rate
 
     def test_the_anchored_rules_fall_apart_on_english_documents(self) -> None:
         """The evidence for the recall-first default, stated as a test."""

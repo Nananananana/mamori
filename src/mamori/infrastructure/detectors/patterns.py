@@ -543,6 +543,78 @@ _WIDE_SECRET = compile_rule(
     tier=RuleTier.WIDE,
 )
 
+#: Prefixes that name a public standard rather than a record about somebody.
+#:
+#: The line is not *"looks technical"* -- it is that these identify a document
+#: anyone can read. `RFC-5321` is a specification; `E-45033` is a person's
+#: employee number. A rule that cannot tell them apart is a rule that redacts
+#: the citation out of a design note, and one that refuses to try leaves an
+#: employee number in a prompt. This list is the difference, and it is short
+#: on purpose: anything that is genuinely an identifier of a *thing* -- an
+#: order, a ticket, a part -- is deliberately **not** here, because the
+#: recall-first stance has already decided that redacting an order number is
+#: cheaper than sending an account number.
+_PUBLIC_STANDARD_PREFIXES = (
+    "RFC",
+    "ISO",
+    "IEC",
+    "IEEE",
+    "ANSI",
+    "NIST",
+    "FIPS",
+    "DIN",
+    "JIS",
+    "GB",
+    "EN",
+    "SHA",
+    "MD",
+    "AES",
+    "RSA",
+    "UTF",
+    "ASCII",
+    "ISBN",
+    "ISSN",
+    "DOI",
+    "CVE",
+    "CWE",
+    "CVSS",
+    "PEP",
+    "ADR",
+    "HTTP",
+    "HTTPS",
+    "TCP",
+    "UDP",
+    "IPV",
+    "SP",
+    "PCI",
+    "SOC",
+    "GDPR",
+    "COVID",
+    "SARS",
+    "H",
+    "X",
+)
+
+#: An identifier written as a short prefix, a separator and a number.
+#:
+#: **Wide tier**, so the balanced stance does not run it. `E-45033` in *"Review
+#: notes for E-45033"* was the last uncovered entity in `en-context` and one of
+#: three EMPLOYEE_ID leaks in the bundled corpora: the anchored rule needs the
+#: words *employee id* beside it, and a real document says *"review notes
+#: for"*. Nothing else in the library had a shape for it.
+#:
+#: Three digits at least -- two would take `H-1B` and `UTF-8` -- and the
+#: standard prefixes above are refused outright. Everything left is an
+#: identifier of something, and the wide tier is where *"probably an
+#: identifier of something"* belongs.
+_WIDE_PREFIXED_ID = compile_rule(
+    t.IDENTIFIER,
+    r"(?<![A-Za-z0-9\-])(?!(?:" + "|".join(_PUBLIC_STANDARD_PREFIXES) + r")[\-/]\d)"
+    r"[A-Z]{1,5}[\-/]\d{3,10}(?![A-Za-z0-9\-])",
+    LOW,
+    tier=RuleTier.WIDE,
+)
+
 #: Any long digit run. Order numbers look the same, which is the point: under
 #: the recall-first stance an order number becoming a placeholder is cheaper
 #: than an unformatted account number leaving the machine.
@@ -596,6 +668,7 @@ UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     *_STRUCTURED_KEYS,
     _WIDE_SECRET,
     _WIDE_DIGIT_RUN,
+    _WIDE_PREFIXED_ID,
 )
 
 
