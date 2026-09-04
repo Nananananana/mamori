@@ -8,7 +8,26 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Added
+
+- **`mamori.protect(text)` -- the two-line version.** Every library in this
+  space has a one-liner and all of them return a string with the values gone
+  and no way back. This one returns the string **and the way home**:
+  `protected, restore = mamori.protect(text)`. It is a `Protected`, so it also
+  unpacks, closes, and hands back its session for a second turn.
+  `mamori.inspect(text)` answers *"is there anything in this"* without
+  allocating a placeholder.
+
 ### Fixed
+
+- **Resuming a saved conversation answered about the wrong person.** The
+  placeholder counter lived beside the mappings and no load touched it, so
+  `mamori load` of a file holding `<EMAIL_001>` followed by one more protect
+  minted `<EMAIL_001>` again, replaced the first mapping, and made every
+  earlier use of that token restore to the second value. Nothing reported it:
+  `unknown` was empty and `is_clean` was true, because the token was perfectly
+  well known and simply meant somebody else. A placeholder that arrives from
+  outside now consumes its number.
 
 - **`MamoriConfig` had two contracts and only one of them was documented.**
   `from_mapping` coerced and validated; the constructor stored whatever it was

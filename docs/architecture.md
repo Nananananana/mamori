@@ -68,6 +68,7 @@ interfaces ──> application ──> domain
 | `evaluation/` | Labelled datasets, scoring, quality metrics | `domain`, `ports`, `application`, `infrastructure` |
 | `llm_settings.py` | Model settings, and the endpoint they build | `domain`, `ports` |
 | `config.py` | Every switch, and the factories that assemble them | everything above |
+| `quickstart.py` | `protect(text)` and `inspect(text)`: one call, one scope, and the restore closure | `application`, `config` |
 | `report.py` | What a configuration does with your data | `domain`, `config` |
 | `provenance.py` | What one protected text had done to it, as a document, and the ledger that hands it to a sink | `domain`, `ports`, `application` |
 | `interop/` | Presidio-shaped input and output, so trying this costs an import | `domain`, `ports`, `config`, `application` |

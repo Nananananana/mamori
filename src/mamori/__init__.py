@@ -5,6 +5,15 @@ send only the protected text to an external service, and put the real values
 back locally when the answer comes home.
 
     >>> import mamori
+    >>> protected, restore = mamori.protect("Contact tanaka@example.com by Friday.")
+    >>> protected
+    'Contact <EMAIL_001> by Friday.'
+    >>> restore("I have contacted <EMAIL_001>.")
+    'I have contacted tanaka@example.com.'
+
+One call is one scope. A conversation -- where the same value must keep the
+same placeholder across turns -- is a session:
+
     >>> with mamori.PrivacySession() as session:
     ...     result = session.protect("Contact tanaka@example.com by Friday.")
     ...     result.protected_text
@@ -33,6 +42,7 @@ from .errors import (
     StorageError,
 )
 from .llm_settings import LLMSettings
+from .quickstart import Protected, inspect, protect
 
 __version__ = "0.32.0"
 
@@ -60,6 +70,7 @@ __all__ = [
     "PolicyViolationError",
     "PrivacyPolicy",
     "PrivacySession",
+    "Protected",
     "ProtectionResult",
     "ProviderError",
     "RestorationResult",
@@ -68,6 +79,8 @@ __all__ = [
     "StreamingRestorer",
     "Uncertain",
     "__version__",
+    "inspect",
     "load_config_file",
+    "protect",
     "register_type",
 ]

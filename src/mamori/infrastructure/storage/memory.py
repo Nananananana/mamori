@@ -66,6 +66,18 @@ class InMemoryMappingStore:
             self._written[key] = self._clock()
             if mapping.identity_key:
                 self._by_identity[(mapping.scope, mapping.identity_key)] = mapping
+            # A placeholder that arrives from outside still consumes its
+            # number. `load_scope` puts mappings it read from a file, and
+            # until this line the counter knew nothing about them: loading a
+            # conversation holding `<EMAIL_001>` and protecting one more
+            # address minted `<EMAIL_001>` again, replaced the first mapping,
+            # and made every earlier use of that token restore to the *new*
+            # value. Resuming a saved conversation -- which is what
+            # `mamori load` is for -- silently answered about the wrong
+            # person.
+            counter = (mapping.scope, mapping.entity_type_name)
+            if mapping.placeholder.index > self._counters.get(counter, 0):
+                self._counters[counter] = mapping.placeholder.index
 
     def _drop_expired(self) -> None:
         """Forget what the retention rule says is past its time.

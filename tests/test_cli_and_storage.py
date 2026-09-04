@@ -8,6 +8,7 @@ from typing import ClassVar
 
 import pytest
 
+from mamori import PrivacySession
 from mamori.domain.mapping import Mapping
 from mamori.domain.placeholder import Placeholder
 from mamori.errors import StorageError
@@ -81,6 +82,39 @@ class TestJsonMappingFile:
         restored = loaded.find_by_placeholder("s", Placeholder("EMAIL", 1))
         assert restored is not None
         assert restored.original_value == "a@example.com"
+
+    def test_resuming_a_conversation_does_not_reuse_a_number(self, tmp_path: Path) -> None:
+        """`load` then `protect` used to answer about the wrong person.
+
+        The counter lived beside the mappings and no load touched it. So a
+        saved conversation holding `<EMAIL_001>` was read back, the next
+        address was minted as `<EMAIL_001>` **again**, the put replaced the
+        first mapping, and every earlier use of that token now restored to the
+        second value. Nothing reported anything: `unknown` was empty and
+        `is_clean` was true, because the placeholder was perfectly well known
+        -- it just meant somebody else now.
+
+        Resuming a saved conversation is the entire reason `mamori dump` and
+        `mamori load` exist, so this was the flow they were built for.
+        """
+        path = tmp_path / "mapping.json"
+        first = InMemoryMappingStore()
+        with PrivacySession(store=first, scope="c1") as session:
+            session.protect("mail alice@a.example.com")
+            # Inside the block: leaving it purges the scope, and a dump of
+            # nothing would load nothing and reuse no number, so this test
+            # would pass by having no subject.
+            assert dump_scope(first, "c1", path) == 1
+
+        resumed = InMemoryMappingStore()
+        load_scope(resumed, path, "c1")
+        with PrivacySession(store=resumed, scope="c1") as session:
+            protected = session.protect("mail bob@b.example.com")
+            assert "<EMAIL_002>" in protected.protected_text, (
+                "the resumed conversation minted a number the loaded file already used"
+            )
+            assert session.restore("<EMAIL_001>").text == "alice@a.example.com"
+            assert session.restore("<EMAIL_002>").text == "bob@b.example.com"
 
     def test_the_file_carries_a_plaintext_warning(self, tmp_path: Path) -> None:
         store = InMemoryMappingStore()

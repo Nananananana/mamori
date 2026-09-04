@@ -30,6 +30,15 @@ import mamori
 #: Every name `import mamori` offers, and nothing else.
 PUBLIC = {
     # Entry points
+    # `protect` and `inspect` are the two-line surface: one call, one scope,
+    # and the restore closure that is the whole argument for this library over
+    # a redactor. `inspect` shadows a stdlib module name under `import *`,
+    # which is a real if small cost, paid because `PrivacySession.inspect` has
+    # been the name for that question since 0.32 and two names for it would be
+    # worse.
+    "protect",
+    "inspect",
+    "Protected",
     "PrivacySession",
     "MamoriConfig",
     "load_config_file",

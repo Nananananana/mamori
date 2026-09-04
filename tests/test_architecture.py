@@ -98,6 +98,11 @@ ALLOWED: dict[str, frozenset[str]] = {
             "provenance",
         }
     ),
+    # The two-line entry point. It assembles a session from settings and hands
+    # both back, which is exactly what `config` already does -- so it names the
+    # same things `config` does and nothing reaches it. Separate from `config`
+    # because it is a convenience over the library, not part of describing one.
+    "quickstart": frozenset({"application", "config"}),
     # Exceptions are shared by everything and import nothing.
     "errors": frozenset(),
 }
