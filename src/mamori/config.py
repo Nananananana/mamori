@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -164,6 +164,55 @@ class MamoriConfig:
     _named: frozenset[str] = field(default=frozenset(), compare=False, repr=False)
 
     def __post_init__(self) -> None:
+        """Coerce and validate, exactly as :meth:`from_mapping` does.
+
+        **There were two contracts on one object.** `from_mapping` turned
+        `"balanced"` into `Stance.BALANCED` and refused what it could not
+        read. The constructor took anything at all. So the obvious Python --
+        passing the strings you would write in a config file -- was accepted
+        in silence and failed later, somewhere else:
+
+            MamoriConfig(stance="balanced").session().protect(text)
+            AttributeError: 'str' object has no attribute 'includes'
+
+        Measured across seven settings before this was written: five diverged
+        between the two paths, and `min_confidence="0.7"` raised a bare
+        `TypeError` from the range check comparing a float to a string. Every
+        example in the README passes enums, so the *documented* path worked
+        and the obvious one did not -- the worst place for a gap, because
+        nobody reading the docs can see it.
+
+        One contract now: :data:`_COERCIONS` is the same table `from_mapping`
+        applies, run on every config however it was built. A value neither
+        path can read is refused where it was written, with the message that
+        names the allowed values.
+        """
+        for name, coerce in _COERCIONS.items():
+            current = getattr(self, name)
+            value = coerce(current)
+            if value is not current:
+                # `object.__setattr__` because the dataclass is frozen.
+                # Coercing in place rather than returning a new object keeps
+                # `MamoriConfig(...)` meaning what it says: a constructor that
+                # quietly handed back a different instance would be its own
+                # surprise.
+                object.__setattr__(self, name, value)
+        if self.prompts:
+            object.__setattr__(self, "prompts", _as_prompts(self.prompts))
+        if self.corrections:
+            object.__setattr__(self, "corrections", _as_corrections(self.corrections))
+        # Read through an `object` so this stays code rather than a branch the
+        # type checker proves away. The annotation says `LLMSettings | None`;
+        # `from_mapping` accepts a mapping, and a caller writing Python by hand
+        # has no reason to think the constructor is stricter. The branch exists
+        # exactly because the value can be something the annotation forbids.
+        llm: object = self.llm
+        if llm is not None and not isinstance(llm, LLMSettings):
+            if isinstance(llm, Mapping):
+                object.__setattr__(self, "llm", LLMSettings.from_mapping(llm))
+            else:
+                raise ConfigurationError("llm must be a mapping or null")
+
         for name in ("min_confidence", "co_occurrence_min_confidence"):
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
@@ -680,13 +729,28 @@ def _load_toml(path: Path) -> object:
 
 
 def _as_locales(value: object) -> tuple[str, ...] | None:
+    """Language pack codes, checked against the registry that has to serve them.
+
+    Validated here, like the three algorithm names below and for the same
+    reason. `resolve_locales` already refuses an unknown code -- but only when
+    the detectors are assembled, which is a later moment and a different stack
+    trace. `MAMORI_LOCALES=jp` is one keystroke from `ja` and reads as correct
+    to everyone; refusing it where it was written says which setting is wrong
+    while the file that says it is still in front of you.
+    """
     if value is None:
         return None
     if isinstance(value, str):
-        return tuple(part.strip() for part in value.split(",") if part.strip())
-    if isinstance(value, Sequence):
-        return tuple(str(item) for item in value)
-    raise ConfigurationError(f"locales must be a list or a comma-separated string: {value!r}")
+        codes = tuple(part.strip() for part in value.split(",") if part.strip())
+    elif isinstance(value, Sequence):
+        codes = tuple(str(item) for item in value)
+    else:
+        raise ConfigurationError(f"locales must be a list or a comma-separated string: {value!r}")
+
+    from .infrastructure.detectors.locales import resolve_locales
+
+    resolve_locales(codes)  # raises ConfigurationError, naming the code and the alternatives
+    return codes
 
 
 def _as_surrogates(value: object) -> bool | Sequence[str]:
@@ -740,11 +804,19 @@ def _as_prompts(value: object) -> dict[str, object]:
 def _as_choice(value: object, where: str, choices: type[Enum]) -> str:
     """One of an enum's values, as the string the dataclass field stores.
 
+    Accepts the enum member as well as its value, because `__post_init__` runs
+    this over a config that may already hold either -- and because
+    `PlaceholderStyle.ANGLE` is what somebody with the enum in scope will
+    reach for. `str()` of an enum member is `"PlaceholderStyle.ANGLE"`, which
+    is not a value of anything, so this has to be checked before the string.
+
     Validated here rather than left to :meth:`MamoriConfig.style` and
     :meth:`MamoriConfig.uncertainty`, which check the same thing at use time:
     a bad name in a config file should be refused when the file is read, not
     on the first document, and the error should say where it came from.
     """
+    if isinstance(value, choices):
+        return str(value.value)
     text = str(value).strip().lower()
     known = sorted(choice.value for choice in choices)
     if text not in known:
@@ -784,6 +856,8 @@ def _as_phone_algorithm(value: object) -> str:
 
 
 def _as_stance(value: object) -> Stance:
+    if isinstance(value, Stance):
+        return value
     try:
         return Stance(str(value).strip().lower())
     except ValueError as exc:
@@ -792,6 +866,8 @@ def _as_stance(value: object) -> Stance:
 
 
 def _as_action(value: object, where: str) -> Action:
+    if isinstance(value, Action):
+        return value
     try:
         return Action(str(value).strip().lower())
     except ValueError as exc:
@@ -810,6 +886,9 @@ def _as_category_defaults(value: object) -> dict[Category, Action]:
         raise ConfigurationError(f"category_defaults must be a mapping, got {type(value).__name__}")
     result: dict[Category, Action] = {}
     for name, action in value.items():
+        if isinstance(name, Category):
+            result[name] = _as_action(action, f"category_defaults.{name.value}")
+            continue
         try:
             category = Category(str(name).strip().upper())
         except ValueError as exc:
@@ -837,3 +916,29 @@ def _as_bool(value: object, where: str) -> bool:
     if text in _FALSE:
         return False
     raise ConfigurationError(f"{where} must be true or false, got {value!r}")
+
+
+#: Field -> the coercion :meth:`from_mapping` applies to it, applied by
+#: `__post_init__` to every config however it was built.
+#:
+#: Four fields are deliberately absent. `mask_token` is already `str`;
+#: `_named` is not a setting. `prompts` and `corrections` are coerced only
+#: when they are not the empty default, in `__post_init__` itself -- validating
+#: `prompts` builds a `PromptLibrary`, and `_as_corrections` turns the `()`
+#: default into `[]`, which would make two equal configs unequal.
+_COERCIONS: Mapping[str, Callable[[object], object]] = {
+    "locales": _as_locales,
+    "stance": _as_stance,
+    "rules": _as_rules,
+    "category_defaults": _as_category_defaults,
+    "default_action": lambda v: _as_action(v, "default_action"),
+    "min_confidence": lambda v: _as_float(v, "min_confidence"),
+    "co_occurrence": lambda v: _as_bool(v, "co_occurrence"),
+    "co_occurrence_min_confidence": lambda v: _as_float(v, "co_occurrence_min_confidence"),
+    "surrogates": _as_surrogates,
+    "placeholder_style": lambda v: _as_choice(v, "placeholder_style", PlaceholderStyle),
+    "uncertain": lambda v: _as_choice(v, "uncertain", Uncertain),
+    "secrets": _as_secret_algorithm,
+    "nlp": _as_nlp_algorithm,
+    "phone": _as_phone_algorithm,
+}

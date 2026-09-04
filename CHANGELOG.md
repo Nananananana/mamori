@@ -8,6 +8,26 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Fixed
+
+- **`MamoriConfig` had two contracts and only one of them was documented.**
+  `from_mapping` coerced and validated; the constructor stored whatever it was
+  handed. So `MamoriConfig(stance="balanced")` -- the obvious Python, the
+  string a config file holds -- was accepted in silence and died later at
+  `AttributeError: 'str' object has no attribute 'includes'`, naming neither
+  the setting nor where it came from. Measured across the eighteen settings
+  when it was found: five diverged between the two paths, and
+  `min_confidence="0.7"` raised a bare `TypeError` from the range check.
+  Every README example passes enums, so the *documented* path worked and the
+  obvious one did not, which is the worst place for a gap. `__post_init__` now
+  runs the same coercion table `from_mapping` does, so both paths build the
+  same object and a value neither can read is refused where it was written.
+
+- **An unknown locale was refused when the detectors were built, not when it
+  was read.** `MAMORI_LOCALES=jp` is one keystroke from `ja` and reads as
+  correct; it now fails at the config, like an unknown `secrets`, `nlp` or
+  `phone` algorithm already did.
+
 ## [0.32.0] - 2026-09-03
 
 Fourteen defects, four of them leaks and one of them a wrong answer. Two

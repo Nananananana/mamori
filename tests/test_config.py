@@ -355,6 +355,52 @@ class TestEveryFieldSurvivesTheMapping:
             "nothing, which is the failure this class exists for."
         )
 
+    @pytest.mark.parametrize("name", sorted(SAMPLES))
+    def test_the_constructor_and_the_mapping_agree(self, name: str) -> None:
+        """The same value, written the same way, gives the same config.
+
+        The table above is *"the shape a config file gives"*, and until 0.33
+        only `from_mapping` could read that shape. `MamoriConfig(stance=...)`
+        stored whatever it was handed. Measured across these settings when it
+        was found: five diverged, and `min_confidence="0.7"` raised a bare
+        `TypeError` from the range check. `MamoriConfig(stance="balanced")`
+        was accepted in silence and died later at
+
+            AttributeError: 'str' object has no attribute 'includes'
+
+        which names neither the setting nor the file it came from.
+
+        Every README example passes enums, so the documented path worked and
+        the obvious one did not -- and no test compared them, because each
+        path was tested against itself.
+        """
+        written = self.SAMPLES[name]
+        assert MamoriConfig(**{name: written}) == MamoriConfig.from_mapping({name: written}), (
+            f"{name}: MamoriConfig({name}={written!r}) and "
+            f"from_mapping({{{name!r}: {written!r}}}) are different objects. One of "
+            "the two paths is not coercing, and the caller cannot tell which."
+        )
+
+    @pytest.mark.parametrize("name", sorted(SAMPLES))
+    def test_a_value_neither_path_can_read_is_refused_by_both(self, name: str) -> None:
+        """And refused *here*, with a message naming the setting.
+
+        `ConfigurationError` specifically: a bare `TypeError` or `ValueError`
+        from somewhere inside is what this replaced, and it tells the operator
+        nothing about which setting they got wrong.
+        """
+        if name == "mask_token":
+            pytest.skip("any string is a mask token; there is nothing to refuse")
+        nonsense = {"llm": 7, "prompts": 7, "corrections": 7, "surrogates": 7}.get(
+            name, "no-such-value"
+        )
+        for build in (
+            lambda: MamoriConfig(**{name: nonsense}),
+            lambda: MamoriConfig.from_mapping({name: nonsense}),
+        ):
+            with pytest.raises(ConfigurationError):
+                build()
+
 
 class TestALayerCanRestoreADefault:
     """The layering could not express *"set this back to the safe value"*.
