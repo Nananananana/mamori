@@ -76,7 +76,19 @@ packages = ["src/mamori"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# `-q` is deliberately **not** here.
+#
+# It was, and it is a trap rather than a preference: a caller adding `-q` --
+# which everybody does -- stacks to `-qq`, and `-qq` prints no summary line at
+# all. So `pytest -q ... | grep passed` returns nothing, and a suite that ran
+# green looks identical to one that did not run. Measured three times in one
+# session, and a sibling project found the same thing in two of its own
+# scripts.
+#
+# Worse together with `-k`: under `-qq` a filter matching nothing prints an
+# empty line, and through a pipe the exit code is lost, so "no tests ran" and
+# "all tests passed" are the same bytes. The summary line is what tells them
+# apart, and this is the line that was removing it.
 # A parametrized test whose parameter set turns out to be empty is marked
 # `skip` by default, and a skipped test reports green. Several checks in this
 # suite assert that a count is zero -- no `import logging` in `src`, no
