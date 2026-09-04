@@ -118,6 +118,22 @@ def test_protecting_twice_is_stable(text: str) -> None:
         assert first.protected_text == second.protected_text
 
 
+def test_the_sensitive_strategy_actually_produces_detections() -> None:
+    """The two properties below loop over `protected.entities` and say nothing
+    when it is empty -- which is correct per example and useless if it is empty
+    every time. Measured: with detection returning `[]`, both passed.
+
+    `assert protected.entities` inside them would be wrong, because a generated
+    text legitimately has none. So the strategy's promise is checked once,
+    here, against fixed inputs: if `sensitive_text()` stops producing anything
+    detectable, this fails and names the reason instead of two properties
+    quietly checking nothing.
+    """
+    with PrivacySession(policy=PrivacyPolicy.permissive()) as session:
+        for sample in ("田中太郎さんへ tanaka@example.com", "Dear Jane Doe, call 415-555-0198"):
+            assert session.protect(sample).entities, sample
+
+
 @SETTINGS
 @given(text=sensitive_text())
 def test_no_detected_value_survives_into_the_protected_text(text: str) -> None:

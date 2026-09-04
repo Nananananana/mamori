@@ -190,7 +190,9 @@ class TestDetectorContract:
     def test_spans_delimit_the_reported_value(self) -> None:
         text = "田中太郎さんへ tanaka@example.com"
         normalized = NormalizedText.of(text)
-        for found in DETECTOR.detect(normalized.text):
+        detected = DETECTOR.detect(normalized.text)
+        assert detected, "nothing was detected, so this checked no span"
+        for found in detected:
             assert normalized.text[found.span.start : found.span.end] == found.value
 
     def test_every_detection_records_its_source(self) -> None:

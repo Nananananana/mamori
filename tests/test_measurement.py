@@ -69,9 +69,29 @@ class TestFindingOccurrences:
 
     @given(text=st.text(min_size=0, max_size=300), value=st.text(min_size=2, max_size=20))
     def test_spans_are_ordered_and_do_not_overlap(self, text: str, value: str) -> None:
-        spans = find_occurrences(text, value)
-        for earlier, later in itertools.pairwise(spans):
+        for earlier, later in itertools.pairwise(find_occurrences(text, value)):
             assert earlier.end <= later.start
+
+    def test_the_two_properties_above_have_something_to_be_about(self) -> None:
+        """Both loop over what `find_occurrences` returned, and `pairwise` over
+        one item yields no pairs -- so both are true of a run that found one
+        occurrence and of a run that found none. Measured: with detection
+        returning nothing, both passed.
+
+        Asserting a population *inside* them would be wrong: most generated
+        texts legitimately contain the value zero times. So the promise is
+        checked once, here, on a fixed input -- if `find_occurrences` stops
+        finding anything, this says so instead of two properties quietly
+        checking nothing."""
+        spans = find_occurrences("Kenji met Kenji and Kenji", "Kenji")
+        assert len(spans) >= 2
+        assert all(text_of(span) == "Kenji" for span in spans)
+
+
+def text_of(span: object) -> str:
+    """The characters one span covers in the sample above."""
+    sample = "Kenji met Kenji and Kenji"
+    return sample[span.start : span.end]  # type: ignore[attr-defined]
 
 
 class TestComparingTwoRuns:

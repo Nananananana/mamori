@@ -58,6 +58,7 @@ class TestReprDoesNotLeak:
     def test_entity_report_carries_only_a_masked_preview(self) -> None:
         with PrivacySession() as session:
             result = session.protect(SAMPLE)
+        assert result.entities, "nothing was detected, so this checked no report"
         for report in result.entities:
             assert SECRET_EMAIL not in repr(report)
             assert SECRET_NAME not in repr(report)
@@ -131,7 +132,9 @@ class TestOutboundPayload:
         store = InMemoryMappingStore()
         with PrivacySession(store=store) as session:
             protected = session.protect(SAMPLE)
-            for mapping in store.list_scope(session.scope):
+            mappings = store.list_scope(session.scope)
+            assert mappings, "nothing was allocated, so this checked no mapping"
+            for mapping in mappings:
                 assert mapping.original_value not in protected.protected_text
 
     def test_a_detector_failure_yields_no_payload_at_all(self) -> None:

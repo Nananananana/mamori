@@ -183,6 +183,7 @@ class TestEvidenceIsLocal:
 
         regions = script_regions("あ。x。い。y。う", frozenset({Script.KANA}))
         assert list(regions) == sorted(regions)
+        assert len(regions) >= 2, "fewer than two regions, so no pair was compared"
         for earlier, later in itertools.pairwise(regions):
             assert earlier[1] <= later[0]
 
