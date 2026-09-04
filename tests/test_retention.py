@@ -142,3 +142,68 @@ class TestTheRuleIsReadable:
 
         report = build_report(MamoriConfig())
         assert report.storage["retention"] == Retention.forever().describe()
+
+
+class TestExpiryDoesNotUnlinkALiveMapping:
+    """Two mappings can share an identity key, and expiry unlinked the wrong one.
+
+    `_drop_expired` popped `_by_identity[(scope, identity)]` without checking
+    whether the entry still pointed at the mapping being expired. The index
+    holds whichever was written last, so expiring the *older* one took the
+    entry for the newer, live one with it:
+
+        find_by_placeholder(P2)  ->  the mapping
+        find_by_identity(same)   ->  None
+
+    The store is then internally inconsistent, and the next protect of that
+    value allocates yet another placeholder for something already in it --
+    which is the invariant `_allocate` exists to keep.
+
+    Reachable whenever a caller passes a non-default `Retention`, and the pair
+    of mappings is what the allocation race used to produce on its own.
+    """
+
+    def store(self, clock: list[float]) -> InMemoryMappingStore:
+        return InMemoryMappingStore(Retention.of(seconds=10), clock=lambda: clock[0])
+
+    def mapping(self, index: int) -> Mapping:
+        return Mapping(
+            scope="s",
+            placeholder=Placeholder("PERSON", index),
+            entity_type_name="PERSON",
+            original_value="priya",
+            identity_key="PERSON:priya",
+        )
+
+    def test_the_live_mapping_is_still_findable_by_identity(self) -> None:
+        clock = [0.0]
+        store = self.store(clock)
+        store.put(self.mapping(1))
+        clock[0] = 5.0
+        store.put(self.mapping(2))
+        clock[0] = 11.0
+
+        assert store.find_by_placeholder("s", Placeholder("PERSON", 2)) is not None
+        assert store.find_by_identity("s", "PERSON:priya") is not None
+
+    def test_the_two_lookups_agree(self) -> None:
+        """The property, rather than the example: a store that answers one and
+        not the other is one nothing downstream can reason about."""
+        clock = [0.0]
+        store = self.store(clock)
+        store.put(self.mapping(1))
+        clock[0] = 5.0
+        store.put(self.mapping(2))
+        clock[0] = 11.0
+
+        by_placeholder = store.find_by_placeholder("s", Placeholder("PERSON", 2))
+        by_identity = store.find_by_identity("s", "PERSON:priya")
+        assert by_placeholder == by_identity
+
+    def test_an_expired_identity_with_nothing_live_behind_it_is_gone(self) -> None:
+        """The fix must not keep an index entry alive past its mapping."""
+        clock = [0.0]
+        store = self.store(clock)
+        store.put(self.mapping(1))
+        clock[0] = 11.0
+        assert store.find_by_identity("s", "PERSON:priya") is None

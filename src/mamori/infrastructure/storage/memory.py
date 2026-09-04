@@ -85,8 +85,21 @@ class InMemoryMappingStore:
         for key in stale:
             mapping = self._by_placeholder.pop(key, None)
             self._written.pop(key, None)
-            if mapping is not None and mapping.identity_key:
-                self._by_identity.pop((mapping.scope, mapping.identity_key), None)
+            if mapping is None or not mapping.identity_key:
+                continue
+            # Only unlink the index when it still points at *this* mapping.
+            #
+            # Two mappings can share an identity key -- a caller that puts one
+            # by hand, or the allocation race that 0.32 closed -- and the index
+            # holds whichever was written last. Popping blindly expired the
+            # older one and took the index entry for the newer, live one with
+            # it: `find_by_placeholder` returned the mapping and
+            # `find_by_identity` returned `None` for the same value, so the
+            # next protect allocated yet another placeholder for something
+            # already in the store.
+            identity = (mapping.scope, mapping.identity_key)
+            if self._by_identity.get(identity) is mapping:
+                self._by_identity.pop(identity, None)
 
     def next_index(self, scope: str, entity_type_name: str) -> int:
         with self._lock:

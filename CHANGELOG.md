@@ -10,7 +10,7 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [0.32.0] - 2026-09-03
 
-Thirteen defects, four of them leaks and one of them a wrong answer. Two
+Fourteen defects, four of them leaks and one of them a wrong answer. Two
 algorithms the standard library cannot provide, behind the switch 0.31
 established. And Presidio's shapes, so trying this costs an import.
 
@@ -86,6 +86,14 @@ established. And Presidio's shapes, so trying this costs an import.
   protect and restore on. Measured: 12 concurrent callers against a ceiling of
   8, and **4 of 12 replies came back with a raw placeholder in them** --
   printed at a human, for a name that caller sent in that same request.
+
+- **Expiry unlinked a live mapping's identity index.** Two mappings can share
+  an identity key, and `_drop_expired` popped the index entry without checking
+  whether it still pointed at the mapping being expired -- so expiring the
+  older one took the entry for the newer, live one with it.
+  `find_by_placeholder` returned the mapping and `find_by_identity` returned
+  `None` for the same value, and the next protect allocated yet another
+  placeholder for something already in the store.
 
 - **An environment variable could not restore a default.** `merged_with`
   compared against the defaults, so `MAMORI_DEFAULT_ACTION=block` over a file
