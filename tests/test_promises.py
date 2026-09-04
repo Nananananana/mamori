@@ -21,7 +21,7 @@ import inspect
 import json
 import socket
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -619,7 +619,7 @@ class TestTheFirstCodeBlockInEachReadme:
     kind of claim is ever caught.
     """
 
-    SNIPPETS = {
+    SNIPPETS: ClassVar[dict[str, tuple[str, str]]] = {
         "README.md": (
             "田中太郎さんに tanaka@example.com で連絡して",
             "<PERSON_001>さんに <EMAIL_001> で連絡して",
