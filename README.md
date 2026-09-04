@@ -2,7 +2,23 @@
 
 **Use real data with an external LLM, without sending real data to it.**
 
+[![CI](https://github.com/Nananananana/mamori/actions/workflows/ci.yml/badge.svg)](https://github.com/Nananananana/mamori/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
+[![Runtime dependencies: 0](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#install)
+
 日本語版は [README.ja.md](README.ja.md)、中文版在 [README.zh.md](README.zh.md)。
+
+```python
+import mamori
+
+protected, restore = mamori.protect("田中太郎さんに tanaka@example.com で連絡して")
+# protected -> '<PERSON_001>さんに <EMAIL_001> で連絡して'
+
+answer = call_your_favourite_llm(protected)
+
+print(restore(answer))          # 田中太郎 and the address are back
+```
 
 You have a customer email in front of you and a model that could draft the
 reply in seconds. So you retype the message with the names removed, get the
@@ -52,6 +68,7 @@ decide anything about one.
 |---|---|
 | **[See it work](#see-it-work)** | five scenarios, and one against a real model |
 | [Install](#install) · [Use](#use) | the library, streaming, the shell |
+| [How it compares](#how-this-differs-from-the-tools-next-to-it) | against Presidio and scrubadub, in one table |
 | **[Without changing your application](#without-changing-your-application)** | the proxy: change `base_url`, change nothing else |
 | [Languages](#languages) | Japanese, English and Chinese, in one document |
 | [Switching things](#switching-things) | settings, and the recall dial |
@@ -63,6 +80,28 @@ decide anything about one.
 | [Prompts](#prompts) · [The hard parts](#the-three-things-that-make-this-hard) | what the model is told, and why this is difficult |
 | **[How well does it work?](#how-well-does-it-work)** | the numbers, at two scales |
 | [What this does not do](#what-this-does-not-do) · [Design](#design) · [Roadmap](#roadmap) | the limits, and the plan |
+
+### How this differs from the tools next to it
+
+Redaction is a solved problem and this is not one more of it. The row that
+matters is the last one:
+
+| | mamori | [Presidio](https://github.com/microsoft/presidio) | [scrubadub](https://github.com/LeapBeyond/scrubadub) |
+|---|---|---|---|
+| Finds names, emails, numbers | yes | yes | yes |
+| Runtime dependencies | **none** | a model stack | a few |
+| Japanese and Chinese rules | **built in** | via your own recognisers | no |
+| **Puts the values back afterwards** | **yes** | no | no |
+| A proxy your app already speaks to | **yes** | no | no |
+| Says what it did **and did not** find | yes | partly | no |
+| Presidio's own API, spoken here | [yes](#already-using-presidio) | — | no |
+
+Presidio is the mature, general framework and this borrows its shapes on
+purpose — [one import](#already-using-presidio) and its `AnalyzerEngine` calls
+work here. What none of them do is the return trip: they hand back a redacted
+string, and a redacted string cannot become an answer about your customer
+again. That round trip is the whole design, and everything difficult in this
+repository is downstream of it.
 
 ---
 
@@ -160,6 +199,23 @@ in microseconds.
 
 ## Use
 
+One text, one call, and the way back:
+
+```python
+import mamori
+
+protected, restore = mamori.protect("田中太郎さんに tanaka@example.com で連絡して")
+answer = call_your_favourite_llm(protected)
+print(restore(answer))
+```
+
+`mamori.inspect(text)` answers *"is there anything in this"* without allocating
+anything — useful as a guard before you decide to send at all.
+
+A **conversation** is a session. The same value keeps the same placeholder for
+its whole life, so a model can tell that two mentions are the same person, and
+an answer in turn five can still be restored with a value from turn one:
+
 ```python
 import mamori
 
@@ -172,9 +228,9 @@ with mamori.PrivacySession() as session:
     print(session.restore(answer).text)
 ```
 
-A session is one conversation. The same value keeps the same placeholder for
-its whole life, so a model can tell that two mentions are the same person, and
-an answer in turn five can still be restored with a value from turn one.
+Two separate `protect` calls are two separate scopes, and their placeholders
+are numbered independently — so restore the text with the call that protected
+it, not with another one.
 
 ### Streaming
 
@@ -642,31 +698,56 @@ The pattern rules find what has a shape. Two things have no shape, and the
 standard library cannot close either:
 
 ```python
-MamoriConfig(nlp="spacy")  # a name with no anchor beside it
+MamoriConfig(nlp="spacy")           # a name with no anchor beside it
+MamoriConfig(nlp="gliner")          # the same, and any category you can name
 MamoriConfig(phone="phonenumbers")  # a run of digits that is really a number
 ```
 
-Both are off by default and both are extras — `pip install "mamori[nlp]"`,
-`pip install "mamori[phone]"` — so the wheel still declares zero unconditional
-dependencies.
+All off by default and all extras — `pip install "mamori[nlp]"`,
+`"mamori[gliner]"`, `"mamori[phone]"` — so the wheel still declares zero
+unconditional dependencies.
 
 **What the recogniser buys**, measured against the rules that ship. The
 recall-first stance closes the name gap by accepting false positives; a
 recogniser closes part of the same gap without them:
 
-| | balanced | recall-first | balanced + `nlp="spacy"` |
-|---|---|---|---|
-| `I spoke to Sarah Okonkwo yesterday` | missed | found | **found** |
-| `Attendees: Yuki Tanaka, Marcus Lindqvist` | missed | found | **found** |
-| `Reported by: Nguyen Thi Hoa` | missed | found | **found** |
-| `The Quarterly Business Review is Monday` | clean | clean | **clean** |
-| `Social Security Number is required` | clean | clean | **clean** |
+| | balanced | recall-first | `nlp="spacy"` | `nlp="gliner"` |
+|---|---|---|---|---|
+| `I spoke to Sarah Okonkwo yesterday` | missed | found | **found** | **found** |
+| `Attendees: Yuki Tanaka, Marcus Lindqvist` | missed | found | **found** | **found** |
+| `Reported by: Nguyen Thi Hoa` | missed | found | **found** | **found** |
+| `Aleksandr Volkov signed off on it` | missed | found | missed | **found** |
+| `The Quarterly Business Review is Monday` | clean | clean | **clean** | **clean** |
+| `Social Security Number is required` | clean | clean | **clean** | **clean** |
 
 `PERSON` only by default. `ORG` was in the map for one afternoon:
 `en_core_web_sm` tags *"The Quarterly Business Review"* and *"Social Security
 Number"* as organisations — the exact two phrases the English stoplist exists
 to reject — so it made the model a source of the false positives the rules had
 already paid to remove.
+
+**GLiNER is told what to look for, in words.** spaCy finds what its model
+was trained to find and that list is fixed forever. GLiNER scores spans against
+entity types given as *text*, so a category is a string:
+
+```python
+from mamori.infrastructure.detectors import GlinerRecognizer
+
+GlinerRecognizer(labels=("person", "medication", "medical condition"))
+```
+
+Measured, same run as the table: `metoprolol` as a `medication` at 0.91,
+`chest pain` as a `medical condition` at 0.90, nothing in a control sentence.
+No rule can match a drug name by shape and no fixed label set contains one.
+
+Two things it does **not** do, measured and written down rather than left out.
+It is **wrong on Japanese** — wrong spans, not merely low recall: one model
+took seventeen characters for a four-character name, most of a clause. Use the
+Japanese rules, which is what they are for. And it did not find
+`Project Nightingale` as an `internal project codename` at any threshold, so
+the gap `SECURITY.md` describes is still open. The full measurement is in
+[`gliner.py`](src/mamori/infrastructure/detectors/gliner.py)'s docstring, in
+the file that does the work.
 
 **The phone one is the sharper result.** `SECURITY.md` says an unseparated
 digit run is not matched because an order number looks identical. That is true

@@ -606,3 +606,43 @@ class TestTheNewerSurfaces:
         mine, theirs = registry.resume(None), registry.resume(None)
         mine.session.protect("Dear Jane Doe,")
         assert theirs.session.restore("<PERSON_001>").text == "<PERSON_001>"
+
+
+class TestTheFirstCodeBlockInEachReadme:
+    """The snippet above the fold, in all three languages.
+
+    It is the first thing anybody runs and the last thing anybody re-checks.
+    The Chinese one was wrong when it was written: it used a Japanese name in
+    Chinese prose and produced `请联系<PERSON_001>太郎`, leaving half the name
+    in place, because the Chinese pack is what a text with no kana selects.
+    Caught by running it instead of reading it, which is the only way this
+    kind of claim is ever caught.
+    """
+
+    SNIPPETS = {
+        "README.md": (
+            "田中太郎さんに tanaka@example.com で連絡して",
+            "<PERSON_001>さんに <EMAIL_001> で連絡して",
+        ),
+        "README.ja.md": (
+            "田中太郎さんに tanaka@example.com で連絡して",
+            "<PERSON_001>さんに <EMAIL_001> で連絡して",
+        ),
+        "README.zh.md": (
+            "请联系王小明，手机 13800138000",
+            "请联系<PERSON_001>，手机 <PHONE_001>",
+        ),
+    }
+
+    @pytest.mark.parametrize("readme", sorted(SNIPPETS))
+    def test_it_produces_what_it_says_it_does(self, readme: str) -> None:
+        import mamori
+
+        source, expected = self.SNIPPETS[readme]
+        text = Path(readme).read_text(encoding="utf-8")
+        assert source in text, f"{readme} no longer contains this input"
+        assert expected in text, f"{readme} no longer claims this output"
+
+        protected, restore = mamori.protect(source)
+        assert protected == expected
+        assert restore(protected) == source

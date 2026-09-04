@@ -2,7 +2,23 @@
 
 **実データのまま生成AIを使う。実データは送らずに。**
 
+[![CI](https://github.com/Nananananana/mamori/actions/workflows/ci.yml/badge.svg)](https://github.com/Nananananana/mamori/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
+[![Runtime dependencies: 0](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#install)
+
 English: [README.md](README.md) ／ 中文: [README.zh.md](README.zh.md)
+
+```python
+import mamori
+
+protected, restore = mamori.protect("田中太郎さんに tanaka@example.com で連絡して")
+# protected -> '<PERSON_001>さんに <EMAIL_001> で連絡して'
+
+answer = call_your_favourite_llm(protected)
+
+print(restore(answer))          # 田中太郎 とアドレスが戻ってくる
+```
 
 顧客からのメールが目の前にあり、返信の下書きを数秒で書けるモデルもある。
 だから氏名を伏せて打ち直し、伏せ字の付け方が途中でぶれ、署名欄の電話番号を
@@ -19,6 +35,27 @@ tanaka@example.com から        <EMAIL_001> から                tanaka@exampl
 ```
 
 `<PERSON_001>` から `田中太郎` に戻す対応表が手元の端末を出ることはない。
+
+### 似たライブラリとの違い
+
+匿名化そのものは既に解かれた問題で、これはその2つ目ではない。効いてくるのは
+最後の行のほうである。
+
+| | mamori | [Presidio](https://github.com/microsoft/presidio) | [scrubadub](https://github.com/LeapBeyond/scrubadub) |
+|---|---|---|---|
+| 氏名・メール・番号を見つける | 対応 | 対応 | 対応 |
+| 実行時の依存ライブラリ | **なし** | モデル一式 | 数個 |
+| 日本語・中国語の規則 | **同梱** | 自前の recognizer が要る | なし |
+| **元の値を戻せる** | **戻せる** | 戻せない | 戻せない |
+| アプリがそのまま話せるプロキシ | **ある** | ない | ない |
+| 見つけたものと**見つけられなかったもの**を言う | 言う | 一部 | 言わない |
+| Presidio の API をそのまま話す | [対応](#already-using-presidio) | — | 非対応 |
+
+Presidio は成熟した汎用フレームワークで、こちらはその形を意図的に借りている
+（import を1行差し替えれば `AnalyzerEngine` の呼び出しはそのまま動く）。
+どれもやっていないのは復路である。匿名化された文字列は返せても、その文字列は
+もう一度あなたの顧客についての回答にはならない。この往復が設計の全部で、
+このリポジトリで難しいところは全部その下流にある。
 
 
 | | |

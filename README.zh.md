@@ -2,7 +2,23 @@
 
 **用真实数据调用外部大模型，但不把真实数据发出去。**
 
+[![CI](https://github.com/Nananananana/mamori/actions/workflows/ci.yml/badge.svg)](https://github.com/Nananananana/mamori/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
+[![Runtime dependencies: 0](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#install)
+
 English: [README.md](README.md) ／ 日本語: [README.ja.md](README.ja.md)
+
+```python
+import mamori
+
+protected, restore = mamori.protect("请联系王小明，手机 13800138000")
+# protected -> '请联系<PERSON_001>，手机 <PHONE_001>'
+
+answer = call_your_favourite_llm(protected)
+
+print(restore(answer))          # 姓名和手机号都回来了
+```
 
 面前是一封客户邮件，手边是一个几秒钟就能起草回复的模型。于是你把姓名删掉、
 重新打一遍，占位方式前后不一致，签名栏里的电话号码漏掉了，最后得到的草稿
