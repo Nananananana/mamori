@@ -180,3 +180,45 @@ pass published against it at both stances and at `min_confidence` 0.0 and
 natural place for it, if its brief is widened to include a code review and a
 deployment ticket -- the two documents where a hash and a key sit in the same
 paragraph.
+
+
+## Should a policy know where the text is going?
+
+An external review asked for `type x confidence x context x destination` as the
+unit of decision: the same value allowed to a model on this machine and refused
+to one across the internet.
+
+The argument for it is real — those *are* different risks, and a deployment
+running both endpoints currently has to hold two configurations and remember
+which is which.
+
+The argument against is that it doubles the states a deployment has to reason
+about, and every one of them is a state where a value might be sent. A policy
+with one axis is a table somebody can read; a policy with two is a table
+somebody skims. Two configurations, chosen by whichever endpoint is being
+called, expresses the same thing with the same number of decisions and no new
+mechanism — and if that is genuinely worse, the way to show it is a deployment
+that tried and found what it could not say.
+
+**What would settle it:** one concrete case that per-type actions plus a second
+configuration cannot express. Not a scenario — a configuration somebody tried
+to write and could not.
+
+## Should there be a privacy budget?
+
+The same review proposed a sensitivity budget per conversation or destination:
+this much may leave, and no more.
+
+Two problems, and the second is the one that matters. First, nobody has a
+number: there is no measurement in this project or outside it that says what a
+sensible budget would be for a conversation, and a limit picked to feel careful
+is a limit that gets raised the first time it fires.
+
+Second, **a budget spent is a value sent.** The counter becomes a fact about
+what has already left, which makes it worth reading and worth attacking, and it
+has to live somewhere — which is a new thing to protect, in a library whose
+argument is that it holds as little as possible. `mamori inspect` answers the
+same question without keeping anything: ask before you send, and decide.
+
+**What would settle it:** a measurement that says what a budget should be, and
+a place to keep the counter that is not worse than what it protects.

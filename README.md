@@ -1534,6 +1534,7 @@ measuring it and saying no.
 | **v0.32** | Fourteen defects, four of them leaks: a proxy that forwarded six payload shapes while claiming to fail closed, a Japanese name in half-width katakana that no rule could see, a restoration that named the wrong person, and a salutation that made a name invisible. Plus recognisers that need a library, and Presidio's shapes so trying this costs an import. |
 | **v0.31** | Secrets as an algorithm you choose: the entropy pass `detect-secrets` and `gitleaks` run, behind a `secrets` switch that defaults to what shipped before, with a registry so a fourth algorithm is a call and a config value. Found on the way: two settings a config file could name and could not set. |
 | **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values. The proxy half of this row was withdrawn before it was built: the warning it called for was already there, and the check that said otherwise had searched for a property name that does not exist. |
+| **v0.33** | Speed and evidence. Two unbounded quantifiers made cost quadratic in the length of the input, so the *shape* of a document decided how long a request took — 128KB of one base64 blob took 456 seconds to restore. Both bounded by somebody else's number, and every rule surveyed against sixteen adversarial shapes. Plus GLiNER, an identifier shape that closes three leaks, `mamori.protect()`, and the return half of the audit record. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 
 The reasoning behind that table — what was planned and did not happen, what was
@@ -1564,6 +1565,21 @@ that takes a `protection-scope` record and nothing else and validates it
 against the shipped schema first. The narrowness is the safety — a sink that
 also accepted a message would be a logger with a longer name, and the first
 person in a hurry would use the message.
+
+**Taken from the 2026-09-05 external review, and what was not.** Three of its
+items became code in `v0.33`: transformation lineage is
+`mamori.restoration-scope/1`, `protect`/`restore` are now the entry point
+(`mamori.protect(text)`), and the recall it asked to be measured per type and
+language is what found the identifier shape. Two are **not** scheduled and the
+reason is the same for both. A *destination-aware policy* — the same value
+allowed to one endpoint and refused to another — would double the number of
+states a deployment has to reason about, and nobody has yet shown a case the
+existing per-type actions plus a second configuration cannot express; it needs
+a real deployment that wants it, not a design. A *privacy budget* has the
+sharper problem: a budget spent is a value sent, so the counter becomes a thing
+worth attacking, and there is no measurement yet that says what a sensible
+budget would be. Both are in [docs/open-questions.md](docs/open-questions.md)
+with what would settle them.
 
 Questions that are open rather than planned — a known gap with no good fix yet,
 a number nobody has, a decision that is owed — are in
