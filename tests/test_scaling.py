@@ -119,18 +119,45 @@ class TestNoRuleIsSuperlinear:
 
 
 class TestTheWholePipelineStaysLinear:
-    """The rules are linear individually; this says the assembly is too."""
+    """The rules are linear individually; this says the assembly is too.
 
-    BUDGET_SECONDS = 5.0
+    **Growth, not a stopwatch.** The first version of this asserted that
+    200,000 characters of CJK took under five seconds. It took 1.7 here and
+    5.06 on a CI runner, which is a test that fails when somebody else's build
+    is busy -- and a flaky test is worse than no test, because the first red is
+    read as noise and so is the second. The ratio is a property of the
+    patterns; the absolute time is a property of the machine.
+
+    The budget below survives as a backstop with two orders of magnitude of
+    room, for the case where something is slow in a way that does not show up
+    as growth at all.
+    """
+
+    SMALL = 25_000
+    LARGE = 100_000
+
+    #: Generous by about thirty times. Before the email bounds, 32,000
+    #: characters took four seconds and 100,000 would have taken forty.
+    BUDGET_SECONDS = 20.0
 
     @pytest.mark.parametrize("shape", ["alnum run", "hyphens", "dots", "cjk"])
-    def test_a_large_document_is_inspected_within_budget(self, shape: str) -> None:
-        text = SHAPES[shape](200_000)  # type: ignore[operator]
+    def test_four_times_the_document_costs_about_four_times(self, shape: str) -> None:
+        build = SHAPES[shape]
         session = MamoriConfig().session()
-        elapsed = _once(lambda: session.inspect(text))
-        assert elapsed < self.BUDGET_SECONDS, (
-            f"{shape}: 200,000 characters took {elapsed:.1f}s. Before the email "
-            "bounds, 32,000 took four seconds and this would take minutes."
+        small_text = build(self.SMALL)  # type: ignore[operator]
+        large_text = build(self.LARGE)  # type: ignore[operator]
+
+        small = _fastest(lambda: session.inspect(small_text), repeats=2)
+        large = _fastest(lambda: session.inspect(large_text), repeats=2)
+
+        assert large < self.BUDGET_SECONDS, (
+            f"{shape}: {self.LARGE:,} characters took {large:.1f}s, which is slow "
+            "in a way that does not show up as growth"
+        )
+        assert large < MAX_GROWTH * small, (
+            f"{shape}: {self.SMALL:,} took {small * 1000:.0f}ms and {self.LARGE:,} "
+            f"took {large * 1000:.0f}ms, a factor of {large / small:.1f} for four "
+            "times the document"
         )
 
 
