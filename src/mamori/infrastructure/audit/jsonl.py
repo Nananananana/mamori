@@ -51,9 +51,10 @@ __all__ = ["LINE_FORMAT", "JsonlAuditSink"]
 LINE_FORMAT = "mamori.audit-line/1"
 
 _SCHEMA_FILE = "protection-scope-1.json"
+_RESTORATION_SCHEMA_FILE = "restoration-scope-1.json"
 
 
-def _load_schema() -> dict[str, Any]:
+def _load_schema(name: str = _SCHEMA_FILE) -> dict[str, Any]:
     """Read the frozen contract document out of package data.
 
     **Loaded here rather than imported from `mamori.provenance`**, which also
@@ -67,17 +68,35 @@ def _load_schema() -> dict[str, Any]:
     """
     from importlib import resources
 
-    text = (resources.files("mamori.schemas") / _SCHEMA_FILE).read_text(encoding="utf-8")
+    text = (resources.files("mamori.schemas") / name).read_text(encoding="utf-8")
     schema: dict[str, Any] = json.loads(text)
     return schema
 
 
 SCHEMA: dict[str, Any] = _load_schema()
 
-#: Which contract identifiers this sink takes -- read out of the schema rather
+#: The return half, added in 0.33. Same file, because *what left this machine
+#: last Tuesday* and *what came back and what became of it* are one question
+#: asked twice, and answering the second from a different file would mean
+#: joining two logs to learn whether a protected value was ever restored.
+RESTORATION_SCHEMA: dict[str, Any] = _load_schema(_RESTORATION_SCHEMA_FILE)
+
+#: Which contract identifiers this sink takes -- read out of the schemas rather
 #: than written down again, so a future ``/2`` cannot be accepted here without
 #: first passing through the document that defines what a ``/2`` may contain.
-ACCEPTED_CONTRACTS: frozenset[str] = frozenset(SCHEMA["properties"]["contract"]["enum"])
+#:
+#: **Widening this is a decision, not a convenience.** A contract belongs here
+#: only once it has been through the derivability test ADR 0032 sets: nothing
+#: in a record that a holder of the artifact could not already work out.
+#: `restoration-scope/1` was written against that test -- which is why it
+#: carries canonical placeholder identities and not the surface forms a model
+#: typed -- and `tests/test_audit_sink` pins these identifiers against what
+#: `provenance` publishes, so the two cannot drift apart in silence.
+_RESTORATION_CONTRACT: str = RESTORATION_SCHEMA["properties"]["contract"]["const"]
+
+ACCEPTED_CONTRACTS: frozenset[str] = frozenset(SCHEMA["properties"]["contract"]["enum"]) | {
+    _RESTORATION_CONTRACT
+}
 
 
 def _utc_now() -> datetime:
@@ -192,18 +211,26 @@ class JsonlAuditSink:
         if not isinstance(record, dict):
             raise StorageError("an audit record must be a mapping")
 
-        if record.get("contract") not in ACCEPTED_CONTRACTS:
+        contract = record.get("contract")
+        if contract not in ACCEPTED_CONTRACTS:
             raise StorageError(
-                "this sink takes mamori.protection-scope records and nothing else. "
-                "It is not a log: what may appear in one of these is settled by "
-                "ADR 0032, and a record that does not name the contract has not "
-                "been through that."
+                "this sink takes mamori.protection-scope and "
+                "mamori.restoration-scope records and nothing else. It is not a "
+                "log: what may appear in one of these is settled by ADR 0032, and "
+                "a record that does not name the contract has not been through that."
             )
 
-        unknown = sorted(set(record) - set(SCHEMA["properties"]))
+        # The record's own schema, chosen by the contract it declares. Not
+        # the union of both: a protection record carrying `clean`, or a
+        # restoration record carrying `masked`, is a record whose producer has
+        # confused the two halves, and a check that accepted either field
+        # anywhere would be the one place that did not notice.
+        schema = RESTORATION_SCHEMA if contract == _RESTORATION_CONTRACT else SCHEMA
+
+        unknown = sorted(set(record) - set(schema["properties"]))
         if unknown:
             raise StorageError(
-                f"an audit record carries fields the contract does not define: "
+                f"an audit record carries fields {contract} does not define: "
                 f"{unknown}. The schema refuses unknown properties because a field "
                 "nobody argued about is a field nobody checked against ADR 0032 -- "
                 "which is where 'this file holds no protected value' comes from."
@@ -213,7 +240,7 @@ class JsonlAuditSink:
             from jsonschema import Draft202012Validator
         except ModuleNotFoundError:  # pragma: no cover - depends on the install
             return
-        errors = sorted(Draft202012Validator(SCHEMA).iter_errors(record), key=str)
+        errors = sorted(Draft202012Validator(schema).iter_errors(record), key=str)
         if errors:
             raise StorageError(
                 f"an audit record does not validate against the shipped schema: {errors[0].message}"

@@ -64,7 +64,7 @@ from ...infrastructure.storage.encrypted import (
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
-from ...provenance import ProtectionLedger
+from ...provenance import ProtectionLedger, restoration_record
 from .demo import SCENARIOS, LiveSettings, run_demo
 from .explain import audit_rules, trace_text
 
@@ -237,6 +237,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--encrypted",
         action="store_true",
         help=(f"the mapping file is encrypted; read the key from {DEFAULT_KEY_VARIABLE}"),
+    )
+    restore.add_argument(
+        "--audit",
+        metavar="PATH",
+        help=(
+            "append a mamori.restoration-scope record to PATH, one JSON line "
+            "per run -- the return half of what `protect --audit` writes. Join "
+            "them on the scope and you have the lineage of one round trip. "
+            "Holds no restored value, and inherits the classification of the "
+            "documents it describes, exactly like the other half"
+        ),
+    )
+    restore.add_argument(
+        "--audit-by",
+        metavar="NAME/VERSION",
+        help="what to write in the record's 'by' field. Defaults to this mamori",
+    )
+    restore.add_argument(
+        "--json",
+        action="store_true",
+        help=(
+            "print the restored text and the same record `--audit` would "
+            "write, as one object, for a caller that has to act on the "
+            "difference between recovered, altered and never-allocated"
+        ),
     )
 
     sub.add_parser(
@@ -1304,6 +1329,34 @@ def _cmd_restore(args: argparse.Namespace) -> int:
         scope = load_scope(store, Path(args.mapping))
     session = PrivacySession(store=store, scope=scope)
     result: RestorationResult = session.restore(text)
+
+    if args.audit:
+        # Before the output, and strict, for the same reason the outbound half
+        # is: a command that prints a restored answer, exits 0 and leaves
+        # nothing in the file the operator turned on is worse than one that
+        # stops.
+        ProtectionLedger(
+            JsonlAuditSink(Path(args.audit)),
+            by=args.audit_by or "",
+        ).record_restoration(result, scope=scope)
+
+    if args.json:
+        # The record itself, not a second rendering of the same facts. Two
+        # shapes for one thing drift, and the one that drifts is whichever
+        # nothing validates -- this one is checkable against the schema the
+        # package ships.
+        print(
+            json.dumps(
+                {
+                    "text": result.text,
+                    "record": restoration_record(result, scope=scope, by=args.audit_by or ""),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return _EXIT_OK
+
     _emit(result.text)
     if result.unknown:
         print(

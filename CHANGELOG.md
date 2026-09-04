@@ -22,6 +22,12 @@ While the version is below `1.0.0`, the public API may change in a minor release
   behind each unrecognised placeholder, so an audit line never carries a
   surface form a model typed.
 
+  `mamori restore --audit PATH` writes it from the shell, into the same file
+  `protect --audit` appends to, so one file holds the round trip. `restore
+  --json` prints the restored text and that same record -- the record itself
+  rather than a second rendering of the same facts, because two shapes for one
+  thing drift and the one that drifts is whichever nothing validates.
+
 - **An identifier written as a prefix, a separator and a number is found.**
   `E-45033` in *"Review notes for E-45033"* was the last uncovered entity in
   `en-context`: the anchored `EMPLOYEE_ID` rule wants the words *employee id*

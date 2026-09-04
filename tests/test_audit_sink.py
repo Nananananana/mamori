@@ -32,6 +32,7 @@ from mamori.ports.audit_sink import AuditSink
 from mamori.provenance import (
     CONTRACT,
     CONTRACT_WITH_SURROGATES,
+    RESTORATION_CONTRACT,
     ProtectionLedger,
     protection_record,
 )
@@ -157,7 +158,7 @@ class TestItRefusesWhatIsNotARecord:
         record = protection_record(result, session=session)
         record["sample"] = NAME
 
-        with pytest.raises(StorageError, match="the contract does not define"):
+        with pytest.raises(StorageError, match="does not define"):
             JsonlAuditSink(tmp_path / "audit.jsonl").record(record)
 
     def test_the_refusal_names_the_field(self, tmp_path: Path) -> None:
@@ -199,7 +200,34 @@ class TestTheCopyOfTheSchemaIsTheSameSchema:
         assert SCHEMA == provenance.SCHEMA
 
     def test_the_accepted_identifiers_are_the_published_ones(self) -> None:
-        assert ACCEPTED_CONTRACTS == {CONTRACT, CONTRACT_WITH_SURROGATES}
+        """Both halves, and nothing else.
+
+        Widening this set is the decision that lets a new kind of document
+        into a file whose whole promise is that nothing in it is a protected
+        value. `restoration-scope/1` was written against the same ADR 0032
+        test -- which is why it carries canonical placeholder identities and
+        not the surface forms a model typed -- and this line is where the
+        decision is recorded rather than inferred from a diff.
+        """
+        assert ACCEPTED_CONTRACTS == {
+            CONTRACT,
+            CONTRACT_WITH_SURROGATES,
+            RESTORATION_CONTRACT,
+        }
+
+    def test_a_record_is_validated_against_its_own_schema_not_the_union(self) -> None:
+        """A protection record carrying `clean`, or a restoration record
+        carrying `masked`, is a producer that has confused the two halves. A
+        check accepting either field anywhere would be the one place that did
+        not notice, so the schema is chosen by the contract the record
+        declares."""
+        from mamori.infrastructure.audit.jsonl import RESTORATION_SCHEMA
+
+        assert set(SCHEMA["properties"]) & set(RESTORATION_SCHEMA["properties"]) == {
+            "contract",
+            "by",
+            "scope",
+        }
 
     def test_the_sink_does_not_import_provenance(self) -> None:
         """The rule this arrangement exists to keep. `test_architecture` checks

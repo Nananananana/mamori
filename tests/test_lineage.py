@@ -15,6 +15,7 @@ and neither carries a value.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -238,3 +239,67 @@ class TestTheLedgerWritesBothHalves:
             ledger.record_restoration(session.restore("nothing"), scope=session.scope)
         assert ledger.dropped == 2
         assert ledger.written == 0
+
+
+class TestTheCommandLineWritesBothHalves:
+    """The library can produce the pair; this is whether an operator can.
+
+    A feature reachable only from Python is a feature the person who needed
+    the audit trail cannot use -- they are running `mamori protect` in a
+    pipeline, not importing anything.
+    """
+
+    def test_one_file_holds_the_round_trip(self, tmp_path: Path) -> None:
+        from mamori.interfaces.cli.main import main
+
+        mapping = tmp_path / "m.json"
+        audit = tmp_path / "audit.jsonl"
+        assert main(["protect", TEXT, "--save-mapping", str(mapping), "--audit", str(audit)]) == 0
+        assert (
+            main(
+                [
+                    "restore",
+                    "I emailed <EMAIL_001> and called < PERSON _ 001 >, also <SSN_9>.",
+                    "--mapping",
+                    str(mapping),
+                    "--audit",
+                    str(audit),
+                ]
+            )
+            == 0
+        )
+
+        rows = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+        assert [row["record"]["contract"] for row in rows] == [
+            "mamori.protection-scope/1",
+            RESTORATION_CONTRACT,
+        ]
+        assert len({row["record"]["scope"] for row in rows}) == 1, "the halves cannot be joined"
+
+        restoration = rows[1]["record"]
+        assert restoration["clean"] is False
+        assert restoration["unknown"] == [{"token": "<SSN_009>", "kind": "SSN"}]
+        assert {entry["token"] for entry in restoration["tampered"]} == {"<PERSON_001>"}
+
+        raw = audit.read_text(encoding="utf-8")
+        assert EMAIL not in raw
+        assert NAME not in raw
+
+    def test_the_json_output_is_the_record_itself(self, tmp_path: Path, capsys: Any) -> None:
+        """Not a second rendering of the same facts.
+
+        Two shapes for one thing drift, and the one that drifts is whichever
+        nothing validates. This one is checkable against the shipped schema,
+        which is the point of printing it rather than a summary.
+        """
+        from mamori.interfaces.cli.main import main
+
+        mapping = tmp_path / "m.json"
+        assert main(["protect", TEXT, "--save-mapping", str(mapping)]) == 0
+        capsys.readouterr()
+        assert main(["restore", "emailed <EMAIL_001>", "--mapping", str(mapping), "--json"]) == 0
+
+        printed = json.loads(capsys.readouterr().out)
+        assert printed["text"].strip() == f"emailed {EMAIL}"
+        Draft202012Validator(RESTORATION_SCHEMA).validate(printed["record"])
+        assert printed["record"]["restored"] == [{"token": "<EMAIL_001>", "kind": "EMAIL"}]
