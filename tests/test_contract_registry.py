@@ -53,6 +53,11 @@ DECLARED: dict[str, str] = {
     "mamori.protection-scope/1": "published",
     "mamori.protection-scope/1+surrogate": "published",
     "mamori.audit-line/1": "published",
+    # The return half of protection-scope. Published for the same reason and
+    # more sharply: a protection record without its restoration record is a
+    # visible absence, and a consumer that cannot validate the second half
+    # would have to decide for itself what an absent one meant.
+    "mamori.restoration-scope/1": "published",
     # A magic string **inside the ciphertext** of an encrypted mapping file.
     # Internal rather than published: nobody but mamori can read the bytes it
     # sits in, so there is no second party for a schema to be an agreement
@@ -69,6 +74,7 @@ SCHEMA_FILE = {
     "mamori.protection-scope/1": "protection-scope-1.json",
     "mamori.protection-scope/1+surrogate": "protection-scope-1.json",
     "mamori.audit-line/1": "audit-line-1.json",
+    "mamori.restoration-scope/1": "restoration-scope-1.json",
 }
 
 

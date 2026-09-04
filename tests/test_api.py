@@ -119,7 +119,7 @@ class TestTheShapesBehindTheNames:
             ),
             (
                 mamori.RestorationResult,
-                {"text", "restored", "unknown", "missing"},
+                {"text", "restored", "unknown", "unknown_identities", "missing"},
             ),
             (
                 mamori.EntityReport,

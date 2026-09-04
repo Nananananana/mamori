@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nananananana/mamori/schemas/restoration-scope-1.json",
+  "title": "mamori.restoration-scope/1",
+  "description": "What came back from a model and what became of it, for one scope, carrying no restored value. The return half of mamori.protection-scope/1: join them on `scope`. Together they are the lineage of one round trip -- original to protected to answer to restored -- with nothing sensitive in either record.",
+  "type": "object",
+  "required": [
+    "contract",
+    "by",
+    "scope",
+    "clean",
+    "restored",
+    "tampered",
+    "unknown",
+    "unused"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "description": "Frozen contract identifier. A consumer that does not recognise one must refuse the record rather than read the fields it happens to know.",
+      "const": "mamori.restoration-scope/1"
+    },
+    "by": {
+      "description": "Producer, as name/version. The version says which placeholder grammar was in force, which is what decides whether a mangled token was recognised at all.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._+-]+$"
+    },
+    "scope": {
+      "description": "The scope whose placeholders were resolved. The same value the protection record carries, and the only thing joining the two halves. A scope is not derived from any document.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "clean": {
+      "description": "Whether every placeholder-shaped run in the answer was one this scope had allocated. False means the answer contained something shaped like a placeholder that nobody minted -- a model inventing one, or a response fishing for a value it was never given. A consumer that does not find this property must read it as false.",
+      "type": "boolean"
+    },
+    "restored": {
+      "description": "Tokens found in the answer and replaced with their values. The token is admissible for the same reason it is in the protection record: a holder of the protected text recovers it with one regular expression, so this discloses nothing they did not have. The value is never here.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/token"
+      }
+    },
+    "tampered": {
+      "description": "The subset of `restored` whose surface form the model had altered -- `<PERSON _ 001>`, `person_1`, a bracket style changed. Recorded because a rising count is how a model that has started rewriting placeholders is noticed before a restoration silently fails. Always a subset of `restored`, by identity.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/token"
+      }
+    },
+    "unknown": {
+      "description": "Placeholder-shaped runs the answer carried that this scope never allocated, canonicalised to (kind, index). **The surface form is deliberately not here.** A surface is whatever a model typed, and putting it in an audit line puts model output verbatim into somebody's log; the identity is bounded by the placeholder grammar. Nothing was substituted for these -- they are still standing in the restored text where a reader can see them.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/token"
+      }
+    },
+    "unused": {
+      "description": "Tokens allocated in this scope that the answer did not mention. Usually harmless -- the model simply did not need them -- and worth recording because 'the answer used none of them' is the signature of a response about the wrong conversation.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/token"
+      }
+    }
+  },
+  "$defs": {
+    "token": {
+      "type": "object",
+      "required": [
+        "token",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "description": "The canonical placeholder, e.g. <PERSON_001>. Never a surface form and never a value.",
+          "type": "string",
+          "pattern": "^<[A-Z][A-Z0-9_]{0,62}_[0-9]{1,6}>$"
+        },
+        "kind": {
+          "description": "Entity type name, e.g. PERSON.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,62}$"
+        }
+      }
+    }
+  },
+  "$comment": "One invariant this schema cannot express and a consumer must enforce: `tampered` is a subset of `restored`. And one reading rule -- a record with `clean: false` says the answer contained a token nobody minted, which is a fact about the answer and not about this library; it is not evidence of an attack and it is the only place such a thing is visible at all. ENCODING: a record is UTF-8, stated here because a contract that does not name its encoding is one its own producer eventually gets wrong -- a sibling wrote its JSON report in the platform locale, could not parse it back, and published a hash over bytes that were not in the file, with nothing violated because nothing had been stated. Decode as UTF-8 and never as the platform default; encode the same way, including to a redirected stream, which is where the locale gets its second chance."
+}

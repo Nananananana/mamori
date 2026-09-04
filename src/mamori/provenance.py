@@ -61,23 +61,28 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from .domain.policy import Action
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .application.results import ProtectionResult
+    from .application.results import ProtectionResult, RestorationResult
     from .application.session import PrivacySession
+    from .domain.placeholder import Placeholder
     from .domain.policy import PrivacyPolicy
     from .ports.audit_sink import AuditSink
 
 __all__ = [
     "CONTRACT",
     "CONTRACT_WITH_SURROGATES",
+    "RESTORATION_CONTRACT",
+    "RESTORATION_SCHEMA",
     "SCHEMA",
     "ProtectionLedger",
     "policy_hash",
     "protection_record",
+    "restoration_record",
 ]
 
 #: The frozen contract identifier, for a record whose values were **all**
@@ -101,13 +106,26 @@ CONTRACT = "mamori.protection-scope/1"
 #: read.
 CONTRACT_WITH_SURROGATES = "mamori.protection-scope/1+surrogate"
 
+#: The return half. A protection record says what was replaced; this says
+#: what came back and what became of it. Joined on ``scope``, the two are the
+#: lineage of one round trip -- original, protected, answer, restored -- and
+#: neither carries a value.
+#:
+#: Separate rather than one record with more fields, for a reason the
+#: surrogate contract already demonstrates: the two halves are written at
+#: different moments, and a protection that never got an answer must not look
+#: like one whose answer was clean. An absent restoration record is a visible
+#: absence; a protection record with empty restoration fields is not.
+RESTORATION_CONTRACT = "mamori.restoration-scope/1"
+
 _SCHEMA_FILE = "protection-scope-1.json"
+_RESTORATION_SCHEMA_FILE = "restoration-scope-1.json"
 
 
-def _load_schema() -> dict[str, Any]:
+def _load_schema(name: str = _SCHEMA_FILE) -> dict[str, Any]:
     from importlib import resources
 
-    text = (resources.files("mamori.schemas") / _SCHEMA_FILE).read_text(encoding="utf-8")
+    text = (resources.files("mamori.schemas") / name).read_text(encoding="utf-8")
     loaded: dict[str, Any] = json.loads(text)
     return loaded
 
@@ -115,6 +133,9 @@ def _load_schema() -> dict[str, Any]:
 #: The JSON Schema, so a consumer can validate without a network fetch or a
 #: pinned copy that drifts.
 SCHEMA: dict[str, Any] = _load_schema()
+
+#: The same, for :func:`restoration_record`.
+RESTORATION_SCHEMA: dict[str, Any] = _load_schema(_RESTORATION_SCHEMA_FILE)
 
 
 def policy_hash(
@@ -242,6 +263,71 @@ def protection_record(
     return record
 
 
+def restoration_record(
+    result: RestorationResult,
+    *,
+    scope: str,
+    by: str = "",
+) -> dict[str, Any]:
+    """Build a ``mamori.restoration-scope/1`` record for one restored answer.
+
+    Args:
+        result: What :meth:`~mamori.PrivacySession.restore` returned.
+        scope: The scope the placeholders were allocated in -- the same value
+            the protection record carries, and the only thing joining the two.
+            Passed rather than read off the result because a
+            :class:`~mamori.RestorationResult` does not hold one: restoration
+            is given a scope, it does not discover one.
+        by: Producer, as ``name/version``. Defaults to this mamori.
+
+    Returns:
+        A JSON-serialisable dict carrying **no restored value**, by the same
+        test :func:`protection_record` passes: everything in it is derivable
+        from the protected text by somebody who already holds it. Tokens yes;
+        the values behind them, the answer's wording, and the surface forms a
+        model typed, no.
+
+    The last of those is the one worth stating. ``result.unknown`` holds the
+    surface as the answer wrote it -- what a person reading a warning needs --
+    and this record carries the **canonical identity** instead. A surface is
+    whatever a model produced; an identity is ``(TYPE, index)`` and is bounded
+    by the placeholder grammar. An audit line is somewhere model output should
+    not arrive verbatim.
+    """
+    if not by:
+        from . import __version__
+
+        by = f"mamori/{__version__}"
+
+    return {
+        "contract": RESTORATION_CONTRACT,
+        "by": by,
+        "scope": scope,
+        "clean": result.is_clean,
+        "restored": _tokens(occurrence.placeholder for occurrence in result.restored),
+        "tampered": _tokens(occurrence.placeholder for occurrence in result.tampered),
+        "unknown": _tokens(result.unknown_identities),
+        "unused": _tokens(result.missing),
+    }
+
+
+def _tokens(placeholders: Iterable[Placeholder]) -> list[dict[str, str]]:
+    """Canonical token and kind, deduplicated, in a fixed order.
+
+    Sorted and deduplicated so that two records of the same answer compare
+    equal: a token mentioned three times is one fact about the answer, and a
+    count of mentions would be a shape of the answer's wording.
+    """
+    seen = {
+        placeholder.token: {
+            "token": placeholder.token,
+            "kind": placeholder.entity_type_name,
+        }
+        for placeholder in placeholders
+    }
+    return [seen[token] for token in sorted(seen)]
+
+
 def _counted(counts: Counter[str]) -> list[dict[str, Any]]:
     """Kind and count, in a fixed order. Never a string that was substituted."""
     return [{"kind": kind, "count": count} for kind, count in sorted(counts.items())]
@@ -353,6 +439,29 @@ class ProtectionLedger:
             recall=self._recall,
             policy_fingerprint=self._policy_fingerprint,
         )
+        return self._emit(document)
+
+    def record_restoration(
+        self,
+        result: RestorationResult,
+        *,
+        scope: str,
+    ) -> dict[str, Any]:
+        """Record the return half. Returns the record, whether or not it landed.
+
+        The same sink, the same strictness, the same counters. Joined to the
+        protection record by ``scope``, which is why that argument is required
+        and not defaulted: a restoration record nobody can join is a row that
+        says a round trip happened somewhere.
+
+        `recall` and `policy_fingerprint` are deliberately not on it. They
+        describe how detection ran, which is a fact about the outbound half
+        and is already recorded there; repeating them here would let the two
+        halves of one round trip disagree about the run that produced them.
+        """
+        return self._emit(restoration_record(result, scope=scope, by=self._by))
+
+    def _emit(self, document: dict[str, Any]) -> dict[str, Any]:
         try:
             self._sink.record(document)
         except Exception:

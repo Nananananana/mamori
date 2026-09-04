@@ -10,6 +10,18 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **`mamori.restoration-scope/1`: the return half of the audit record.** A
+  protection record said what was replaced on the way out and nothing said
+  what came back, so an audit trail could show that a value had been protected
+  and could not show that the answer about it was restored, that a placeholder
+  came back mangled, or that the answer carried a token nobody had ever minted
+  -- the one thing in a round trip worth an alert. `restoration_record()` and
+  `ProtectionLedger.record_restoration()` produce it; joined on `scope`, the
+  two records are the lineage of one round trip and neither carries a value.
+  `RestorationResult.unknown_identities` is the canonical `(TYPE, index)`
+  behind each unrecognised placeholder, so an audit line never carries a
+  surface form a model typed.
+
 - **An identifier written as a prefix, a separator and a number is found.**
   `E-45033` in *"Review notes for E-45033"* was the last uncovered entity in
   `en-context`: the anchored `EMPLOYEE_ID` rule wants the words *employee id*

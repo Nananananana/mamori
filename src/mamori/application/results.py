@@ -127,7 +127,14 @@ class RestorationResult:
     #: Placeholders that were found and replaced.
     restored: tuple[PlaceholderOccurrence, ...] = ()
     #: Placeholder-shaped text that was never allocated. Not substituted.
+    #: The surface form, as the response wrote it, which is what a person
+    #: reading a warning needs to see.
     unknown: tuple[str, ...] = field(default_factory=tuple)
+    #: The same occurrences, canonicalised. A surface is whatever a model
+    #: typed; an identity is `(TYPE, index)` and is bounded by the placeholder
+    #: grammar. Records and audit lines carry these, so nothing a model wrote
+    #: reaches a log verbatim -- see `mamori.provenance.restoration_record`.
+    unknown_identities: tuple[Placeholder, ...] = field(default_factory=tuple)
     #: Placeholders allocated in the scope that the response did not mention.
     #: Usually harmless -- the model simply did not need them.
     missing: tuple[Placeholder, ...] = field(default_factory=tuple)

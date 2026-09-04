@@ -91,13 +91,14 @@ class RestorationService:
         pieces.append(text[cursor:])
         result = "".join(pieces)
 
-        unknown = [occurrence.surface for occurrence in occurrences if not occurrence.known]
+        unclaimed = [occurrence for occurrence in occurrences if not occurrence.known]
         missing = tuple(sorted(known - seen))
 
         return RestorationResult(
             text=result,
             restored=tuple(restored),
-            unknown=tuple(unknown),
+            unknown=tuple(occurrence.surface for occurrence in unclaimed),
+            unknown_identities=tuple(occurrence.placeholder for occurrence in unclaimed),
             missing=missing,
         )
 
