@@ -1358,7 +1358,10 @@ hundreds. Restricting to one language pack is 30–45% faster on CJK; the defaul
 runs every pack because an unexpected language is exactly the case nobody
 redacted by hand.
 
-Flat at about 3 ms/KB from 16 KB to half a megabyte — flat since `v0.22`, which
+The table above is what `v0.22` measured on the machine it was measured on;
+`mamori bench` is the same question asked of *your* machine and *your*
+configuration, and its `x4 growth` column is the check that nothing has gone
+quadratic since. Flat at about 3 ms/KB from 16 KB to half a megabyte — flat since `v0.22`, which
 is when the measurement first happened and turned up a quadratic in overlap
 resolution that took thirteen seconds on a 534 KB document.
 
@@ -1656,7 +1659,7 @@ measuring it and saying no.
 | **v0.32** | Fourteen defects, four of them leaks: a proxy that forwarded six payload shapes while claiming to fail closed, a Japanese name in half-width katakana that no rule could see, a restoration that named the wrong person, and a salutation that made a name invisible. Plus recognisers that need a library, and Presidio's shapes so trying this costs an import. |
 | **v0.31** | Secrets as an algorithm you choose: the entropy pass `detect-secrets` and `gitleaks` run, behind a `secrets` switch that defaults to what shipped before, with a registry so a fourth algorithm is a call and a config value. Found on the way: two settings a config file could name and could not set. |
 | **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values. The proxy half of this row was withdrawn before it was built: the warning it called for was already there, and the check that said otherwise had searched for a property name that does not exist. |
-| **v0.33** | Speed and evidence. Two unbounded quantifiers made cost quadratic in the length of the input, so the *shape* of a document decided how long a request took — 128KB of one base64 blob took 456 seconds to restore. Both bounded by somebody else's number, and every rule surveyed against sixteen adversarial shapes. Plus GLiNER, an identifier shape that closes three leaks, `mamori.protect()`, and the return half of the audit record. |
+| **v0.33** | Speed and evidence. Two unbounded quantifiers made cost quadratic in the length of the input, so the *shape* of a document decided how long a request took — 128KB of one base64 blob took 456 seconds to restore. Both bounded by somebody else's number, and every rule surveyed against sixteen adversarial shapes. Plus GLiNER, an identifier shape that closes three leaks, `mamori.protect()`, the return half of the audit record, detection rules in the configuration file — each timed before it is accepted — and `mamori bench`, which found a third quadratic on its first run. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 
 The reasoning behind that table — what was planned and did not happen, what was

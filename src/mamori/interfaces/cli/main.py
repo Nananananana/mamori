@@ -1314,11 +1314,7 @@ def _cmd_protect(args: argparse.Namespace) -> int:
         # alternative is a run that prints protected text, exits 0, and leaves
         # nothing in the file the operator turned on in order to have
         # something.
-        ProtectionLedger(
-            JsonlAuditSink(Path(args.audit)),
-            by=args.audit_by or "",
-            recall=settings.stance.value,
-        ).record(result, session=session)
+        _ledger(args, recall=settings.stance.value).record(result, session=session)
 
     if args.json:
         print(
@@ -1339,6 +1335,20 @@ def _cmd_protect(args: argparse.Namespace) -> int:
     return _EXIT_OK
 
 
+def _ledger(args: argparse.Namespace, *, recall: str | None = None) -> ProtectionLedger:
+    """The audit ledger `--audit` asked for, built the same way by both halves.
+
+    Strict, so a path that cannot be written stops the command: a run that
+    prints its output, exits 0 and leaves nothing in the file the operator
+    turned on in order to have something is worse than one that stops.
+    `recall` is passed by `protect` and not by `restore`, because it describes
+    how detection ran and the return half must not repeat a fact the outbound
+    half already recorded -- two halves of one round trip that could disagree
+    about the run that produced them.
+    """
+    return ProtectionLedger(JsonlAuditSink(Path(args.audit)), by=args.audit_by or "", recall=recall)
+
+
 def _cmd_restore(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     store = InMemoryMappingStore()
@@ -1354,10 +1364,7 @@ def _cmd_restore(args: argparse.Namespace) -> int:
         # is: a command that prints a restored answer, exits 0 and leaves
         # nothing in the file the operator turned on is worse than one that
         # stops.
-        ProtectionLedger(
-            JsonlAuditSink(Path(args.audit)),
-            by=args.audit_by or "",
-        ).record_restoration(result, scope=scope)
+        _ledger(args).record_restoration(result, scope=scope)
 
     if args.json:
         # The record itself, not a second rendering of the same facts. Two

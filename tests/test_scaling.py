@@ -79,8 +79,22 @@ LARGE = 16_000
 #: few percent.
 MAX_GROWTH = 8.0
 
+#: Below this the large measurement is noise and its ratio to the small one
+#: means nothing. A busy Windows runner reported the internal-IP rule -- a
+#: pattern with every repetition bounded, linear at every size measured here
+#: -- as x19.8 on the spaces shape: 0.3ms against 5.4ms, one scheduling hiccup
+#: on a measurement that small. The three quadratics this file exists for
+#: measured 160 to 850 milliseconds at this size, so twenty milliseconds
+#: costs nothing in sensitivity and removes the flake.
+MIN_MEASURED_SECONDS = 0.020
 
-def _fastest(work: Callable[[], object], repeats: int = 3) -> float:
+#: Best of this many. Noise only ever adds time, and a fast rule costs
+#: microseconds a run, so more runs are cheap where they matter and free
+#: where they do not.
+REPEATS = 5
+
+
+def _fastest(work: Callable[[], object], repeats: int = REPEATS) -> float:
     """The best of a few runs. Scheduling noise only ever adds time."""
     return min(_once(work) for _ in range(repeats))
 
@@ -122,7 +136,7 @@ class TestNoRuleIsSuperlinear:
             pattern = rule.pattern  # type: ignore[attr-defined]
             small = _fastest(_scan(pattern, small_text))
             large = _fastest(_scan(pattern, large_text))
-            if large > MAX_GROWTH * small and large > 0.005:
+            if large > MAX_GROWTH * small and large > MIN_MEASURED_SECONDS:
                 offenders.append(
                     f"{origin}/{rule.entity_type.name} "  # type: ignore[attr-defined]
                     f"{small * 1000:.1f}ms -> {large * 1000:.1f}ms "
