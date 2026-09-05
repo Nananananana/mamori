@@ -217,6 +217,13 @@ class TestDomainPurity:
             "collections",
             "dataclasses",
             "enum",
+            # Added in 0.33 for `lru_cache` on the per-character normalisation
+            # question, which cProfile showed asked 98,000 times for one
+            # 6.5KB document. A memo table is the whole fix, and `functools`
+            # is as much of the standard library as `bisect` is. This line
+            # was found by CI, not by the commit that needed it -- the local
+            # suite had been read as green from the wrapper's exit code.
+            "functools",
             "hashlib",
             "ipaddress",
             # Added in 0.31 for the entropy measure: `log2` is arithmetic and
