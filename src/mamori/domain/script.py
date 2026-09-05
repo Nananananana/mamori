@@ -12,7 +12,9 @@ Chinese.
 
 from __future__ import annotations
 
+import re
 from enum import Enum
+from functools import lru_cache
 
 __all__ = ["Script", "covered_by", "script_regions", "scripts_in"]
 
@@ -53,11 +55,49 @@ _RANGES: tuple[tuple[int, int, Script], ...] = (
 )
 
 
+def _class_for(*scripts: Script) -> re.Pattern[str]:
+    """A character class matching any code point in any of ``scripts``.
+
+    Built from the same table as :func:`_script_of`, so the two cannot
+    disagree about a range; :mod:`tests.test_locales` checks them against
+    each other anyway, because "built from the same table" is a claim about
+    the code and the test is a claim about the behaviour.
+    """
+    parts = [f"{chr(start)}-{chr(end)}" for start, end, script in _RANGES if script in scripts]
+    if not parts:
+        # `Script.OTHER` has no ranges: it names what the table does not.
+        # An empty class is a syntax error, and the loop this replaced simply
+        # never matched -- so neither does this. Found by Hypothesis on the
+        # first run, with `wanted={OTHER}`.
+        return _NEVER
+    return re.compile("[" + "".join(parts) + "]")
+
+
+#: A pattern that matches nothing, for a script that has no code points.
+_NEVER = re.compile(r"(?!)")
+
+
+#: One pattern per script. Asked with ``search``, each is a C-speed answer to
+#: "does this script appear at all", which is the only thing :func:`scripts_in`
+#: needs and was previously a Python loop over every character with a
+#: twenty-way range comparison inside it -- 185,000 calls to normalise a
+#: 6.5KB document once, measured with cProfile.
+_BY_SCRIPT: dict[Script, re.Pattern[str]] = {
+    script: _class_for(script) for script in {script for _, _, script in _RANGES}
+}
+
+
+@lru_cache(maxsize=4096)
 def _script_of(char: str) -> Script | None:
     """Return the script of one character, or ``None`` if it carries no signal.
 
     Digits, punctuation and whitespace return ``None``: they appear in every
     language and would make every text look like every locale.
+
+    Cached, because a document is made of a few hundred distinct characters
+    repeated many thousands of times and the range walk is the same every
+    time. 4,096 entries is more distinct characters than any document here
+    has, and an eviction costs one range walk.
     """
     code = ord(char)
     for start, end, script in _RANGES:
@@ -78,14 +118,8 @@ def scripts_in(text: str, *, sample_limit: int = 20_000) -> frozenset[Script]:
     Returns:
         The set of scripts found. Empty for text with no letters at all.
     """
-    found: set[Script] = set()
-    for index, char in enumerate(text):
-        if index >= sample_limit:
-            break
-        script = _script_of(char)
-        if script is not None:
-            found.add(script)
-    return frozenset(found)
+    sample = text[:sample_limit]
+    return frozenset(script for script, pattern in _BY_SCRIPT.items() if pattern.search(sample))
 
 
 #: Where one sentence stops speaking for the next.
@@ -95,6 +129,7 @@ def scripts_in(text: str, *, sample_limit: int = 20_000) -> frozenset[Script]:
 #: deliberately absent: `本日、会議資料を送付します` is one sentence and the
 #: kana at the end of it are evidence about the kanji at the start.
 _BOUNDARIES = frozenset("\n\r\u2028\u2029。．.!?！？；;：:\"'`{}[]()（）「」『』")
+_BOUNDARY_RE = re.compile("[" + re.escape("".join(sorted(_BOUNDARIES))) + "]")
 
 
 def script_regions(text: str, scripts: frozenset[Script]) -> tuple[tuple[int, int], ...]:
@@ -112,18 +147,21 @@ def script_regions(text: str, scripts: frozenset[Script]) -> tuple[tuple[int, in
     if not scripts or not text:
         return ()
 
+    # Two C-speed scans instead of one Python loop over every character: the
+    # boundaries split the text into sentences, and one class match per
+    # sentence says whether the evidence is in it. Same answer as the loop it
+    # replaced -- a region is a maximal run of sentences, each of which holds
+    # at least one character of the scripts -- and `tests/test_locales.py`
+    # holds the two implementations against each other.
+    evidence = _class_for(*scripts)
     regions: list[tuple[int, int]] = []
     start = 0
-    seen = False
-    for index, char in enumerate(text):
-        if char in _BOUNDARIES:
-            if seen:
-                regions.append((start, index))
-            start, seen = index + 1, False
-            continue
-        if _script_of(char) in scripts:
-            seen = True
-    if seen:
+    for boundary in _BOUNDARY_RE.finditer(text):
+        end = boundary.start()
+        if evidence.search(text, start, end):
+            regions.append((start, end))
+        start = boundary.end()
+    if evidence.search(text, start):
         regions.append((start, len(text)))
 
     merged: list[tuple[int, int]] = []

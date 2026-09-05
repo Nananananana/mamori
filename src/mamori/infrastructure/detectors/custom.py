@@ -75,6 +75,14 @@ ADVERSARIAL_SHAPES: Mapping[str, str] = {
     "spaces": "a ",
     "mixed": "aA1-_.",
     "CJK": "田",
+    # An uppercase run, and base64. Absent from the first version, which was
+    # built from the shapes that had broken shipped rules -- and the next
+    # shipped rule to break was the English company name, on a base64 blob,
+    # found by `mamori bench` after this guard had been written. A pattern
+    # somebody writes for `[A-Z][A-Z0-9]*` deserves the same question.
+    "an uppercase run": "A",
+    "uppercase and digits": "A1",
+    "base64": "QUJDREVGR0hJSktMTU5PUFFSU1Q",
 }
 
 #: Sizes to compare. Small enough that a quadratic pattern costs tens of
@@ -130,13 +138,23 @@ def _fastest(pattern: re.Pattern[str], text: str, repeats: int = 3) -> float:
     return best
 
 
-def compile_custom_rules(entries: Sequence[Mapping[str, Any]]) -> tuple[PatternRule, ...]:
+def compile_custom_rules(
+    entries: Sequence[Mapping[str, Any]], *, register: bool = True
+) -> tuple[PatternRule, ...]:
     """Turn configuration entries into rules, refusing the ones that cannot be.
 
     Args:
         entries: One mapping per rule. ``type`` and ``pattern`` are required;
             ``category`` is required when ``type`` names a type nothing has
             registered yet.
+        register: Whether a new type is added to the process-wide registry.
+            **Off when validating, on when building.** The first version
+            registered during validation, which meant a configuration refused
+            at `patterns[1]` had already registered `patterns[0]`'s type, and
+            a second configuration in the same process that disagreed about a
+            category was refused because the first had won for good. Reading a
+            file must leave nothing behind; only a session that is actually
+            going to *use* a type needs the registry to know it.
 
     Raises:
         ConfigurationError: an unknown key, a missing one, a pattern that will
@@ -145,10 +163,10 @@ def compile_custom_rules(entries: Sequence[Mapping[str, Any]]) -> tuple[PatternR
             deployment with a bad rule fails at startup and not on somebody's
             document.
     """
-    return tuple(_one(index, entry) for index, entry in enumerate(entries))
+    return tuple(_one(index, entry, register) for index, entry in enumerate(entries))
 
 
-def _one(index: int, entry: Mapping[str, Any]) -> PatternRule:
+def _one(index: int, entry: Mapping[str, Any], register: bool) -> PatternRule:
     where = f"patterns[{index}]"
     if not isinstance(entry, Mapping):
         raise ConfigurationError(f"{where} must be a mapping, got {type(entry).__name__}")
@@ -163,7 +181,7 @@ def _one(index: int, entry: Mapping[str, Any]) -> PatternRule:
         if required not in entry:
             raise ConfigurationError(f"{where}: '{required}' is required")
 
-    entity_type = _entity_type(where, entry)
+    entity_type = _entity_type(where, entry, register)
     pattern = _pattern(where, str(entry["pattern"]))
     confidence = _confidence(where, entry.get("confidence", 0.9))
     tier = _tier(where, entry.get("tier", "core"))
@@ -180,7 +198,7 @@ def _one(index: int, entry: Mapping[str, Any]) -> PatternRule:
     )
 
 
-def _entity_type(where: str, entry: Mapping[str, Any]) -> EntityType:
+def _entity_type(where: str, entry: Mapping[str, Any], register: bool) -> EntityType:
     """The type this rule reports, registering it when it is new.
 
     A new type needs a category, because the category is what the policy falls
@@ -209,7 +227,13 @@ def _entity_type(where: str, entry: Mapping[str, Any]) -> EntityType:
 
     severity = _severity(where, entry.get("severity", 60))
     try:
-        return register_type(EntityType(name=name, category=category, severity=severity))
+        entity_type = EntityType(name=name, category=category, severity=severity)
+        if existing is not None and existing != entity_type:
+            # Said here, whether or not this call registers: a file that
+            # disagrees with the process about what a type means is wrong
+            # now, not later when a session is built from it.
+            raise ValueError(f"entity type already registered with different settings: {name}")
+        return register_type(entity_type) if register else entity_type
     except ValueError as exc:
         # Either the name is not a legal placeholder type, or the same name is
         # already registered with different settings. Both are worth the

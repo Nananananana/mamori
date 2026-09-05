@@ -65,6 +65,7 @@ from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, lo
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
 from ...provenance import ProtectionLedger, restoration_record
+from .bench import SHAPES, run_bench
 from .demo import SCENARIOS, LiveSettings, run_demo
 from .explain import audit_rules, trace_text
 
@@ -468,6 +469,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="environment variable holding the key for --api, if it needs one",
     )
     demo_cmd.add_argument("--json", action="store_true", help="emit JSON")
+
+    bench_cmd = sub.add_parser(
+        "bench", help="how fast this configuration is on this machine, measured"
+    )
+    add_config_args(bench_cmd)
+    bench_cmd.add_argument(
+        "--shape",
+        action="append",
+        choices=sorted(SHAPES),
+        help="one document shape; repeatable. Omit for all of them",
+    )
+    bench_cmd.add_argument(
+        "--repeats",
+        type=int,
+        default=3,
+        help="runs per measurement; the best is kept, since noise only ever adds time",
+    )
+    bench_cmd.add_argument("--json", action="store_true", help="rows as JSON")
 
     evaluate_cmd = sub.add_parser("eval", help="score the detectors against labelled data")
     evaluate_cmd.add_argument(
@@ -1391,6 +1410,15 @@ _DEMO_TEXT = (
 )
 
 
+def _cmd_bench(args: argparse.Namespace) -> int:
+    if args.repeats < 1:
+        print("error: --repeats must be at least 1", file=sys.stderr)
+        return _EXIT_ERROR
+    return run_bench(
+        _settings_from(args), shapes=args.shape, repeats=args.repeats, as_json=args.json
+    )
+
+
 def _cmd_demo(args: argparse.Namespace) -> int:
     text: str | None = None
     if args.file:
@@ -1739,6 +1767,7 @@ _COMMANDS = {
     "corrections": _cmd_corrections,
     "locales": _cmd_locales,
     "demo": _cmd_demo,
+    "bench": _cmd_bench,
     "eval": _cmd_eval,
 }
 

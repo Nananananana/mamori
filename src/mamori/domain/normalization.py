@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import unicodedata
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from .span import Span
 
@@ -61,6 +62,24 @@ class NormalizedText:
     @classmethod
     def of(cls, original: str) -> NormalizedText:
         """Normalize ``original`` while recording an offset map."""
+        if original.isascii() or _is_identity(original):
+            # Every group below is one character folding to itself, so the
+            # offset map is the identity: a few C calls instead of a Python
+            # loop over every character. ASCII always qualifies; Japanese
+            # written the ordinary way -- composed kana, nothing half-width --
+            # qualifies too, and `_is_identity` says exactly when.
+            positions = tuple(range(len(original)))
+            return cls(
+                original=original,
+                text=original,
+                _starts=positions,
+                _ends=tuple(range(1, len(original) + 1)),
+            )
+        return cls._of_slowly(original)
+
+    @classmethod
+    def _of_slowly(cls, original: str) -> NormalizedText:
+        """The general case: group, fold each group, record where it came from."""
         chunks: list[str] = []
         starts: list[int] = []
         ends: list[int] = []
@@ -103,8 +122,39 @@ class NormalizedText:
         return len(self.text)
 
 
+def _is_identity(text: str) -> bool:
+    """Whether the grouped fold below would leave ``text`` and its offsets alone.
+
+    Two conditions, and the first version had only the first. A text already
+    in NFKC folds to itself -- but the grouping still joins a base with any
+    following combining mark, and a group of two characters that folds to two
+    characters maps *both* back to the pair. `1` + U+3099 is in normal form,
+    since nothing composes with a digit, and its offset map is not the
+    identity. Hypothesis found it on the first run of
+    `tests/test_fast_paths.py`, which holds this shortcut against the loop it
+    bypasses.
+
+    So: normal, **and** no combining mark anywhere. Within a normalized
+    string a character folds to itself, which is what makes
+    ``unicodedata.combining`` the same question as :func:`_combines_leftwards`
+    -- the half-width voiced mark that motivates the grouping is not in
+    normal form and cannot be present here. The scan is a C call per
+    character and short-circuits on the first mark; the loop it replaces is
+    ten Python statements per character.
+    """
+    return unicodedata.is_normalized("NFKC", text) and not any(
+        unicodedata.combining(char) for char in text
+    )
+
+
+@lru_cache(maxsize=4096)
 def _combines_leftwards(char: str) -> bool:
     """Whether ``char`` attaches to the character before it under NFKC.
+
+    Cached: a document is a few hundred distinct characters repeated many
+    thousands of times, and this was asked once per character -- 97,580 times
+    for one 6.5KB document, measured. The non-ASCII path keeps its loop and
+    loses most of its cost.
 
     Asked of the **normalized** form, not the raw one. U+FF9E, the half-width
     voiced mark, has combining class 0 itself and folds to U+3099, which has

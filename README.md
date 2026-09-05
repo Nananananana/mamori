@@ -1333,6 +1333,19 @@ it, which is why width comes first.
 
 ## What it costs
 
+```bash
+mamori bench
+```
+
+Seven document shapes, 100,000 characters each, protected and restored on
+your machine under your configuration — throughput per shape, and whether the
+cost grew faster than the input. `chars/ms` is the number to compare across
+machines; `x4 growth` near 4 is linear and near 16 is the quadratic `v0.33`
+removed. It found one of those on its first run, in a rule a survey of sixteen
+adversarial shapes had passed. Synthetic documents, deliberately: a number
+somebody else can reproduce.
+
+
 | | median document | median | p95 |
 |---|---|---|---|
 | Japanese prose | 172 chars | 0.96 ms | 1.53 ms |

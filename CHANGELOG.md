@@ -10,6 +10,16 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **`mamori bench`: a speed claim somebody else can reproduce.** Every
+  throughput number in this repository was typed in after a script that did
+  not ship. This is the script, shipped: seven document shapes at 25,000 and
+  100,000 characters, throughput per shape, and whether cost grew faster than
+  input. **It found a quadratic on its first run** -- the English company-name
+  rule at 27 seconds on 100,000 characters of base64, which a per-rule survey
+  of sixteen adversarial shapes had passed because none of the sixteen was a
+  long run of uppercase. Synthetic documents on purpose; leak rates are
+  `mamori eval`, not this.
+
 - **Detection rules in the configuration file, and every one of them timed
   before it is accepted.** Everything this library detected was something it
   shipped; an organisation whose case references look like `CS/2026/0041` had
@@ -96,6 +106,36 @@ While the version is below `1.0.0`, the public API may change in a minor release
   in it is the case the path exists for.
 
 ### Fixed
+
+- **The English company-name rule was quadratic on an uppercase run.** An
+  unbounded word and a lookbehind that let a digit through, so at every
+  uppercase letter after a digit it consumed the rest of the run looking for
+  `Inc`, failed, and backed off one character at a time: 27 seconds on
+  100,000 characters of base64, 69 milliseconds afterwards. Bounded at forty
+  characters a word -- the longest in any company name this repository has
+  seen is `Pharmaceuticals` -- and nothing that was a company stops matching.
+  Both adversarial sets, the one the shipped rules are held to and the one a
+  custom rule is judged by, gained the three shapes that would have caught it.
+
+- **Reading a configuration file registered entity types.** A file refused
+  at `patterns[1]` had already registered `patterns[0]`'s type, and a second
+  file in the same process that disagreed about a category was refused
+  because the first had won -- from a file that was never used. Validation
+  now registers nothing; building a session does.
+
+### Changed
+
+- **Normalisation and script detection are four to fifty times faster.**
+  cProfile on `protect()` showed a third of the run in two per-character
+  Python loops -- 185,000 script lookups and 98,000 combining-mark checks for
+  one 6.5KB document. Script detection is now one compiled character class
+  per script; normalisation takes an identity path when the text is ASCII, or
+  already in normal form with no combining mark anywhere. English documents
+  go through `protect` about four times faster; `restore` on Japanese about
+  twice. Both fast paths are held against the loops they replaced under
+  Hypothesis, which found two bugs in them before they shipped: an empty
+  class for `Script.OTHER`, and an identity map claimed for `1` + U+3099,
+  which is in normal form and still groups.
 
 - **An ordinary document could take minutes.** Two unbounded quantifiers made
   the cost quadratic in the length of the input, so the *shape* of a document

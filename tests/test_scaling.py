@@ -33,29 +33,42 @@ import pytest
 from mamori import MamoriConfig
 from mamori.domain.placeholder import Placeholder
 from mamori.domain.placeholder_matching import scan_placeholders
+from mamori.infrastructure.detectors.custom import ADVERSARIAL_SHAPES
 from mamori.infrastructure.detectors.locales import resolve_locales
 from mamori.infrastructure.detectors.patterns import UNIVERSAL_RULES
 
 #: Shapes chosen to make a backtracking engine work: long runs of the
 #: characters the rules are built out of, with no match anywhere in them.
-SHAPES: dict[str, object] = {
-    "alnum run": lambda n: "a" * n,
-    "digits": lambda n: "1" * n,
-    "dots": lambda n: "a." * (n // 2),
-    "hyphens": lambda n: "-" * n,
-    "underscores": lambda n: "a_" * (n // 2),
-    "at signs": lambda n: "a@" * (n // 2),
-    "slashes": lambda n: "a/" * (n // 2),
-    "colons": lambda n: "a:" * (n // 2),
-    "spaces": lambda n: "a " * (n // 2),
-    "plus": lambda n: "a+" * (n // 2),
-    "percent": lambda n: "a%" * (n // 2),
-    "mixed": lambda n: "aA1-_." * (n // 6),
-    "cjk": lambda n: "田" * n,
-    "kana": lambda n: "た" * n,
-    "quotes": lambda n: 'a"' * (n // 2),
-    "equals": lambda n: "a=" * (n // 2),
+#:
+#: **Built from `ADVERSARIAL_SHAPES`, not copied from it.** There were two
+#: lists -- this one, and the one a custom rule is judged by -- and they had
+#: already drifted once: neither had a long run of uppercase, and the English
+#: company rule was quadratic on exactly that, found by `mamori bench` after
+#: both had passed it. One list now, in the package, so a shape added because
+#: a shipped rule broke is the same shape a user's rule is held to. The
+#: entries below the loop are test-only extras that make sense against a
+#: hundred rules and not against one.
+
+
+def _repeated(unit: str) -> Callable[[int], str]:
+    """``unit`` repeated to exactly ``n`` characters."""
+    return lambda n: (unit * (n // len(unit) + 1))[:n]
+
+
+SHAPES: dict[str, Callable[[int], str]] = {
+    label: _repeated(unit) for label, unit in ADVERSARIAL_SHAPES.items()
 }
+SHAPES.update(
+    {
+        "slashes": lambda n: "a/" * (n // 2),
+        "colons": lambda n: "a:" * (n // 2),
+        "plus": lambda n: "a+" * (n // 2),
+        "percent": lambda n: "a%" * (n // 2),
+        "kana": lambda n: "た" * n,
+        "quotes": lambda n: 'a"' * (n // 2),
+        "equals": lambda n: "a=" * (n // 2),
+    }
+)
 
 SMALL = 4_000
 LARGE = 16_000
@@ -101,8 +114,8 @@ class TestNoRuleIsSuperlinear:
     @pytest.mark.parametrize("shape", sorted(SHAPES))
     def test_four_times_the_input_costs_about_four_times(self, shape: str) -> None:
         build = SHAPES[shape]
-        small_text = build(SMALL)  # type: ignore[operator]
-        large_text = build(LARGE)  # type: ignore[operator]
+        small_text = build(SMALL)
+        large_text = build(LARGE)
 
         offenders: list[str] = []
         for origin, rule in _all_rules():
@@ -140,12 +153,12 @@ class TestTheWholePipelineStaysLinear:
     #: characters took four seconds and 100,000 would have taken forty.
     BUDGET_SECONDS = 20.0
 
-    @pytest.mark.parametrize("shape", ["alnum run", "hyphens", "dots", "cjk"])
+    @pytest.mark.parametrize("shape", ["a run of letters", "hyphens", "dotted", "CJK", "base64"])
     def test_four_times_the_document_costs_about_four_times(self, shape: str) -> None:
         build = SHAPES[shape]
         session = MamoriConfig().session()
-        small_text = build(self.SMALL)  # type: ignore[operator]
-        large_text = build(self.LARGE)  # type: ignore[operator]
+        small_text = build(self.SMALL)
+        large_text = build(self.LARGE)
 
         small = _fastest(lambda: session.inspect(small_text), repeats=2)
         large = _fastest(lambda: session.inspect(large_text), repeats=2)

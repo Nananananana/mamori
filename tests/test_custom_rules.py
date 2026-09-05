@@ -163,6 +163,49 @@ class TestItRefusesWhatItCannotRead:
             MamoriConfig.from_mapping({"patterns": "ACME-[0-9]{6}"})
 
 
+class TestReadingAFileLeavesNothingBehind:
+    """Registering a type is what building a session does, not what reading a
+    configuration does.
+
+    The first version registered during validation. So a configuration
+    refused at `patterns[1]` had already registered `patterns[0]`'s type, and
+    a second configuration in the same process that disagreed about a
+    category was refused because the first had won for good -- from a file
+    that was never used.
+    """
+
+    def test_a_refused_configuration_registers_nothing(self) -> None:
+        assert get_type("NEVER_USED_TYPE") is None
+        with pytest.raises(ConfigurationError):
+            MamoriConfig(
+                patterns=[
+                    {"type": "NEVER_USED_TYPE", "category": "PII", "pattern": "x"},
+                    {"type": "BROKEN", "pattern": "("},
+                ]
+            )
+        assert get_type("NEVER_USED_TYPE") is None, "reading a refused file registered a type"
+
+    def test_an_accepted_configuration_registers_nothing_until_a_session_is_built(
+        self,
+    ) -> None:
+        assert get_type("LATE_TYPE") is None
+        config = MamoriConfig(
+            patterns=[{"type": "LATE_TYPE", "category": "PII", "pattern": r"LT-\d{4}"}]
+        )
+        assert get_type("LATE_TYPE") is None, "validation registered a type"
+        config.session()
+        registered = get_type("LATE_TYPE")
+        assert registered is not None and registered.category.value == "PII"
+
+    def test_a_file_that_disagrees_with_the_process_is_refused_when_read(self) -> None:
+        """Said at read time, whether or not this read would register: a file
+        that means something different by a name the process already uses is
+        wrong now, not later."""
+        MamoriConfig(patterns=[{"type": "FIXED_TYPE", "category": "PII", "pattern": "x"}]).session()
+        with pytest.raises(ConfigurationError, match="different settings"):
+            MamoriConfig(patterns=[{"type": "FIXED_TYPE", "category": "SECRET", "pattern": "y"}])
+
+
 class TestTheTierIsHonoured:
     def test_a_wide_rule_does_not_run_under_the_balanced_stance(self) -> None:
         """The same dial the shipped wide rules use. A rule that matches on

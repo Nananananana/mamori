@@ -124,10 +124,25 @@ RULES: tuple[PatternRule, ...] = (
         r"(?<!\d)\d{1,6}\s+(?:[A-Z][A-Za-z.'\-]*\s+){1,4}(?:" + _STREET_TYPES + r")\b\.?",
         MEDIUM,
     ),
+    # A word of a company name is at most forty characters, and a name does
+    # not begin in the middle of a token. Both bounds were missing and the
+    # rule was quadratic on a base64 blob: at every uppercase letter after a
+    # digit -- the old lookbehind let a digit through -- it consumed the
+    # rest of the run looking for `Inc`, failed, and backed off one character
+    # at a time. 27 seconds on 100,000 characters, found by `mamori bench` on
+    # its first run, after a per-rule survey of sixteen adversarial shapes
+    # had passed it: none of the sixteen was a long run of uppercase. Forty
+    # is generous -- the longest word in any registered company name this
+    # repository has seen is `Pharmaceuticals` -- and nothing that was a
+    # company stops matching.
     compile_rule(
         t.COMPANY_NAME,
-        r"(?<![A-Za-z])(?!" + _OPENER + r"\s)"
-        r"[A-Z][A-Za-z0-9&.\-]*(?:" + _GAP + r"(?!" + _OPENER + r"\s)[A-Z][A-Za-z0-9&.\-]*){0,3}"
+        r"(?<![A-Za-z0-9])(?!" + _OPENER + r"\s)"
+        r"[A-Z][A-Za-z0-9&.\-]{0,40}(?:"
+        + _GAP
+        + r"(?!"
+        + _OPENER
+        + r"\s)[A-Z][A-Za-z0-9&.\-]{0,40}){0,3}"
         r"\s*,?\s*(?:Inc|Corp|Corporation|Company|Ltd|Limited|LLC|LLP|PLC|GmbH|S\.A|AG|NV|BV)"
         r"\.?(?![A-Za-z])",
         MEDIUM,

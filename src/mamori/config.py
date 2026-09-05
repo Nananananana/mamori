@@ -852,7 +852,9 @@ def _as_patterns(value: object) -> tuple[Mapping[str, object], ...]:
 
     from .infrastructure.detectors.custom import compile_custom_rules
 
-    compile_custom_rules(entries)  # raises ConfigurationError, naming the entry
+    # Validation only: nothing is registered until a session is built, so a
+    # file that is refused leaves the process exactly as it found it.
+    compile_custom_rules(entries, register=False)
     return entries
 
 
