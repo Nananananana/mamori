@@ -81,9 +81,12 @@ run it on yours:
 | a rendered mixed prompt | ~330 ms | ~300 chars/ms |
 
 So a rendered prompt of a few thousand characters costs single-digit
-milliseconds in English and tens in Japanese, and the proxy's own overhead on
-a 3.5 KB three-message request measured 17 ms end to end, upstream excluded.
-Cost is linear in length -- `bench`'s `x4 growth` column is the check.
+milliseconds in English and tens in Japanese. **The proxy's own share of a
+4.4 KB three-message request measured 9.5 ms**, against the same fake upstream
+called directly so that what is left is mamori and not the loopback. Cost is
+linear in length -- `bench`'s `x4 growth` column is the check -- and
+`tests/test_proxy_orchestration.py` fails if that share ever grows past half
+the 100 ms round-trip budget.
 
 **Streaming holds back at most 266 characters.** A placeholder can arrive
 split across chunks, so the restorer keeps the shortest suffix that could

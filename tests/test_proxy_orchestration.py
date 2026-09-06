@@ -345,3 +345,71 @@ class TestAnUpstreamStatusThisLibraryHasNeverHeardOf:
 
         assert second.headers.get(SCOPE_HEADER) is None
         assert second.headers.get(REPLACED_HEADER) is None
+
+
+class TestTheOverheadFitsTheBudget:
+    """`docs/orchestrating-the-proxy.md` tells an orchestrator what the proxy
+    costs it. A number in a document that nothing measures is a number that
+    drifts, and this one has a consumer with a stated budget: Sora allows the
+    round trip 100 ms, upstream excluded.
+
+    Measured against the same fake upstream called directly, so what is left
+    is mamori's share and not the loopback's. The ceiling is generous on
+    purpose -- a busy machine doubles a millisecond figure easily -- and still
+    an order of magnitude under the budget it is protecting.
+    """
+
+    #: A three-message request of about 4.4 KB: a system prompt and two turns
+    #: of mixed Japanese and English with seven values in each.
+    LINE = (
+        "田中太郎さんへ。株式会社さくら商事の佐藤花子です。tanaka@example.com か "
+        "090-1234-5678 へ。CC: Mr. John Smith (Acme Inc.), 415-555-0198. Ref E-45033.\n"
+    )
+    BUDGET_SECONDS = 0.100
+
+    def test_a_realistic_request_costs_a_fraction_of_it(self) -> None:
+        payload = {
+            "model": "m",
+            "messages": [
+                {"role": "system", "content": "You are helpful."},
+                {"role": "user", "content": self.LINE * 12},
+                {"role": "assistant", "content": self.LINE * 12},
+            ],
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode()
+        assert 4_000 < len(body) < 6_000, len(body)
+
+        with FakeUpstream() as service, RunningProxy(service.url) as proxy:
+            service.reply = completion("Understood, <PERSON_001>.")
+
+            def direct() -> None:
+                self._send(service.url + "chat/completions", body)
+
+            def through() -> None:
+                self._send(proxy.url, body)
+
+            direct()
+            through()
+            baseline = min(self._seconds(direct) for _ in range(7))
+            proxied = min(self._seconds(through) for _ in range(7))
+
+        share = proxied - baseline
+        assert share < self.BUDGET_SECONDS / 2, (
+            f"mamori added {share * 1000:.0f}ms to a {len(body)}-byte request, against a "
+            f"{self.BUDGET_SECONDS * 1000:.0f}ms round-trip budget. Measured at 9.5ms when "
+            "this was written."
+        )
+
+    @staticmethod
+    def _send(url: str, body: bytes) -> None:
+        request = urllib.request.Request(
+            url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            response.read()
+
+    @staticmethod
+    def _seconds(work: Any) -> float:
+        start = time.perf_counter()
+        work()
+        return time.perf_counter() - start
