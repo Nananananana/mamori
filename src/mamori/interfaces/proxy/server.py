@@ -206,7 +206,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._fail(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
     def do_GET(self) -> None:
-        """A liveness check, so a client can tell the proxy is up."""
+        """A liveness check, so a client can tell the proxy is up.
+
+        The per-request state is cleared here as it is in `do_POST`. Today
+        `BaseHTTPRequestHandler` speaks HTTP/1.0 and closes after each reply,
+        so one handler serves one request and there is nothing to clear --
+        which is exactly why it is cleared: the property "a reply names its
+        own scope and no other" would otherwise be true because of a default
+        nobody wrote down, and a later `protocol_version = "HTTP/1.1"` for
+        keep-alive would put a previous request's scope on a health check.
+        """
+        self._token = None
+        self._scope = None
+        self._replaced = None
         if self.path.rstrip("/") in ("/health", "/healthz"):
             self._json(
                 HTTPStatus.OK,
@@ -263,7 +275,17 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             reply = self.upstream.send(UPSTREAM_CHAT_PATH, protected, headers)
             restored = restore_reply(session, reply.json())
-            self._json(HTTPStatus(reply.status), restored)
+            # The status is relayed as the integer it is, and **not** through
+            # `HTTPStatus(...)`. That call raises `ValueError` on any code the
+            # enum does not know -- 299, 218, whatever a gateway or a future
+            # standard invents -- and the exception escaped `do_POST`, which
+            # handles `MamoriError` and nothing else. Measured: the connection
+            # closed with no response at all, so a caller saw
+            # `RemoteDisconnected` and could not tell a protected answer that
+            # arrived from a network that failed. Only a 2xx reaches here (the
+            # rest becomes `UpstreamError` upstream), so the codes this broke
+            # on were successful replies being thrown away.
+            self._json(reply.status, restored)
 
     def _stream(
         self, session: PrivacySession, protected: object, headers: Mapping[str, str]
@@ -328,7 +350,7 @@ class _Handler(BaseHTTPRequestHandler):
         keep = ("authorization", "openai-organization", "openai-project", "api-key")
         return {k: v for k, v in self.headers.items() if k.lower() in keep}
 
-    def _json(self, status: HTTPStatus, payload: object) -> None:
+    def _json(self, status: int | HTTPStatus, payload: object) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")

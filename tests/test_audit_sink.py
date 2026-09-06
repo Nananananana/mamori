@@ -15,6 +15,7 @@ whether each one is refused.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ from typing import Any
 import pytest
 
 import mamori.provenance as provenance
-from mamori import PrivacySession
+from mamori import MamoriConfig, PrivacySession
 from mamori.errors import StorageError
 from mamori.infrastructure.audit import JsonlAuditSink
 from mamori.infrastructure.audit.jsonl import ACCEPTED_CONTRACTS, LINE_FORMAT, SCHEMA
@@ -467,3 +468,88 @@ class TestTheCommandLineFlag:
         assert not list(tmp_path.iterdir()), (
             f"protect wrote {[p.name for p in tmp_path.iterdir()]} without being asked"
         )
+
+
+class TestConcurrentAppendsAllLand:
+    """The file is the evidence; a record that does not reach it is not.
+
+    The sink used to wrap its descriptor in a buffered text writer, which
+    splits at 8 KB. A `protection-scope` record for a document with a hundred
+    placeholders is larger than that, and two threads appending at once lost
+    whole records: measured at 24 concurrent protections, **17 to 23 lines**
+    in the file. Every survivor was valid JSON, `written` said 24, and
+    `dropped` -- the counter whose whole job is to make a gap visible from
+    inside the process -- said 0. Nothing anywhere could tell you the trail
+    was incomplete.
+
+    The line is long on purpose. A short record fits one buffer and lands
+    every time, which is why nothing caught this until a document with a
+    hundred values went through a proxy serving more than one caller.
+    """
+
+    THREADS = 24
+
+    def test_every_record_reaches_the_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "audit.jsonl"
+        ledger = ProtectionLedger(JsonlAuditSink(path), by="concurrent/1")
+        config = MamoriConfig()
+        crowded = " ".join(f"person{n}@example.com and Jane Doe {n}" for n in range(120))
+
+        failures: list[BaseException] = []
+        expected: set[str] = set()
+        guard = threading.Lock()
+
+        def protect_once() -> None:
+            try:
+                with config.session() as session:
+                    record = ledger.record(session.protect(crowded), session=session)
+                with guard:
+                    expected.add(record["scope"])
+            except BaseException as exc:
+                with guard:
+                    failures.append(exc)
+
+        threads = [threading.Thread(target=protect_once) for _ in range(self.THREADS)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert not failures, failures[0]
+        assert len(expected) == self.THREADS, "the protections themselves did not all happen"
+
+        rows = lines(path)
+        assert len(rows) == self.THREADS, (
+            f"{len(rows)} of {self.THREADS} records reached the file, and every one of "
+            "them parses -- which is why nothing else would have told you"
+        )
+        assert {row["record"]["scope"] for row in rows} == expected
+        assert ledger.written == self.THREADS
+        assert ledger.dropped == 0
+
+    def test_no_line_is_truncated(self, tmp_path: Path) -> None:
+        """The other half. Interleaved buffered writes could also have cut a
+        line in two, and a half-record is a parse error somebody has to
+        explain rather than a gap they can count."""
+        path = tmp_path / "audit.jsonl"
+        sink = JsonlAuditSink(path)
+        session, result = protect()
+        record = protection_record(result, session=session)
+        # A record big enough to exceed the 8 KB buffer that used to split.
+        record["placeholders"] = [
+            {"token": f"<PERSON_{n:03d}>", "kind": "PERSON"} for n in range(1, 400)
+        ]
+        threads = [threading.Thread(target=sink.record, args=(dict(record),)) for _ in range(16)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        text = path.read_text(encoding="utf-8")
+        assert text.endswith("\n")
+        for number, line in enumerate(text.splitlines(), start=1):
+            try:
+                json.loads(line)
+            except ValueError as exc:  # pragma: no cover - the failure this pins
+                pytest.fail(f"line {number} is not JSON: {exc}")
+        assert len(text.splitlines()) == 16

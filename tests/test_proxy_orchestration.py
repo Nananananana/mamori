@@ -284,3 +284,64 @@ class TestPresidioShapedInspect:
         rows = json.loads(capsys.readouterr().out)
         found = next(row for row in rows if row["entity_type"] == "EMAIL")
         assert text[found["start"] : found["end"]] == EMAIL
+
+
+class TestAnUpstreamStatusThisLibraryHasNeverHeardOf:
+    """A successful reply must not be lost to `HTTPStatus(...)`.
+
+    The reply's status used to be relayed through the `HTTPStatus` enum, which
+    raises `ValueError` on any code it does not know -- `299`, `218`, whatever
+    a gateway or a later standard invents. That exception escaped `do_POST`,
+    which handles `MamoriError` and nothing else, and the connection closed
+    with **no response at all**: measured, a caller saw `RemoteDisconnected`
+    and could not tell a protected answer that had arrived from a network that
+    had failed.
+
+    Only a 2xx reaches that line -- anything else becomes an `UpstreamError`
+    and a `502` before it -- so every status this broke on was a successful
+    reply being thrown away.
+    """
+
+    @pytest.mark.parametrize("status", [200, 201, 218, 226, 299])
+    def test_it_is_relayed_and_the_answer_is_restored(self, status: int) -> None:
+        with FakeUpstream() as service, RunningProxy(service.url) as proxy:
+            service.status = status
+            service.reply = completion("Mailed <EMAIL_001>.")
+            code, headers, body = post(proxy, chat(f"Mail {EMAIL}"))
+        assert code == status
+        assert body["choices"][0]["message"]["content"] == f"Mailed {EMAIL}."
+        assert headers[SCOPE_HEADER].startswith("session-")
+
+    def test_a_health_check_does_not_inherit_a_previous_reply(self) -> None:
+        """`do_GET` clears the per-request state as `do_POST` does.
+
+        Today `BaseHTTPRequestHandler` speaks HTTP/1.0 and closes after each
+        reply, so one handler serves one request and there is nothing to
+        inherit -- which is the point: the property would otherwise hold
+        because of a default nobody wrote down, and a later
+        `protocol_version = "HTTP/1.1"` would put one caller's scope on
+        another's health check.
+        """
+        import http.client
+
+        with FakeUpstream() as service, RunningProxy(service.url) as proxy:
+            service.reply = completion("ok")
+            host = proxy.url.split("//")[1].split("/")[0]
+            connection = http.client.HTTPConnection(host, timeout=10)
+            connection.request(
+                "POST",
+                "/v1/chat/completions",
+                json.dumps(chat(f"Mail {EMAIL}")).encode(),
+                {"Content-Type": "application/json"},
+            )
+            first = connection.getresponse()
+            first.read()
+            assert first.headers[SCOPE_HEADER].startswith("session-")
+
+            connection.request("GET", "/health")
+            second = connection.getresponse()
+            second.read()
+            connection.close()
+
+        assert second.headers.get(SCOPE_HEADER) is None
+        assert second.headers.get(REPLACED_HEADER) is None

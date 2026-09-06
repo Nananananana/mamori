@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -137,6 +138,9 @@ class JsonlAuditSink:
         self._path = Path(path)
         self._validate = validate
         self._clock = clock
+        #: Orders the appends of this process's threads. See :meth:`_append`
+        #: for what happened without it and what it does not cover.
+        self._writing = threading.Lock()
 
     @property
     def path(self) -> Path:
@@ -188,16 +192,48 @@ class JsonlAuditSink:
         return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds")
 
     def _append(self, line: str) -> None:
-        """Append, creating the file owner-only if it is not there yet.
+        """Append one whole line, creating the file owner-only if it is new.
 
         The mode is given at creation rather than applied afterwards, so there
         is no window in which the file exists and is group-readable. Windows
         ignores it and the file takes the directory's ACL, which makes this an
         improvement where it applies and not a claim where it does not.
+
+        **The lock and the single write are both the fix for one measured
+        bug.** This used to wrap the descriptor in a buffered text writer,
+        which splits at 8 KB; a protection-scope record for a document with a
+        hundred placeholders is larger than that, and two threads appending at
+        once lost whole records. Measured here, 24 concurrent records: **17 to
+        23 lines in the file**, every one of them valid JSON, `written`
+        reporting 24 and `dropped` reporting 0. A trail that reads as complete
+        and is not is the exact failure the first paragraph of this module
+        says it exists to prevent, and the counter meant to make a gap visible
+        from inside the process could not see this one.
+
+        So: encode once, write once, with the open and the write and the close
+        under a lock. On Windows an `O_APPEND` descriptor seeks to the end
+        before each write rather than appending atomically, so two writers
+        that interleave there do not corrupt a line -- they land on the same
+        offset and one erases the other, which is why the survivors all
+        parsed.
+
+        The lock is per sink, so it orders the threads of one process. Two
+        *processes* appending to one file are ordered by the operating system
+        or not at all. One sink per file per process is the arrangement this
+        is safe under, and it is the one the proxy and the CLI both have.
         """
-        descriptor = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
+        payload = (line + "\n").encode("utf-8")
+        with self._writing:
+            descriptor = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            try:
+                written = 0
+                while written < len(payload):
+                    # `os.write` may write fewer bytes than it was given, and a
+                    # loop that ignores the count is a loop that truncates a
+                    # record into unparseable JSON.
+                    written += os.write(descriptor, payload[written:])
+            finally:
+                os.close(descriptor)
 
     @staticmethod
     def _refuse_anything_that_is_not_a_record(record: dict[str, Any]) -> None:

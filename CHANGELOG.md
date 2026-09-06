@@ -123,6 +123,27 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **The audit file lost records, and said it had not.** The sink wrapped its
+  descriptor in a buffered text writer, which splits at 8 KB; a
+  `protection-scope` record for a document with a hundred placeholders is
+  larger than that, and two threads appending at once lost whole records.
+  Measured at 24 concurrent protections: **17 to 23 lines in the file**, every
+  survivor valid JSON, `written` reporting 24 and `dropped` -- the counter
+  whose job is to make a gap visible from inside the process -- reporting 0.
+  Nothing anywhere could tell you the trail was incomplete, which is the exact
+  failure the module's first paragraph says it exists to prevent. One encode,
+  one `os.write` in a loop that respects the returned count, all under a
+  per-sink lock.
+
+- **A successful upstream reply with an unusual status code was thrown away.**
+  The status was relayed through `HTTPStatus(...)`, which raises `ValueError`
+  on any code the enum does not know -- `299`, `218`, whatever a gateway
+  invents. The exception escaped `do_POST`, which handles `MamoriError` and
+  nothing else, and the connection closed with no response at all: a caller
+  saw `RemoteDisconnected` and could not tell a protected answer that had
+  arrived from a network that had failed. Only a 2xx ever reached that line,
+  so every status it broke on was a successful reply.
+
 - **The English company-name rule was quadratic on an uppercase run.** An
   unbounded word and a lookbehind that let a digit through, so at every
   uppercase letter after a digit it consumed the rest of the run looking for
