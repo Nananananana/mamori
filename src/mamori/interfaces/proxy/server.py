@@ -50,6 +50,7 @@ from ...application.conversations import ConversationRegistry
 from ...application.session import PrivacySession
 from ...config import MamoriConfig
 from ...errors import DetectionError, MamoriError, PolicyViolationError
+from ...provenance import ProtectionLedger
 from .exchange import StreamRestoration, protect_request, restore_reply, summarise
 from .upstream import Upstream, UpstreamError
 
@@ -74,6 +75,23 @@ SESSION_HEADER = "X-Mamori-Session"
 #: Ending a conversation early, so a client that knows it is finished does not
 #: have to wait out the idle timeout.
 END_HEADER = "X-Mamori-Session-End"
+
+#: The scope this reply's placeholders were allocated in, on every reply
+#: that had one -- success, stream, and refusal alike. It is the join key to
+#: the `protection-scope/1` records `--audit` writes, and it is minted here:
+#: an orchestrator that named scopes itself would be choosing the key its
+#: own audit trail is filed under, which is the oracle `X-Mamori-Session`
+#: already refuses to hand out. Without `--conversations` a scope lives for
+#: one request; with it, for the conversation, so the lines in the audit
+#: file that carry it are that conversation's turns in order.
+SCOPE_HEADER = "X-Mamori-Scope"
+
+#: What this request replaced, as ``KIND=count`` pairs -- ``PERSON=2,EMAIL=1``
+#: -- and nothing else. Enough for an orchestrator to say *"three values were
+#: protected in this turn"* on a status line, without an endpoint that would
+#: aggregate across conversations, which is a place one tenant's counts could
+#: be read by another.
+REPLACED_HEADER = "X-Mamori-Replaced"
 
 #: The largest request body accepted, in bytes. A proxy that reads whatever it
 #: is given can be made to hold a gigabyte in memory by one caller.
@@ -114,6 +132,12 @@ class ProxySettings:
     #: default -- is one scope per request and nothing kept, which is what
     #: makes "the proxy remembers nothing" a claim rather than a setting.
     conversations: ConversationRegistry | None = None
+    #: Where a `protection-scope/1` record goes for every text this proxy
+    #: protects, one per message slot, all carrying the scope the reply names
+    #: in `X-Mamori-Scope`. ``None`` writes nothing. Strict, like the CLI's:
+    #: a sink that cannot be written stops the request rather than answering
+    #: with a hole in the trail the operator turned on.
+    audit: ProtectionLedger | None = None
 
     @property
     def keeps_conversations(self) -> bool:
@@ -142,9 +166,16 @@ class _Handler(BaseHTTPRequestHandler):
     #: one request, so this is cleared where a request starts rather than
     #: where the handler is built.
     _token: str | None = None
+    #: The scope of the session this request ran in, and what it replaced.
+    #: Set as soon as a session exists, so a refusal that happens *after*
+    #: allocation still names the scope its audit lines carry.
+    _scope: str | None = None
+    _replaced: dict[str, int] | None = None
 
     def do_POST(self) -> None:  # http.server's naming, not ours
         self._token = None
+        self._scope = None
+        self._replaced = None
         if self.path.rstrip("/") != CHAT_PATH.rstrip("/"):
             # The one path that answers without reading the body, so it is the
             # one that has to read it anyway before replying.
@@ -197,6 +228,7 @@ class _Handler(BaseHTTPRequestHandler):
             # The default, and the one that needs no qualification: one scope,
             # used once, purged on the way out of this block.
             with self.settings.config.session() as session:
+                self._scope = session.scope
                 self._run(session, payload, streaming=streaming)
             return
 
@@ -206,6 +238,7 @@ class _Handler(BaseHTTPRequestHandler):
         # callers got a raw placeholder back for a name they had just sent.
         with registry.checkout(self.headers.get(SESSION_HEADER)) as conversation:
             self._token = conversation.token
+            self._scope = conversation.session.scope
             try:
                 self._run(conversation.session, payload, streaming=streaming)
             finally:
@@ -215,7 +248,14 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _run(self, session: PrivacySession, payload: object, *, streaming: bool) -> None:
         protected, report = protect_request(session, payload, add_guidance=self.settings.guidance)
+        self._replaced = dict(report.replaced)
         self._log(summarise(report))
+        if self.settings.audit is not None:
+            # After protection and before anything goes upstream: a record
+            # that says a protection happened, written once it has, and never
+            # for a request the next line refuses to forward.
+            for result in report.results:
+                self.settings.audit.record(result, session=session)
         headers = self._forwardable_headers()
 
         if streaming:
@@ -330,9 +370,20 @@ class _Handler(BaseHTTPRequestHandler):
         )
 
     def _send_token(self) -> None:
-        """Name the conversation, when there is one to name."""
+        """Name the conversation, the scope, and what was replaced -- when known.
+
+        On every reply, refusals included: a `422` for a blocked credential
+        still names the scope whose audit lines say what was allocated before
+        the block, and an orchestrator mapping that refusal to *"a credential
+        stopped this"* wants exactly that join.
+        """
         if self._token is not None:
             self.send_header(SESSION_HEADER, self._token)
+        if self._scope is not None:
+            self.send_header(SCOPE_HEADER, self._scope)
+        if self._replaced:
+            pairs = ",".join(f"{kind}={count}" for kind, count in sorted(self._replaced.items()))
+            self.send_header(REPLACED_HEADER, pairs)
 
     def _log(self, message: str) -> None:
         if self.settings.log is not None:

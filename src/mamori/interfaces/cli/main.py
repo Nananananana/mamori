@@ -27,6 +27,7 @@ import json
 import os
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from ... import __version__
@@ -188,6 +189,16 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = sub.add_parser("inspect", help="report what would be detected")
     add_input_args(inspect)
     inspect.add_argument("--json", action="store_true", help="emit JSON")
+    inspect.add_argument(
+        "--presidio",
+        action="store_true",
+        help=(
+            "emit a JSON array in Presidio's RecognizerResult shape -- "
+            "entity_type, start, end, score -- and nothing else: no preview, no "
+            "placeholder, no value. For a consumer that already reads Presidio "
+            "and should not have to import this library to read this"
+        ),
+    )
 
     protect = sub.add_parser("protect", help="print text that is safe to send")
     add_input_args(protect)
@@ -316,7 +327,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="bind address. The default accepts connections from this machine only; "
         "anything that can reach this port can send documents through it",
     )
-    serve_cmd.add_argument("--port", type=int, default=8100, help="bind port (default 8100)")
+    serve_cmd.add_argument(
+        "--port",
+        type=int,
+        default=8100,
+        help="bind port (default 8100). 0 takes a free port and prints it on the first line",
+    )
+    serve_cmd.add_argument(
+        "--audit",
+        metavar="PATH",
+        help=(
+            "append a mamori.protection-scope record for every text this proxy "
+            "protects, one JSON line per message, carrying the scope each reply "
+            "names in X-Mamori-Scope. Holds no protected value; inherits the "
+            "classification of the traffic it describes"
+        ),
+    )
+    serve_cmd.add_argument(
+        "--audit-by",
+        metavar="NAME/VERSION",
+        help="what to write in the record's 'by' field. Defaults to this mamori",
+    )
     serve_cmd.add_argument(
         "--no-guidance",
         action="store_true",
@@ -1044,7 +1075,7 @@ def _cmd_privacy(args: argparse.Namespace) -> int:
 
 def _cmd_serve(args: argparse.Namespace) -> int:
     from ...application.conversations import ConversationRegistry
-    from ..proxy.server import ProxySettings, serve
+    from ..proxy.server import ProxySettings, build_server
 
     config = _settings_from(args)
     registry = None
@@ -1065,13 +1096,20 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         upstream=args.upstream,
         host=args.host,
         port=args.port,
+        audit=_ledger(args, recall=config.stance.value) if args.audit else None,
         config=config,
         guidance=not args.no_guidance,
         log=None if args.quiet else _serve_log,
         conversations=registry,
     )
 
-    print(f"mamori proxy on {settings.url()}")
+    # Bind before announcing, so `--port 0` announces the port the kernel
+    # chose and not the zero it was asked for. An orchestrator starting this
+    # as a child reads the first line of stdout for the address; a line that
+    # said `:0` would be a line it could do nothing with.
+    server = build_server(settings)
+    settings = replace(settings, port=server.server_address[1])
+    print(f"mamori proxy on {settings.url()}", flush=True)
     print(f"  upstream        {settings.upstream}")
     locales = ", ".join(settings.config.locales or ()) or "all locales"
     print(f"  detection       {locales}, {settings.config.stance.value}")
@@ -1095,7 +1133,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     print()
 
     try:
-        serve(settings)
+        server.serve_forever()
     except KeyboardInterrupt:
         print("stopped")
     return _EXIT_OK
@@ -1216,6 +1254,32 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     policy = PrivacyPolicy.permissive().with_min_confidence(settings.min_confidence)
     with settings.session(policy=policy) as session:
         result = session.protect(text)
+        if args.presidio:
+            # Presidio's `RecognizerResult`, as a consumer that already reads
+            # that shape expects it, and nothing more: the `preview` the
+            # `--json` form carries shows a value's first character, and a
+            # shape meant to cross a process boundary into somebody else's
+            # code carries no character of any value at all. Built here from
+            # the report rather than through `mamori.interop`, because the
+            # layering says nothing reaches `interop` -- a translation must
+            # never become part of a decision -- and four fields do not need
+            # a module to be named.
+            print(
+                json.dumps(
+                    [
+                        {
+                            "entity_type": report.entity_type,
+                            "start": report.span.start,
+                            "end": report.span.end,
+                            "score": report.confidence,
+                        }
+                        for report in result.entities
+                    ],
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return _EXIT_OK
         if args.json:
             print(json.dumps({"entities": _reports_as_json(result)}, ensure_ascii=False, indent=2))
         else:

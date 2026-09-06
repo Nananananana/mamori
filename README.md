@@ -70,6 +70,7 @@ decide anything about one.
 | [Install](#install) · [Use](#use) | the library, streaming, the shell |
 | [How it compares](#how-this-differs-from-the-tools-next-to-it) | against Presidio and scrubadub, in one table |
 | **[Without changing your application](#without-changing-your-application)** | the proxy: change `base_url`, change nothing else |
+| [Running it from another program](docs/orchestrating-the-proxy.md) | scope on every reply, statuses, `/health`, `--port 0`, the audit file |
 | [Languages](#languages) | Japanese, English and Chinese, in one document |
 | [Switching things](#switching-things) | settings, and the recall dial |
 | **[Your own rules](#your-own-rules-in-the-configuration-file)** | four lines of TOML, timed before they are accepted |

@@ -10,6 +10,22 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **What an orchestrator in front of the proxy can rely on**, asked for by
+  Sora, the layer that starts `mamori serve` as a child and routes every
+  external conversation through it. Every reply now names its scope in
+  `X-Mamori-Scope` -- minted here, a value sent in is ignored -- and `serve
+  --audit PATH` writes one `protection-scope/1` line per message slot carrying
+  that scope, so the answer and its audit records join on one key. A blocked
+  credential is `422`, in a table with the other statuses. `--port 0` takes a
+  free port and announces the real one on the first line of stdout, since an
+  orchestrator that read `:0` could do nothing with it. `X-Mamori-Replaced:
+  EMAIL=2,PERSON=1` says what a turn replaced, as kinds and counts, without a
+  `/stats` endpoint that would aggregate across tenants. `mamori inspect
+  --presidio` prints Presidio's `RecognizerResult` shape and nothing else --
+  not even the `preview` that `--json` carries. All of it in
+  [docs/orchestrating-the-proxy.md](docs/orchestrating-the-proxy.md), each row
+  pinned by a test.
+
 - **`mamori bench`: a speed claim somebody else can reproduce.** Every
   throughput number in this repository was typed in after a script that did
   not ship. This is the script, shipped: seven document shapes at 25,000 and

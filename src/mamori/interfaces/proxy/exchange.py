@@ -31,6 +31,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ...application.results import ProtectionResult
 from ...application.session import PrivacySession
 from ...application.streaming import StreamingRestorer
 from ...errors import MamoriError
@@ -66,6 +67,11 @@ class ExchangeReport:
     slots: tuple[TextSlot, ...] = ()
     #: Placeholders allocated, by entity type.
     replaced: dict[str, int] = field(default_factory=dict)
+    #: One :class:`~mamori.ProtectionResult` per slot, in slot order, so the
+    #: server can write a `protection-scope/1` record for each. Held here
+    #: rather than re-derived because a record is built from the result that
+    #: *produced* the protected text, not from a second look at it.
+    results: tuple[ProtectionResult, ...] = ()
     #: True when a briefing about the placeholders was prepended.
     guidance_added: bool = False
 
@@ -114,9 +120,11 @@ def protect_request(
     slots = request_texts(payload)
     protected: list[str] = []
     counts: dict[str, int] = {}
+    results: list[ProtectionResult] = []
 
     for slot in slots:
         result = session.protect(slot.text)
+        results.append(result)
         # A tool call's arguments are JSON that an application will parse. No
         # rule in this library matches across a structural boundary, so this
         # should never fire -- which is exactly why it is checked here rather
@@ -137,7 +145,9 @@ def protect_request(
         rebuilt = _with_guidance(rebuilt, session.external_system_prompt())
         guidance_added = True
 
-    return rebuilt, ExchangeReport(slots=slots, replaced=counts, guidance_added=guidance_added)
+    return rebuilt, ExchangeReport(
+        slots=slots, replaced=counts, guidance_added=guidance_added, results=tuple(results)
+    )
 
 
 def _refuse_unwalked_text(session: PrivacySession, payload: object) -> None:
