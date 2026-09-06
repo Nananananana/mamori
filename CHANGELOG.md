@@ -10,6 +10,25 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **The conversation boundary is the restoration boundary, written down and
+  pinned.** Sora puts more than one person on one machine and asked for the
+  guarantee rather than inferring it. It holds, and the mechanism is not the
+  obvious one: placeholder numbering restarts per scope, so two conversations
+  *both* mint `<PERSON_001>` and the tokens collide by design. What keeps the
+  values apart is that the lookup is keyed by `(scope, placeholder)`. New
+  section in [docs/orchestrating-the-proxy.md](docs/orchestrating-the-proxy.md)
+  and `tests/test_proxy_isolation.py`, which also records -- measured by
+  poisoning -- that its proxy-level tests catch a routing failure while only
+  the shared-store one catches a lookup failure.
+
+- **Why stopping the proxy is a complete purge, as a structural claim.**
+  `MamoriConfig` has no field that could name a store and `mamori serve` never
+  passes one, so the proxy's mappings are in memory and there is no file to
+  forget to delete. Checked structurally, so it fails if such a setting is
+  ever added. This is also why there is no `POST /sessions/<scope>/end`: scope
+  ids are handed to clients, so an endpoint keyed by one would let anybody who
+  had seen an id purge that conversation.
+
 - **What an orchestrator in front of the proxy can rely on**, asked for by
   Sora, the layer that starts `mamori serve` as a child and routes every
   external conversation through it. Every reply now names its scope in

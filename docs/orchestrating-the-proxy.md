@@ -60,6 +60,57 @@ hole in the trail.
 Error bodies are `{"error": {"message", "type": "mamori_error", "code"}}` and
 never carry a value. A `422` still names its scope in `X-Mamori-Scope`.
 
+## More than one person on one machine
+
+**A conversation's boundary is the restoration boundary.** A value protected
+in one conversation can never be restored into another's answer, and the
+reason is not the one you would guess: placeholder numbering restarts per
+scope, so two conversations *both* mint `<PERSON_001>`. The tokens collide by
+design. What keeps the values apart is that restoration resolves only what its
+own scope allocated -- the lookup is keyed by `(scope, placeholder)`, not by
+placeholder -- so an answer carrying `<PERSON_001>` resolves to the person of
+the conversation it came back to, and the other value is not reachable from
+that session at all.
+
+Pinned by `tests/test_proxy_isolation.py`, in
+`TestTheConversationBoundaryIsTheRestorationBoundary`. Two failures are
+possible and different tests catch them: the proxy-level ones catch a
+*routing* failure (a request handed the wrong session, a token accepted that
+nothing minted), and `test_the_lookup_is_keyed_by_scope_and_token_together`
+catches a *lookup* failure (the scope stopping being half the key). The class
+docstring says which, because with the scope filter removed only the last one
+goes red.
+
+### One proxy per profile is the right shape
+
+Run a proxy per profile, with that profile's `--audit` inside that profile's
+folder, and stop it when the profile closes. The alternative -- one process
+for everyone, sorted out by scope when reading -- puts two people's protection
+records in one file, which is one place for a separation to fail and no
+benefit to weigh against it.
+
+Restarting costs nothing worth planning around: a start-to-ready cycle is well
+under a second, `--port 0` takes a fresh free port every time, and an audit
+line is written whole or not at all -- one encode, one write, under a lock --
+so a proxy killed mid-request cannot leave half a record for the next reader
+to trip over. All three are in `TestStartingAndStoppingRepeatedly`.
+
+### Stopping the process is a complete purge
+
+Mappings live in memory and nowhere else. There is **no setting that gives the
+proxy a persistent store**: `MamoriConfig` has no field for one, and `mamori
+serve` never passes one, so `config.session()` builds an in-memory store every
+time. The only file the proxy writes is the audit file, and that holds no
+value. So killing the process is the strongest purge available, and there is
+nothing left to delete afterwards --
+`TestNothingTheProxyProtectsReachesADisk` is the check, structural rather than
+observational so that it fails if a setting for one is ever added.
+
+That is why there is no `POST /sessions/<scope>/end`. Scope ids are handed to
+clients in `X-Mamori-Scope`, so an endpoint keyed by one would let anybody who
+had seen an id purge that conversation -- a capability with a real cost and no
+benefit over stopping a process that was going to be stopped anyway.
+
 ## Ending a conversation
 
 Send `X-Mamori-Session-End: true` with the last turn. The scope is purged when
