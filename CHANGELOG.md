@@ -8,6 +8,16 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-09-07
+
+Speed, evidence, and an orchestrator. Three quadratics -- two found by
+reading, the third by the benchmark written to look for them -- so the
+shape of a document no longer decides how long a request takes. An audit
+trail that was losing records while reporting that it had not. Four ways
+the proxy could answer nothing at all, three of them found only because
+somebody asked what a real client puts on the wire. And the contract a
+layer in front of it can rely on, every row of it pinned by a test.
+
 ### Added
 
 - **The conversation boundary is the restoration boundary, written down and
@@ -2881,7 +2891,8 @@ dependencies outside the standard library.
 - Restoration resolves only placeholders allocated in the calling scope, so a
   response cannot read values out of the mapping table by guessing.
 
-[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/Nananananana/mamori/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/Nananananana/mamori/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/Nananananana/mamori/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/Nananananana/mamori/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/Nananananana/mamori/compare/v0.29.0...v0.30.0

@@ -44,7 +44,7 @@ from .errors import (
 from .llm_settings import LLMSettings
 from .quickstart import Protected, inspect, protect
 
-__version__ = "0.32.0"
+__version__ = "0.33.0"
 
 #: The public API. Everything here is what this package promises; anything
 #: reachable only by a deeper import is not, however useful it looks.
