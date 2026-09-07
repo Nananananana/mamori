@@ -10,6 +10,20 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **The scaling suite sweeps the property that hid the quadratic instead of
+  sampling it.** Every shape in that file repeats a single unit, which puts
+  each of them at one end of the range that matters: a document whose every
+  sentence carries a pack's evidence skips the filtering path outright, and so
+  does one where no sentence does. The cost lives in the middle.
+
+  The two-language shape is now measured at five points across that range,
+  with a test asserting the shapes really do span it -- region counts climbing
+  from none to one per sentence -- so the sweep cannot quietly collapse onto
+  one document. Restoring the scan turns the three middle points red and
+  leaves both ends green, which is the reasoning the class states, checked
+  rather than argued.
+
+
 - **`mamori bench` reports memory.** A `B/char` column: peak Python allocation
   per input character through `protect`, measured on its own run because
   `tracemalloc` roughly triples the cost of allocation and a timing taken with
