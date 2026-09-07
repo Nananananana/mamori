@@ -60,6 +60,13 @@ hole in the trail.
 Error bodies are `{"error": {"message", "type": "mamori_error", "code"}}` and
 never carry a value. A `422` still names its scope in `X-Mamori-Scope`.
 
+**Both framings of a request body are read**: `Content-Length`, and
+`Transfer-Encoding: chunked`, which is what `httpx` sends when the body is an
+iterator and therefore what an OpenAI SDK sends for a streamed upload. The
+8 MB ceiling applies to both; a chunked body announces no total, so it is
+counted as the chunks arrive. `tests/test_proxy_wire.py` puts the bytes on a
+raw socket rather than trusting a client library to frame them.
+
 ## More than one person on one machine
 
 **A conversation's boundary is the restoration boundary.** A value protected

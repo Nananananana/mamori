@@ -142,6 +142,22 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **A request body framed as `Transfer-Encoding: chunked` was refused, and the
+  refusal did not arrive.** `httpx` frames a body that way whenever it is
+  given an iterator, so an OpenAI SDK doing a streamed upload got a reset
+  socket -- measured, a `ReadError` -- rather than an answer. The proxy read
+  only `Content-Length`, found none, and called a perfectly well formed
+  request empty. Chunked bodies are read now, under the same 8 MB ceiling,
+  counted as the chunks arrive since a chunked body announces no total.
+
+- **A partial chunked body could park a handler thread forever.** Draining one
+  means reading to its zero-length terminator, and a client that stops mid-chunk
+  never sends it: measured, a `POST` to an unproxied path carrying `ff` and
+  five bytes got no reply in eight seconds. The drain has a deadline now. What
+  it is *not* for was measured too -- 2 MB left unread cost the client nothing,
+  the `400` arrived either way -- so the comment claims the thread and not the
+  reply.
+
 - **The audit file lost records, and said it had not.** The sink wrapped its
   descriptor in a buffered text writer, which splits at 8 KB; a
   `protection-scope` record for a document with a hundred placeholders is

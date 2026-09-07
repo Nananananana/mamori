@@ -109,6 +109,14 @@ REPLACED_HEADER = "X-Mamori-Replaced"
 #: to protect the documents separately rather than to raise this.
 MAX_BODY_BYTES = 8 * 1024 * 1024
 
+#: How long to spend discarding a body nobody will read. See :meth:`_drain`.
+_DRAIN_SECONDS = 0.5
+
+#: The longest chunk-size line this will read. A chunk header is a hexadecimal
+#: number and perhaps an extension; anything approaching a kilobyte of it is a
+#: caller trying to make the server hold a line it will never finish.
+_MAX_CHUNK_HEADER = 1024
+
 _SSE_DATA = b"data: "
 _SSE_DONE = b"[DONE]"
 
@@ -171,11 +179,16 @@ class _Handler(BaseHTTPRequestHandler):
     #: allocation still names the scope its audit lines carry.
     _scope: str | None = None
     _replaced: dict[str, int] | None = None
+    #: Whether the request body has been read to its end, so that a refusal
+    #: does not spend the drain deadline discarding a body that is already
+    #: gone. Half a second on every malformed request, for nothing.
+    _body_consumed: bool = False
 
     def do_POST(self) -> None:  # http.server's naming, not ours
         self._token = None
         self._scope = None
         self._replaced = None
+        self._body_consumed = False
         if self.path.rstrip("/") != CHAT_PATH.rstrip("/"):
             # The one path that answers without reading the body, so it is the
             # one that has to read it anyway before replying.
@@ -189,6 +202,13 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             payload = self._read_payload()
         except _BadRequestError as exc:
+            # Only when something is actually left. Whether an undrained body
+            # costs the client its refusal was measured and does not, at least
+            # here: 2 MB unread, and the `400` arrived either way. What it
+            # does cost is the drain deadline, so the flag is about latency
+            # rather than correctness and says so.
+            if not self._body_consumed:
+                self._drain()
             self._fail(HTTPStatus.BAD_REQUEST, str(exc))
             return
 
@@ -332,6 +352,29 @@ class _Handler(BaseHTTPRequestHandler):
     # -- plumbing ----------------------------------------------------------
 
     def _read_payload(self) -> object:
+        """The request body, however the client chose to frame it.
+
+        **Chunked bodies are read, not refused.** `Transfer-Encoding: chunked`
+        is ordinary HTTP/1.1 -- httpx sends it whenever the body is an
+        iterator, which is what the OpenAI SDK does for a streamed upload --
+        and this used to look only at `Content-Length`, find none, and call
+        the body empty. The refusal was then written while the client was
+        still sending, so the client's write failed and it saw a reset
+        connection rather than the `400` it had been given. That is the same
+        shape as the `HTTPStatus` bug: a failure an orchestrator cannot tell
+        from a network fault.
+        """
+        body = self._read_chunked() if self._is_chunked() else self._read_measured()
+        self._body_consumed = True
+        try:
+            return json.loads(body)
+        except ValueError as exc:
+            raise _BadRequestError("request body was not JSON") from exc
+
+    def _is_chunked(self) -> bool:
+        return "chunked" in (self.headers.get("Transfer-Encoding") or "").lower()
+
+    def _read_measured(self) -> bytes:
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
@@ -340,10 +383,50 @@ class _Handler(BaseHTTPRequestHandler):
             raise _BadRequestError("empty request body")
         if length > MAX_BODY_BYTES:
             raise _BadRequestError(f"request body over {MAX_BODY_BYTES} bytes")
-        try:
-            return json.loads(self.rfile.read(length))
-        except ValueError as exc:
-            raise _BadRequestError("request body was not JSON") from exc
+        return self.rfile.read(length)
+
+    def _read_chunked(self) -> bytes:
+        """Reassemble a chunked body, under the same ceiling as a measured one.
+
+        The cap is checked as the chunks arrive rather than from a header,
+        because a chunked body announces no total -- which is exactly why a
+        proxy that reads one has to count.
+        """
+        pieces: list[bytes] = []
+        total = 0
+        while True:
+            line = self.rfile.readline(_MAX_CHUNK_HEADER + 1)
+            if not line:
+                raise _BadRequestError("the chunked body ended early")
+            if len(line) > _MAX_CHUNK_HEADER:
+                raise _BadRequestError("a chunk header was implausibly long")
+            try:
+                # A chunk size may carry extensions after a semicolon.
+                size = int(line.split(b";", 1)[0].strip() or b"0", 16)
+            except ValueError as exc:
+                raise _BadRequestError("a chunk size was not hexadecimal") from exc
+            if size < 0:
+                raise _BadRequestError("a chunk size was negative")
+            if size == 0:
+                break
+            total += size
+            if total > MAX_BODY_BYTES:
+                raise _BadRequestError(f"request body over {MAX_BODY_BYTES} bytes")
+            piece = self.rfile.read(size)
+            if len(piece) != size:
+                raise _BadRequestError("the chunked body ended early")
+            pieces.append(piece)
+            self.rfile.read(2)  # the CRLF that closes a chunk
+
+        # Trailers, then the blank line. Read and discarded: a trailer is a
+        # header, and this forwards none of the caller's own.
+        while True:
+            trailer = self.rfile.readline(_MAX_CHUNK_HEADER + 1)
+            if not trailer or trailer in (b"\r\n", b"\n"):
+                break
+        if not pieces:
+            raise _BadRequestError("empty request body")
+        return b"".join(pieces)
 
     def _forwardable_headers(self) -> dict[str, str]:
         """The caller's own credential travels; nothing about this hop does."""
@@ -360,7 +443,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _drain(self) -> None:
-        """Read and discard the request body.
+        """Read and discard whatever the client is still sending, briefly.
+
+        **Bounded, and the bound is the point.** A chunked body announces its
+        end with a zero-length chunk, so draining one means reading until that
+        arrives -- and a client that sent a partial chunk and stopped never
+        sends it. Measured: a `POST` to an unproxied path carrying
+        `ff\\r\\nshort` and then silence got **no reply at all in eight
+        seconds** without this deadline, with the handler thread parked in
+        `readline`. Enough such requests and there are no threads left. With
+        the deadline the `404` arrives in half a second.
+
+        A chunked body has no length to read to, so it is drained by reading
+        until the terminating zero-length chunk, under the same header cap.
 
         A server that answers without reading what it was sent leaves bytes in
         the socket, and the client sees a reset connection instead of the
@@ -372,6 +467,21 @@ class _Handler(BaseHTTPRequestHandler):
         after :meth:`_read_payload` would block waiting for bytes that have
         already arrived and been consumed.
         """
+        original = self.connection.gettimeout()
+        self.connection.settimeout(_DRAIN_SECONDS)
+        try:
+            self._drain_within_deadline()
+        except (TimeoutError, OSError):
+            # The client stopped sending, or the socket is already gone.
+            # Either way the reply below is the best that can be done.
+            pass
+        finally:
+            self.connection.settimeout(original)
+
+    def _drain_within_deadline(self) -> None:
+        if self._is_chunked():
+            self._drain_chunked()
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -382,6 +492,28 @@ class _Handler(BaseHTTPRequestHandler):
             if not chunk:
                 break
             remaining -= len(chunk)
+
+    def _drain_chunked(self) -> None:
+        """Read a chunked body to its terminator, discarding it."""
+        read = 0
+        while read < MAX_BODY_BYTES:
+            line = self.rfile.readline(_MAX_CHUNK_HEADER + 1)
+            if not line or len(line) > _MAX_CHUNK_HEADER:
+                return
+            try:
+                size = int(line.split(b";", 1)[0].strip() or b"0", 16)
+            except ValueError:
+                return
+            if size <= 0:
+                break
+            if not self.rfile.read(size):
+                return
+            self.rfile.read(2)
+            read += size
+        while True:
+            trailer = self.rfile.readline(_MAX_CHUNK_HEADER + 1)
+            if not trailer or trailer in (b"\r\n", b"\n"):
+                return
 
     def _fail(self, status: HTTPStatus, message: str) -> None:
         """An error in the shape OpenAI clients already know how to read."""
