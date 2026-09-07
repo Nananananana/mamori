@@ -37,7 +37,14 @@ from ...config import MamoriConfig, discover_config, load_config_file
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.stance import Stance
-from ...errors import ConfigurationError, MamoriError, PolicyViolationError
+from ...errors import (
+    CATALOGUE,
+    CATALOGUE_CONTRACT,
+    OPEN_NAMESPACES,
+    ConfigurationError,
+    MamoriError,
+    PolicyViolationError,
+)
 from ...evaluation import (
     CachedProvider,
     Comparison,
@@ -281,6 +288,11 @@ def build_parser() -> argparse.ArgumentParser:
         "keygen",
         help="print a new key for the encrypted mapping store, and stop",
     )
+
+    errors_cmd = sub.add_parser(
+        "errors", help="every named way this can fail, and what each one means"
+    )
+    errors_cmd.add_argument("--json", action="store_true", help="emit JSON")
 
     sub.add_parser("policy", help="show the active policy")
     sub.add_parser("locales", help="show the language packs and when each runs")
@@ -795,8 +807,9 @@ def _cmd_correct(args: argparse.Namespace) -> int:
         )
         log = append_correction(Path(path), correction)
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return _EXIT_ERROR
+        # A correction the caller wrote wrongly, which is a command line this
+        # could not read under the name the catalogue gives that.
+        return _invalid(str(exc))
 
     verdict = "never sensitive" if args.never else f"always {args.always}"
     print(f"recorded: {args.value!r} is {verdict}")
@@ -999,7 +1012,7 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     missing = [p for p in paths if not p.exists()]
     if missing:
         for path in missing:
-            print(f"error: no such path: {path}", file=sys.stderr)
+            print(f"InvalidArgument: no such path: {path}", file=sys.stderr)
         return _EXIT_ERROR
 
     findings, skipped = lint_paths(
@@ -1094,11 +1107,9 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     registry = None
     if args.conversations:
         if args.conversation_idle <= 0:
-            print("error: --conversation-idle must be positive", file=sys.stderr)
-            return _EXIT_ERROR
+            return _invalid("--conversation-idle must be positive")
         if args.max_conversations < 1:
-            print("error: --max-conversations must be at least 1", file=sys.stderr)
-            return _EXIT_ERROR
+            return _invalid("--max-conversations must be at least 1")
         registry = ConversationRegistry(
             config.session,
             idle_seconds=args.conversation_idle * 60,
@@ -1358,7 +1369,11 @@ def _cmd_protect(args: argparse.Namespace) -> int:
     try:
         result = session.protect(text)
     except PolicyViolationError as exc:
-        print(f"blocked: {exc}", file=sys.stderr)
+        # The kind, not the word "blocked". An aggregator folds repeats on the
+        # token before the colon, and `blocked` is in no catalogue -- so a
+        # reader would have had to learn it from a log rather than from
+        # `mamori errors`.
+        _print_failure(exc)
         print(
             "Nothing was written. Remove the credential, or re-run with "
             "--permissive if you understand the risk.",
@@ -1475,6 +1490,52 @@ def _cmd_restore(args: argparse.Namespace) -> int:
     return _EXIT_OK
 
 
+def _cmd_errors(args: argparse.Namespace) -> int:
+    """Print the error catalogue, for a caller that has to translate failures.
+
+    An orchestrator in front of several libraries has to answer *"is this my
+    fault or is something broken"*, and an exit code cannot say. This is the
+    list it checks its own copy against, so that a kind added here fails that
+    build rather than being discovered in a log.
+    """
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "contract": CATALOGUE_CONTRACT,
+                    "by": f"mamori/{__version__}",
+                    "errors": [dict(entry) for entry in CATALOGUE],
+                    "open_namespaces": list(OPEN_NAMESPACES),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return _EXIT_OK
+
+    width = max(len(str(entry["kind"])) for entry in CATALOGUE)
+    print(f"{CATALOGUE_CONTRACT}, from mamori/{__version__}\n")
+    print(f"  {'kind':<{width}}  {'status':>6}  {'exit':>4}  {'outcome':<12}  retry")
+    for entry in CATALOGUE:
+        status = entry["status"] if entry["status"] is not None else "-"
+        code = entry["exit_code"] if entry["exit_code"] is not None else "-"
+        retry = "yes" if entry["retryable"] else "no"
+        print(
+            f"  {entry['kind']!s:<{width}}  {status!s:>6}  {code!s:>4}  "
+            f"{entry['outcome']!s:<12}  {retry}"
+        )
+    print()
+    for entry in CATALOGUE:
+        print(f"  {entry['kind']}\n    {entry['detail']}\n    {entry['detail_ja']}")
+    print(
+        "\nstatus is what the proxy answers with; exit is what this command exits\n"
+        "with. A dash means this failure has no surface of that kind. retry says\n"
+        "whether the same request could succeed if repeated -- what to do about\n"
+        "that is the caller's decision, not this table's."
+    )
+    return _EXIT_OK
+
+
 def _cmd_policy(_args: argparse.Namespace) -> int:
     policy = PrivacyPolicy.default()
     print("default policy\n")
@@ -1497,8 +1558,7 @@ _DEMO_TEXT = (
 
 def _cmd_bench(args: argparse.Namespace) -> int:
     if args.repeats < 1:
-        print("error: --repeats must be at least 1", file=sys.stderr)
-        return _EXIT_ERROR
+        return _invalid("--repeats must be at least 1")
     return run_bench(
         _settings_from(args), shapes=args.shape, repeats=args.repeats, as_json=args.json
     )
@@ -1839,6 +1899,7 @@ _COMMANDS = {
     "protect": _cmd_protect,
     "restore": _cmd_restore,
     "keygen": _cmd_keygen,
+    "errors": _cmd_errors,
     "policy": _cmd_policy,
     "config": _cmd_config,
     "prompt": _cmd_prompt,
@@ -1857,16 +1918,44 @@ _COMMANDS = {
 }
 
 
+def _print_failure(exc: BaseException) -> None:
+    """One line, beginning with the kind, on stderr.
+
+    The first token used to be the word `error`, which told a reader nothing
+    a non-zero exit had not already told them, and told a program nothing at
+    all. It is the class name now -- the same string `mamori errors` lists --
+    so an aggregator can fold repeats without keeping the sentence after the
+    colon, which is the part that could quote a document.
+    """
+    print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+def _invalid(message: str) -> int:
+    """Refuse a command line, under the name the catalogue gives it."""
+    print(f"InvalidArgument: {message}", file=sys.stderr)
+    return _EXIT_ERROR
+
+
 def main(argv: list[str] | None = None) -> int:
     _force_utf8()
     args = build_parser().parse_args(argv)
     try:
         return _COMMANDS[args.command](args)
+    except PolicyViolationError as exc:
+        # Named before `MamoriError` so it keeps its own exit code. A blocked
+        # credential is a refusal and not a failure, and an orchestrator that
+        # reads `2` and `PolicyViolationError` can say so; one that reads `1`
+        # and `error:` cannot.
+        _print_failure(exc)
+        return _EXIT_BLOCKED
     except MamoriError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _print_failure(exc)
         return _EXIT_ERROR
     except OSError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        # `StorageError` is what this library raises for a file it owns; an
+        # `OSError` reaching here is a file the *caller* named, which is the
+        # same outcome under the name the catalogue gives it.
+        print(f"StorageError: {exc}", file=sys.stderr)
         return _EXIT_ERROR
 
 

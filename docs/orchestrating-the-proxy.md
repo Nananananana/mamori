@@ -60,6 +60,19 @@ hole in the trail.
 Error bodies are `{"error": {"message", "type": "mamori_error", "code"}}` and
 never carry a value. A `422` still names its scope in `X-Mamori-Scope`.
 
+**The table above is data, not prose**: `mamori errors --json` prints it, with
+the outcome word, whether the same request could succeed if repeated, and one
+line of explanation in English and Japanese for each. Check your copy against
+it in CI and a kind added here fails your build instead of turning up in a
+log. `tests/test_error_catalogue.py` drives the proxy and the command line and
+compares what actually came back with what the catalogue promised, so the list
+is what happens rather than what somebody typed once.
+
+The first line of stderr begins with the kind -- `PolicyViolationError: ...`,
+`ConfigurationError: ...` -- so an aggregator can fold repeats on the token
+before the colon and keep nothing after it. That half is the half that can
+quote a document.
+
 **An idle connection is dropped after 60 seconds** (`--idle-timeout`). A
 client that opens a socket and stops mid-request otherwise keeps a thread for
 as long as it likes: measured at 500 such connections, 503 threads, growing

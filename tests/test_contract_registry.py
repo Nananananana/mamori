@@ -58,6 +58,14 @@ DECLARED: dict[str, str] = {
     # visible absence, and a consumer that cannot validate the second half
     # would have to decide for itself what an absent one meant.
     "mamori.restoration-scope/1": "published",
+    # The error catalogue `mamori errors --json` prints. **Published**, and
+    # the `-draft` in the name is the point: an orchestrator checks its own
+    # copy against it in CI, so it is an agreement with a second party from
+    # the day it exists -- but the field set is not frozen yet, and a name
+    # that says so is better than a `/1` somebody has to be told is
+    # provisional. No schema ships for it: see the entry in SCHEMA_FILE's
+    # docstring below.
+    "mamori.errors/1-draft": "published",
     # A magic string **inside the ciphertext** of an encrypted mapping file.
     # Internal rather than published: nobody but mamori can read the bytes it
     # sits in, so there is no second party for a schema to be an agreement
@@ -75,6 +83,7 @@ SCHEMA_FILE = {
     "mamori.protection-scope/1+surrogate": "protection-scope-1.json",
     "mamori.audit-line/1": "audit-line-1.json",
     "mamori.restoration-scope/1": "restoration-scope-1.json",
+    "mamori.errors/1-draft": "errors-1-draft.json",
 }
 
 

@@ -10,6 +10,9 @@ only. This is enforced by tests in ``tests/test_security_leakage.py``.
 from __future__ import annotations
 
 __all__ = [
+    "CATALOGUE",
+    "CATALOGUE_CONTRACT",
+    "OPEN_NAMESPACES",
     "ConfigurationError",
     "DetectionError",
     "MamoriError",
@@ -17,6 +20,124 @@ __all__ = [
     "ProviderError",
     "StorageError",
 ]
+
+#: The frozen name of the catalogue below. A consumer that does not recognise
+#: one must refuse it rather than read the fields it happens to know -- the
+#: same rule the protection records follow.
+CATALOGUE_CONTRACT = "mamori.errors/1-draft"
+
+#: Kinds this library builds at run time from somebody else's vocabulary,
+#: given as prefixes because their tails cannot be enumerated.
+#:
+#: **Empty, and that is a fact rather than an omission.** Every failure below
+#: is named by a class in this module. A detector's name, a recogniser's name
+#: and a custom entity type all appear in error *messages*, and none of them
+#: becomes part of a *kind* -- so there is no prefix to declare and a consumer
+#: can treat the list below as closed.
+OPEN_NAMESPACES: tuple[str, ...] = ()
+
+#: Every named way this library fails, as data a caller can check itself
+#: against.
+#:
+#: Written for an orchestrator that has to answer *"is this my fault or is
+#: something broken"* and cannot answer it from an exit code. It holds the
+#: fields that question needs and nothing else:
+#:
+#:   ``kind``        the identifier that begins the first line of stderr, and
+#:                   the key an aggregator folds repeats on
+#:   ``status``      the HTTP status the proxy answers with, or ``None`` where
+#:                   this failure has no HTTP surface
+#:   ``exit_code``   what ``mamori`` exits with, or ``None`` where this failure
+#:                   only ever happens inside the proxy
+#:   ``outcome``     ``refused`` | ``unavailable`` | ``failed`` | ``timed_out``
+#:   ``retryable``   whether asking again, unchanged, could succeed
+#:   ``detail``      one line of English
+#:   ``detail_ja``   the same line in Japanese, written here so that the two
+#:                   cannot disagree
+#:
+#: **Nothing here can become a value.** No paths, no message templates with
+#: holes in them, no examples that a reader would fill from a log. The detail
+#: lines describe the failure, not an instance of it.
+#:
+#: ``retryable`` is the field only this library can fill in, and it is a
+#: statement about *this library*, not advice: it says whether the same
+#: request could succeed if repeated, and a caller's own policy about
+#: retrying is a separate decision. `DetectionFailed` is false because the
+#: detector that could not run will not run on a second attempt either.
+CATALOGUE: tuple[dict[str, object], ...] = (
+    {
+        "kind": "PolicyViolationError",
+        "status": 422,
+        "exit_code": 2,
+        "outcome": "refused",
+        "retryable": False,
+        "detail": "The policy blocked at least one detected value. Nothing was forwarded.",
+        "detail_ja": "検出した値をポリシーが止めた。何も転送していない。",
+    },
+    {
+        "kind": "ProviderError",
+        "status": 502,
+        "exit_code": 1,
+        "outcome": "unavailable",
+        "retryable": True,
+        "detail": "The model or the upstream service could not be reached, or refused.",
+        "detail_ja": "モデルまたは上流のサービスに届かなかった、あるいは拒否された。",
+    },
+    {
+        "kind": "DetectionError",
+        "status": 500,
+        "exit_code": 1,
+        "outcome": "failed",
+        "retryable": False,
+        "detail": "A detector failed. Nothing was emitted, so nothing partially protected left.",
+        "detail_ja": "検出器が失敗した。何も出力していないので、中途半端な保護は出ていない。",
+    },
+    {
+        "kind": "ConfigurationError",
+        "status": None,
+        "exit_code": 1,
+        "outcome": "failed",
+        "retryable": False,
+        "detail": "A setting could not be read, or names something that does not exist.",
+        "detail_ja": "設定を読めなかった、または存在しないものを指している。",
+    },
+    {
+        "kind": "StorageError",
+        "status": 500,
+        "exit_code": 1,
+        "outcome": "failed",
+        "retryable": False,
+        "detail": "A mapping file or an audit sink could not be read or written.",
+        "detail_ja": "対応表または監査の書き出し先を読み書きできなかった。",
+    },
+    {
+        "kind": "MamoriError",
+        "status": 500,
+        "exit_code": 1,
+        "outcome": "failed",
+        "retryable": False,
+        "detail": "A failure with no more specific name. The base of every kind above.",
+        "detail_ja": "より具体的な名前を持たない失敗。上のすべての基底。",
+    },
+    {
+        "kind": "InvalidArgument",
+        "status": 400,
+        "exit_code": 1,
+        "outcome": "failed",
+        "retryable": False,
+        "detail": "The request or the command line was not something this could read.",
+        "detail_ja": "リクエストまたはコマンドラインを読めなかった。",
+    },
+    {
+        "kind": "NotProxied",
+        "status": 404,
+        "exit_code": None,
+        "outcome": "failed",
+        "retryable": False,
+        "detail": "A path the proxy does not carry. Only the chat completions path is proxied.",
+        "detail_ja": "プロキシが扱わないパス。中継するのは chat completions のパスだけ。",
+    },
+)
 
 
 class MamoriError(Exception):

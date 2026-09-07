@@ -8,6 +8,35 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Added
+
+- **`mamori errors --json`: every named way this can fail, as data.** An
+  orchestrator in front of several libraries has to answer *"is this my fault
+  or is something broken"* and cannot answer it from an exit code. The
+  catalogue gives each kind its HTTP status, its exit code, an outcome word,
+  whether the same request could succeed if repeated -- the field only this
+  library can fill in -- and one line of explanation in English **and**
+  Japanese, written by the same hand so the two cannot come to disagree.
+  `mamori.errors/1-draft`, with a schema, and `-draft` in the name because it
+  is an agreement with a second party from the day it exists while the field
+  set is not frozen yet.
+
+  It is a check rather than a document: `tests/test_error_catalogue.py` drives
+  the proxy and the command line and compares what came back with what the
+  catalogue promised, so a consumer checking its copy in CI is checking
+  something true.
+
+### Changed
+
+- **The first line of stderr begins with the kind.** It was the word `error`,
+  which told a reader nothing a non-zero exit had not and told a program
+  nothing at all. It is the class name now -- the same string `mamori errors`
+  lists -- so an aggregator folds repeats on the token before the colon and
+  keeps nothing after it, which is the half that could quote a document. A
+  blocked credential prints `PolicyViolationError` rather than `blocked`, a
+  word that was in no catalogue and had to be learnt from a log.
+
+
 ### Fixed
 
 - **The last English leaks were bare given names, and an anchor was all they

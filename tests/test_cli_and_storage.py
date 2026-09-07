@@ -11,7 +11,7 @@ import pytest
 from mamori import PrivacySession
 from mamori.domain.mapping import Mapping
 from mamori.domain.placeholder import Placeholder
-from mamori.errors import StorageError
+from mamori.errors import CATALOGUE, StorageError
 from mamori.infrastructure.storage import InMemoryMappingStore
 from mamori.infrastructure.storage.jsonfile import dump_scope, load_scope
 from mamori.interfaces.cli.main import main
@@ -250,7 +250,10 @@ class TestCli:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         assert main(["protect", "-f", str(tmp_path / "nope.txt")]) == 1
-        assert "error" in capsys.readouterr().err
+        # The first token is the kind, not the word "error": it is what
+        # `mamori errors` lists and what an aggregator folds repeats on.
+        first = capsys.readouterr().err.splitlines()[0]
+        assert first.split(":")[0] in {entry["kind"] for entry in CATALOGUE}, first
 
     def test_no_subcommand_is_a_usage_error(self) -> None:
         with pytest.raises(SystemExit):
@@ -364,7 +367,10 @@ class TestCliEval:
         path = tmp_path / "bad.json"
         path.write_text("{not json", encoding="utf-8")
         assert main(["eval", "--dataset", str(path)]) == 1
-        assert "error" in capsys.readouterr().err
+        # The first token is the kind, not the word "error": it is what
+        # `mamori errors` lists and what an aggregator folds repeats on.
+        first = capsys.readouterr().err.splitlines()[0]
+        assert first.split(":")[0] in {entry["kind"] for entry in CATALOGUE}, first
 
 
 class TestCliConfig:

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nananananana/mamori/schemas/errors-1-draft.json",
+  "title": "mamori.errors/1-draft",
+  "description": "Every named way this library fails, as data a caller can check its own copy against. For an orchestrator that has to answer 'is this my fault or is something broken' and cannot answer it from an exit code. The '-draft' in the name is deliberate: this is an agreement with a second party from the day it exists, and the field set is not frozen yet, which a name that says so states better than a '/1' somebody has to be told is provisional.",
+  "type": "object",
+  "required": [
+    "contract",
+    "by",
+    "errors",
+    "open_namespaces"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "description": "Frozen contract identifier. A consumer that does not recognise one must refuse the document rather than read the fields it happens to know.",
+      "const": "mamori.errors/1-draft"
+    },
+    "by": {
+      "description": "Producer, as name/version. The version matters: a kind added in a later release is a kind an older catalogue does not list, and the difference is the point of checking.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._+-]+$"
+    },
+    "errors": {
+      "description": "One entry per named failure. May be empty: a library that fails in no named way is entitled to say so, and an empty array says it.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "open_namespaces": {
+      "description": "Prefixes of kinds built at run time from another party's vocabulary, whose tails cannot be enumerated. Empty here, and that is a fact rather than an omission: every kind mamori prints is named by a class in `mamori.errors`, so a consumer may treat `errors` as closed.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*\\.$"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": [
+        "kind",
+        "status",
+        "exit_code",
+        "outcome",
+        "retryable",
+        "detail",
+        "detail_ja"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "The stable identifier that begins the first line of stderr, before the colon, and the key an aggregator folds repeats on. Never a sentence and never a value.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$"
+        },
+        "status": {
+          "description": "The HTTP status the proxy answers with, or null where this failure has no HTTP surface. mamori is the family's only HTTP interface, which is why this is here and an exit code alone would not do.",
+          "type": ["integer", "null"],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "exit_code": {
+          "description": "What the `mamori` command exits with, or null where this failure only ever happens inside the proxy.",
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 255
+        },
+        "outcome": {
+          "description": "What kind of thing happened, in the four words a caller can act on. 'refused' is not a failure: it is this library doing its job.",
+          "enum": ["refused", "unavailable", "failed", "timed_out"]
+        },
+        "retryable": {
+          "description": "Whether the same request, unchanged, could succeed if it were sent again. A statement about this library and not advice: what to do about it is the caller's policy.",
+          "type": "boolean"
+        },
+        "detail": {
+          "description": "One line of English describing the failure. **Not an instance of it**: no paths, no identifiers, no template with a hole a reader would fill from a log.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "detail_ja": {
+          "description": "The same line in Japanese, written by the same hand at the same time so that the two cannot come to disagree. Under the same rule about values.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    }
+  },
+  "$comment": "Two invariants a consumer must enforce because JSON Schema cannot. (1) `kind` is unique within `errors`; a repeated kind would make the fold key ambiguous, which is the one thing this document exists to prevent. (2) A kind whose `status` is null is one the proxy never answers with, so a consumer mapping HTTP statuses must not expect to find every status here -- 200 is not a failure and is absent. ENCODING: this document is UTF-8, said because a contract that does not name its encoding is one its own producer eventually gets wrong, and `detail_ja` is the field that would break first. Decode as UTF-8 and never as the platform default; encode the same way, including to a redirected stream, which is where the locale gets its second chance."
+}
