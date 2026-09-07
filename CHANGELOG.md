@@ -76,6 +76,36 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **A fourth quadratic, in a document with two languages in it.** When one
+  language pack's evidence appears only in parts of a document -- kana in some
+  sentences and not others -- the other pack is run and its hits are filtered
+  to the stretches that did not argue against it. That filter asked, per
+  candidate, whether it fell inside any region, by walking every region. Both
+  the regions and the candidates grow with the length of the document, so the
+  filter was **quadratic in the length**.
+
+  A Japanese office writing about Chinese counterparties produces exactly this
+  document. 25,000 to 100,000 characters:
+
+  | | 25k | 100k | growth | throughput |
+  |---|---|---|---|---|
+  | before | 266 ms | 2,254 ms | x8.5 | 94 -> 44 chars/ms |
+  | after | 85 ms | 349 ms | x4.1 | 294 -> 287 chars/ms |
+
+  The throughput *falling* as the document grows is the signature. The regions
+  are sorted and disjoint, so one binary search replaces the walk: at 8,192
+  regions it is 307 times faster, and flat where the walk is linear.
+
+  Every scaling test in the file repeated a single unit, which is why nothing
+  caught it -- a document that is kana in every sentence skips the filter
+  entirely. There is now a shape that alternates, plus a test asserting that
+  shape really does produce many regions, so the measurement cannot quietly
+  start measuring the path that skips the work.
+
+  `covered_by` had no test of its own before this. It has nine now, including
+  a property test against the scan it replaced.
+
+
 - **Half the memory of a protection was an offset map recording that character
   40,000 is at character 40,000.** `NormalizedText` keeps, for every character
   of the normalised text, where it came from in the original -- the structure

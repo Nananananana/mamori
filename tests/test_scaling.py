@@ -49,6 +49,7 @@ from mamori.domain.normalization import NormalizedText
 from mamori.domain.placeholder import Placeholder
 from mamori.domain.placeholder_matching import scan_placeholders
 from mamori.domain.policy import PrivacyPolicy
+from mamori.domain.script import Script, script_regions
 from mamori.infrastructure.detectors.custom import ADVERSARIAL_SHAPES
 from mamori.infrastructure.detectors.locales import resolve_locales
 from mamori.infrastructure.detectors.patterns import UNIVERSAL_RULES
@@ -303,6 +304,82 @@ class TestTheWholePipelineStaysLinear:
             f"took {large * 1000:.0f}ms, a factor of {large / small:.1f} for four "
             "times the document"
         )
+
+
+class TestTwoLanguagesInOneDocumentStayLinear:
+    """The shape every other scaling test here misses.
+
+    All of those repeat one unit, so a Japanese document is kana in every
+    sentence -- and the Chinese pack is then skipped outright rather than run
+    and filtered. The filtering path had no shape that reached it.
+
+    A document that alternates is where it lives, and a Japanese office
+    writing about Chinese counterparties produces one by lunchtime. Each
+    sentence becomes its own region, so regions grow with the document; so do
+    the candidate entities being checked against them; and the check was a
+    scan over every region. Both factors linear in the length makes the whole
+    thing **quadratic in the length**.
+
+    Measured on the commit that fixed it, 25,000 -> 100,000 characters:
+
+        scan     266 ms -> 2,254 ms   (x8.5 for x4 input; 94 -> 44 chars/ms)
+        bisect    85 ms ->   349 ms   (x4.1 for x4 input; 294 -> 287 chars/ms)
+
+    The throughput *falling* as the document grows is the signature. It is the
+    fourth quadratic found in this library and the first one that needed a
+    document with two languages in it to see.
+    """
+
+    SMALL: ClassVar[int] = 25_000
+    LARGE: ClassVar[int] = 100_000
+
+    #: Japanese and Chinese sentences in turn, so that no run of sentences is
+    #: all one language and every boundary starts a new region.
+    UNIT: ClassVar[str] = (
+        "田中太郎さんへ。张伟先生请联系我们。ご確認ください。李娜女士的电话是13812345678。\n"
+    )
+
+    def document(self, size: int) -> str:
+        text = self.UNIT
+        while len(text) < size:
+            text += text
+        return text[:size]
+
+    def test_four_times_the_document_costs_about_four_times(self) -> None:
+        session = MamoriConfig().session()
+        small_text = self.document(self.SMALL)
+        large_text = self.document(self.LARGE)
+        session.inspect(small_text[:2000])
+
+        small = _fastest(lambda: session.inspect(small_text), repeats=2)
+        large = _fastest(lambda: session.inspect(large_text), repeats=2)
+
+        assert small > MIN_MEASURED_SECONDS, (
+            f"{small * 1000:.0f}ms is too small to take a ratio from"
+        )
+        assert large < MAX_GROWTH * small, (
+            f"{self.SMALL:,} took {small * 1000:.0f}ms and {self.LARGE:,} took "
+            f"{large * 1000:.0f}ms, a factor of {large / small:.1f} for four times "
+            "the document. Two languages in one document is the shape where the "
+            "region check is asked once per candidate against every region."
+        )
+
+    def test_the_document_really_does_make_many_regions(self) -> None:
+        """Otherwise the test above measures the path that skips the filtering.
+
+        A run of sentences that are all one language collapses to one region,
+        and `_reaches_everywhere` then drops the other pack without checking
+        anything -- which is fast, correct, and not what is being measured.
+        """
+        regions = script_regions(self.document(self.SMALL), frozenset({Script.KANA}))
+        assert len(regions) > 200, f"only {len(regions)} regions; this shape is not the shape"
+
+    def test_both_languages_are_still_found(self) -> None:
+        """Speed that lost a detection is not speed."""
+        session = MamoriConfig().session()
+        found = set(session.inspect(self.UNIT * 3))
+        assert "PERSON" in found, f"only found {sorted(found)}"
+        assert "PHONE" in found, f"only found {sorted(found)}"
 
 
 class TestTheScanOfAnAnswerStaysLinear:
