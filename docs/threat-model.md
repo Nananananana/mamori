@@ -35,6 +35,9 @@ service you are trying to keep data away from.
 ## Trust boundaries
 
 1. **Local process ↔ external LLM.** The only boundary defended.
+1b. **Local process ↔ a settings file it found.** Defended for one setting
+   only: a discovered file may not widen the detector's trust boundary to
+   `anywhere`. See T7d.
 2. **Local process ↔ local disk.** Only crossed if you ask for it
    (`--save-mapping`).
 3. **Local process ↔ the machine.** Not defended. See "Out of scope".
@@ -177,6 +180,35 @@ label is dropped, an all-numeric final label is refused as an address notation
 this module declines to decode, and anything left holding a character outside
 `[a-z0-9.\-_]` is external. A genuinely non-ASCII internal name goes in
 `trusted_hosts`. Four guards, one test each, each watched to fail.
+
+### T7d — A settings file nobody named points the detector somewhere
+
+*Mitigated since 0.34, and it was not before.* Settings are found by walking
+up from the working directory, stopping at the repository root -- the way
+`ruff`, `mypy` and `pytest` do, and the right behaviour for a stance or a
+threshold. It also means the settings that apply to `mamori protect` belong to
+whichever repository the shell happens to be in.
+
+Measured: a `mamori.toml` carrying a model name, a base URL and
+`trust = "anywhere"` sent the document to that URL. Exit `0`, "3 value(s)
+protected" on stdout, **nothing on stderr**. The out-of-scope list here has
+always said a compromised machine, and a repository somebody cloned is not the
+machine; the asset table above says a policy that is *silently* weakened
+disables the tool, and this was the silent version.
+
+Two changes, and neither is "refuse settings files":
+
+- **`trust = "anywhere"` is refused from a discovered file.** It is the value
+  that means *run no check at all*, and it now needs somebody's own act:
+  `--config`, `MAMORI_LLM_TRUST`, or Python. Narrowing values are untouched.
+- **`protect` and `inspect` say where the document goes**, on stderr, whenever
+  the detection endpoint is not on this machine. `trusted_hosts` naming the
+  company's GPU box in a committed config stays legitimate -- what was missing
+  was any way to tell from a run that the run had sent the document there.
+
+`trusted_hosts` is deliberately still allowed from a discovered file. Refusing
+it would break the deployment the boundary exists to permit, and the
+announcement covers it instead.
 
 ### T12b — The proxy forwards a payload shape it does not recognise
 

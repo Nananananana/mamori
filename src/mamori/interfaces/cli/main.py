@@ -38,6 +38,7 @@ from ...config import MamoriConfig, discover_config, load_config_file
 from ...domain.entity_types import BUILTIN_TYPES
 from ...domain.policy import PrivacyPolicy
 from ...domain.stance import Stance
+from ...domain.trust import HostKind, TrustBoundary
 from ...errors import (
     CATALOGUE,
     CATALOGUE_CONTRACT,
@@ -680,8 +681,13 @@ def _reports_as_json(result: ProtectionResult) -> list[dict[str, object]]:
     ]
 
 
-def _config_path(args: argparse.Namespace) -> Path | None:
-    """The settings file this invocation reads, or ``None``.
+def _config_path(args: argparse.Namespace) -> tuple[Path | None, bool]:
+    """The settings file this invocation reads, and whether it was named.
+
+    The second value is not bookkeeping. A file the caller named is the
+    caller's own act; a file found by walking up from the working directory
+    belongs to whatever repository the shell happens to be in, and one setting
+    is too strong to inherit that way. See :func:`_refuse_a_widened_boundary`.
 
     ``--config`` wins and is an error if it is missing or unreadable: the
     caller named it. Discovery is a search, so finding nothing is not an error,
@@ -689,10 +695,70 @@ def _config_path(args: argparse.Namespace) -> Path | None:
     """
     named = getattr(args, "config", None)
     if named:
-        return Path(named)
+        return Path(named), True
     if getattr(args, "no_config", False):
-        return None
-    return discover_config()
+        return None, False
+    return discover_config(), False
+
+
+def _refuse_a_widened_boundary(settings: MamoriConfig, path: Path) -> None:
+    """Refuse ``trust = "anywhere"`` from a file nobody named.
+
+    A detection pass is shown the document **before** it is protected, so the
+    boundary on its endpoint is what decides whether an unprotected document
+    leaves the machine. ``anywhere`` means *run no check at all*.
+
+    Settings are discovered by walking up from the working directory, which is
+    how every tool of this shape works and is the right behaviour for a
+    stance or a threshold. It also means the file that applies is the file
+    belonging to whichever repository the shell is in. Measured before this
+    was closed: a ``mamori.toml`` carrying a model, a base URL and
+    ``anywhere`` sent the document to that URL, exit 0, nothing on stderr.
+
+    The threat model lists a compromised machine as out of scope. A
+    repository somebody cloned is not the machine, and the same document
+    names the policy as an asset that *silently* weakening disables.
+
+    So ``anywhere`` needs somebody's own act: ``--config``, a ``MAMORI_*``
+    variable, or Python. Narrowing values are untouched, and so is
+    ``trusted_hosts`` -- naming the company's GPU box in a committed config is
+    a legitimate thing to do, and it is covered instead by saying out loud
+    where the document goes.
+    """
+    llm = settings.llm
+    if llm is None or llm.trust is not TrustBoundary.ANYWHERE:
+        return
+    raise ConfigurationError(
+        f"{path} sets the detection model's trust boundary to 'anywhere', and "
+        "nobody named that file -- it was found by walking up from the working "
+        "directory. 'anywhere' turns off the check that keeps the unprotected "
+        "document off the network, which is too much to inherit from a file "
+        "that came with a repository. Pass --config to say you mean this one, "
+        "set MAMORI_LLM_TRUST, or narrow the setting."
+    )
+
+
+def _announce_where_the_document_goes(settings: MamoriConfig) -> None:
+    """Say the endpoint a detection pass will be shown the document at.
+
+    Not a warning and not a refusal: the boundary has already admitted this
+    host. It is the one line that makes the difference between a run that sent
+    the document to the company's GPU box and a run that did not visible in
+    the output of the run itself, rather than only in `mamori privacy`.
+
+    Silent for a model on this machine. The common case is a model on the
+    laptop, and a line printed on every run is a line nobody reads by the
+    third one.
+    """
+    llm = settings.llm
+    if llm is None or not llm.model:
+        return
+    if llm.endpoint().policy.classify(llm.base_url) is HostKind.LOOPBACK:
+        return
+    print(
+        f"Detection model: {llm.base_url} is shown the document before anything in it is replaced.",
+        file=sys.stderr,
+    )
 
 
 def _settings_from(args: argparse.Namespace) -> MamoriConfig:
@@ -702,9 +768,12 @@ def _settings_from(args: argparse.Namespace) -> MamoriConfig:
     or one invocation can still differ without editing it.
     """
     settings = MamoriConfig()
-    path = _config_path(args)
+    path, named = _config_path(args)
     if path is not None:
-        settings = settings.merged_with(load_config_file(path))
+        from_file = load_config_file(path)
+        if not named:
+            _refuse_a_widened_boundary(from_file, path)
+        settings = settings.merged_with(from_file)
     settings = settings.merged_with(MamoriConfig.from_env())
 
     changes: dict[str, object] = {}
@@ -768,11 +837,11 @@ def _cmd_config(args: argparse.Namespace) -> int:
         for name, action in sorted(settings.rules.items()):
             print(f"    {name:<20} {action.value}")
     print()
-    path = _config_path(args)
+    path, named = _config_path(args)
     if path is None:
         print("  settings file                (none found)")
     else:
-        how = "named with --config" if getattr(args, "config", None) else "discovered"
+        how = "named with --config" if named else "discovered"
         print(f"  settings file                {path} ({how})")
     print(
         "\nLayered: built-in defaults, then the settings file, then MAMORI_*\n"
@@ -1314,6 +1383,11 @@ def _cmd_prompt(args: argparse.Namespace) -> int:
 def _cmd_inspect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     settings = _settings_from(args)
+    # `inspect` runs the same detectors, so it sends the same document to the
+    # same endpoint. The comment below says nothing here is a step towards
+    # sending anything, and that is true of what `inspect` *prints* -- it is
+    # not true of what detecting costs.
+    _announce_where_the_document_goes(settings)
     # Inspection must report on credentials rather than refuse, so it uses a
     # permissive policy. It never prints a protected text, so nothing here is
     # a step towards sending anything.
@@ -1400,6 +1474,7 @@ def _cmd_keygen(_: argparse.Namespace) -> int:
 def _cmd_protect(args: argparse.Namespace) -> int:
     text = _read_input(args.text, args.file)
     settings = _settings_from(args)
+    _announce_where_the_document_goes(settings)
     policy = (
         PrivacyPolicy.permissive().with_min_confidence(settings.min_confidence)
         if args.permissive

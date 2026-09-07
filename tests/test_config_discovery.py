@@ -164,6 +164,133 @@ class TestTheRepositoryBoundary:
         assert discover_config(deep) == middle / "mamori.toml"
 
 
+class TestAFileNobodyNamedCannotWidenTheBoundary:
+    """The one setting a discovered file may not carry.
+
+    `discover_config` walks up from the working directory the way ruff and
+    mypy do. That is deliberate and documented. It also means the settings
+    that apply to `mamori protect` are the settings of whatever repository the
+    shell happens to be in -- and a detection pass is shown the document
+    *before* it is protected.
+
+    Measured before this was closed: a `mamori.toml` carrying a model name, a
+    base URL and `trust = "anywhere"` sent the document to that URL. Exit 0,
+    "3 value(s) protected" on stdout, nothing on stderr. The threat model
+    names the policy as an asset whose *silent* weakening disables the tool,
+    and lists a compromised machine as out of scope -- a repository somebody
+    cloned is not the machine.
+
+    `anywhere` means "run no check at all". It stays available through
+    `--config`, `MAMORI_*` and Python, all of which are somebody's own act.
+    What it may not be is inherited from a file that was found rather than
+    named.
+    """
+
+    def hostile(self, tmp_path: Path, trust: str) -> Path:
+        root = repo(tmp_path)
+        (root / "mamori.json").write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "model": "gpt-4o",
+                        "base_url": "https://elsewhere.example.com/v1/",
+                        "trust": trust,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return root
+
+    def test_a_discovered_file_may_not_turn_the_check_off(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(self.hostile(tmp_path, "anywhere"))
+        assert main(["protect", "Tanaka Hideo called"]) != 0
+
+    def test_the_refusal_says_which_file_and_what_to_do(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(self.hostile(tmp_path, "anywhere"))
+        main(["protect", "Tanaka Hideo called"])
+        err = capsys.readouterr().err
+        assert err.startswith("ConfigurationError:")
+        assert "mamori.json" in err
+
+    @pytest.mark.parametrize("trust", ["same_host", "private_network"])
+    def test_a_boundary_that_does_not_widen_is_fine(
+        self,
+        trust: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Narrowing, or saying the default out loud, is not the problem.
+
+        This URL is still refused -- for being external, which is the boundary
+        working. What must not happen is the file being refused for carrying
+        the setting at all.
+        """
+        monkeypatch.chdir(self.hostile(tmp_path, trust))
+        main(["protect", "Tanaka Hideo called"])
+        assert "mamori.json" not in capsys.readouterr().err
+
+    def test_naming_the_same_file_is_allowed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`--config` is the caller's own act, so it may say `anywhere`."""
+        root = self.hostile(tmp_path, "anywhere")
+        monkeypatch.chdir(tmp_path)
+        main(["config", "--config", str(root / "mamori.json")])
+        assert "ConfigurationError" not in capsys.readouterr().err
+
+    def test_a_run_says_where_the_document_goes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Even when the boundary admits it, the run says so.
+
+        A company GPU box named in `trusted_hosts` in a committed config is a
+        legitimate thing to have; being unable to tell from the output that
+        the document left the machine is not.
+        """
+        root = repo(tmp_path)
+        (root / "mamori.json").write_text(
+            json.dumps({"llm": {"model": "m", "base_url": "http://llm01.corp:8000/v1/"}}),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(root)
+        main(["protect", "Tanaka Hideo called"])
+        err = capsys.readouterr().err
+        assert "llm01.corp" in err
+
+    def test_inspect_says_it_too(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`inspect` runs the same detectors, so it sends the same document."""
+        root = repo(tmp_path)
+        (root / "mamori.json").write_text(
+            json.dumps({"llm": {"model": "m", "base_url": "http://llm01.corp:8000/v1/"}}),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(root)
+        main(["inspect", "Tanaka Hideo called"])
+        assert "llm01.corp" in capsys.readouterr().err
+
+    def test_a_model_on_this_machine_says_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The common case is a model on the laptop. A line on every run is a
+        line nobody reads by the third one."""
+        root = repo(tmp_path)
+        (root / "mamori.json").write_text(
+            json.dumps({"llm": {"model": "m", "base_url": "http://127.0.0.1:11434/v1/"}}),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(root)
+        main(["protect", "Tanaka Hideo called"])
+        assert "127.0.0.1" not in capsys.readouterr().err
+
+
 class TestTheCommandLine:
     def settings_file(self, tmp_path: Path, body: dict[str, object]) -> Path:
         path = repo(tmp_path) / "mamori.json"

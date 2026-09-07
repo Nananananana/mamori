@@ -37,6 +37,28 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **A settings file nobody named could point the detection pass anywhere.**
+  Settings are discovered by walking up from the working directory, the way
+  every tool of this shape does. That is right for a stance or a threshold. It
+  also means the settings that apply to `mamori protect` are the settings of
+  whichever repository the shell is in -- and a detection pass is shown the
+  document *before* it is protected.
+
+  Measured: a `mamori.toml` with a model name, a base URL and
+  `trust = "anywhere"` sent the document to that URL. Exit `0`, "3 value(s)
+  protected" on stdout, nothing on stderr. The threat model lists a
+  compromised machine as out of scope; a repository somebody cloned is not the
+  machine.
+
+  `anywhere` -- the value meaning *run no check at all* -- is now refused from
+  a discovered file and needs `--config`, `MAMORI_LLM_TRUST` or Python.
+  Narrowing values are untouched, and `trusted_hosts` still works from a
+  committed config, because naming the company's GPU box there is the
+  deployment the boundary exists to permit. What covers that case instead:
+  `protect` and `inspect` now say on stderr where the document goes whenever
+  the detection endpoint is not on this machine, and say nothing when it is.
+
+
 - **A `protect` run that failed still left the values on disk in the clear.**
   `--save-mapping` wrote the plaintext file, and *then* `--encrypt-mapping`
   discovered there was no key and exited non-zero -- so a caller reading a
