@@ -10,6 +10,23 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **`mamori bench` reports memory.** A `B/char` column: peak Python allocation
+  per input character through `protect`, measured on its own run because
+  `tracemalloc` roughly triples the cost of allocation and a timing taken with
+  it on is a timing of the profiler.
+
+  It is there because nothing had ever measured this. Time got a command in
+  0.33 since time was the cost that had bitten; the first memory measurement
+  found 157 bytes per input character on mixed text, and two structures worth
+  removing. The column is so the next one shows up in the same place rather
+  than after somebody's proxy runs out of memory.
+
+  Pinned two ways: a document with nothing in it must allocate almost nothing
+  beyond the text it was handed, a document dense with findings must allocate
+  more than that one, and mixed text must stay well under what it used to
+  cost. Without the first two the column could be measuring the harness.
+
+
 - **The brief for a corpus somebody else wrote**, in
   [docs/corpus-brief.md](docs/corpus-brief.md). `open-questions.md` has said
   since 0.25 that every number here comes from text this project's own author

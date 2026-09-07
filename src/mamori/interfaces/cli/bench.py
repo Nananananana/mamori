@@ -20,9 +20,11 @@ single score would hide which it had chosen.
 
 from __future__ import annotations
 
+import gc
 import json
 import sys
 import time
+import tracemalloc
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from typing import TextIO
@@ -84,11 +86,41 @@ class BenchRow:
     #: times. Linear is about 4. The two quadratics 0.33 removed were about 16.
     growth: float
     entities: int
+    #: Bytes of peak Python allocation per input character, through `protect`.
+    #:
+    #: Added in 0.34, when it turned out nothing had ever measured it. Time
+    #: got a command because time was the cost that had bitten -- two
+    #: quadratics in 0.33. The first measurement found **157 bytes per input
+    #: character**, half of it an offset map recording that character 40,000
+    #: is at character 40,000, and a set holding one integer per covered
+    #: character. Both are gone; the number is here so the next one shows up
+    #: in the same place.
+    #:
+    #: `tracemalloc` counts what Python allocated, not RSS: what varies with
+    #: the document is objects this library makes, and the interpreter's own
+    #: floor would only blur it.
+    peak_bytes_per_char: float
 
 
 def _document(shape: str, size: int) -> str:
     unit = SHAPES[shape]
     return (unit * (size // len(unit) + 1))[:size]
+
+
+def _peak_per_character(work: Callable[[], object], characters: int) -> float:
+    """Peak allocation during one call, per input character.
+
+    Measured on its own run rather than during the timed ones: `tracemalloc`
+    roughly triples the cost of allocation, so a timing taken with it on is a
+    timing of the profiler.
+    """
+    gc.collect()
+    tracemalloc.start()
+    before = tracemalloc.get_traced_memory()[0]
+    work()
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return (peak - before) / characters
 
 
 def _fastest(work: Callable[[], object], repeats: int) -> float:
@@ -114,6 +146,7 @@ def measure(config: MamoriConfig, shape: str, *, repeats: int = 3) -> BenchRow:
         large = _fastest(lambda: session.inspect(large_text), repeats)
         protected = session.protect(large_text)
         restore = _fastest(lambda: session.restore(protected.protected_text), repeats)
+        peak = _peak_per_character(lambda: session.protect(large_text), len(large_text))
 
     return BenchRow(
         shape=shape,
@@ -123,6 +156,7 @@ def measure(config: MamoriConfig, shape: str, *, repeats: int = 3) -> BenchRow:
         protect_chars_per_ms=round(LARGE / max(large * 1000, 1e-9)),
         growth=round(large / max(small, 1e-9), 1),
         entities=protected.entity_count,
+        peak_bytes_per_char=round(peak, 1),
     )
 
 
@@ -145,7 +179,7 @@ def run_bench(
 
     print(
         f"{'shape':<18} {'chars':>8} {'protect':>10} {'restore':>10} "
-        f"{'chars/ms':>9} {'x4 growth':>10} {'found':>6}",
+        f"{'chars/ms':>9} {'x4 growth':>10} {'B/char':>8} {'found':>6}",
         file=stream,
     )
     for row in rows:
@@ -153,14 +187,16 @@ def run_bench(
         print(
             f"{row.shape:<18} {row.characters:>8,} {row.protect_ms:>8.1f}ms "
             f"{row.restore_ms:>8.1f}ms {row.protect_chars_per_ms:>9,.0f} "
-            f"{row.growth:>10.1f}{row.entities:>6}{flag}",
+            f"{row.growth:>10.1f}{row.peak_bytes_per_char:>8.1f}{row.entities:>6}{flag}",
             file=stream,
         )
     print(
         "\nchars/ms is the number to compare across machines. x4 growth is protect\n"
         "at 100,000 characters over protect at 25,000: about 4 is linear, about 16\n"
-        "is the quadratic 0.33 removed. Synthetic documents on purpose -- a number\n"
-        "somebody else can reproduce. Leak rates are `mamori eval`, not this.",
+        "is the quadratic 0.33 removed. B/char is peak Python allocation per input\n"
+        "character, which decides how many documents a proxy can have in flight;\n"
+        "it was 157 on mixed text before 0.34. Synthetic documents on purpose -- a\n"
+        "number somebody else can reproduce. Leak rates are `mamori eval`, not this.",
         file=stream,
     )
     return 0

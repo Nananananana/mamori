@@ -41,6 +41,31 @@ class TestItMeasuresWhatItSaysItMeasures:
 
 
 class TestTheCommandLine:
+    def test_memory_is_reported_and_is_a_real_measurement(self) -> None:
+        """Added in 0.34, when it turned out nothing had ever measured it.
+
+        A shape with nothing to find allocates almost nothing beyond the text
+        it was handed -- the identity fast path returns the same string object
+        rather than a copy -- and a shape dense with findings allocates for
+        each of them. If those two came out the same, the column would be
+        measuring the harness rather than the run.
+        """
+        empty = measure(MamoriConfig(), "nothing-sensitive", repeats=1)
+        dense = measure(MamoriConfig(), "mixed-email", repeats=1)
+
+        assert empty.peak_bytes_per_char >= 0
+        assert empty.peak_bytes_per_char < 5, (
+            f"{empty.peak_bytes_per_char} bytes per character for a document with nothing in it"
+        )
+        assert dense.peak_bytes_per_char > empty.peak_bytes_per_char
+
+    def test_memory_did_not_go_back_to_what_it_was(self) -> None:
+        """157 bytes per input character, before 0.34. The ceiling is loose
+        enough that ordinary work under it does not argue with it, and tight
+        enough that the offset map coming back is red."""
+        row = measure(MamoriConfig(), "mixed-email", repeats=1)
+        assert row.peak_bytes_per_char < 110, f"{row.peak_bytes_per_char} bytes per character"
+
     def test_json_rows_are_the_dataclass(self, capsys: object) -> None:
         out = io.StringIO()
         assert (
