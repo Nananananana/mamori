@@ -76,6 +76,40 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **Half the memory of a protection was an offset map recording that character
+  40,000 is at character 40,000.** `NormalizedText` keeps, for every character
+  of the normalised text, where it came from in the original -- the structure
+  that decides whether a detected span maps back to the right characters. It
+  kept them as two tuples of Python integers: a pointer plus a boxed `int` per
+  position, twice. **Eighty bytes per input character**, on a 200 KB document
+  14 MB, against 31 MB for the whole protection.
+
+  For every shape `mamori bench` measures, that map is the identity. There was
+  already a fast path saying so -- ASCII always folds to itself, and Japanese
+  written the ordinary way does too -- and it then built the tuples anyway.
+  They are kept as `range` objects now: 48 bytes whatever the length, indexed
+  in constant time, returning the same integers. The folding path, which
+  cannot be a range, uses an `array` of machine integers instead of a tuple of
+  boxed ones.
+
+  | shape | peak, was | peak, now |
+  |---|---|---|
+  | mixed Japanese and English | 157 B/char | 77 B/char |
+  | Japanese prose | 160 B/char | 80 B/char |
+  | English prose | 108 B/char | 28 B/char |
+  | a base64 blob | 83 B/char | 3 B/char |
+
+  Time is unchanged: measured A/B twice in each direction, and the spread
+  between two runs of the *same* build was larger than the difference between
+  builds. This buys memory, and says so rather than claiming a speedup it did
+  not get.
+
+  Memory had never been measured at all -- `mamori bench` reports time, because
+  time was the cost that had bitten. `tests/test_scaling.py` now holds peak
+  allocation per input character to a ceiling, on both paths and on a whole
+  protection.
+
+
 - **A settings file nobody named could point the detection pass anywhere.**
   Settings are discovered by walking up from the working directory, the way
   every tool of this shape does. That is right for a stance or a threshold. It

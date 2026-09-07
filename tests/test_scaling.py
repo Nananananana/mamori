@@ -24,18 +24,15 @@ email rules and nothing else. This file is what keeps that true.
 
 from __future__ import annotations
 
+import gc
 import time
+import tracemalloc
 from collections.abc import Callable
 from typing import Any, ClassVar
 
 import pytest
 
 from mamori import MamoriConfig
-from mamori.domain.placeholder import Placeholder
-from mamori.domain.placeholder_matching import scan_placeholders
-from mamori.infrastructure.detectors.custom import ADVERSARIAL_SHAPES
-from mamori.infrastructure.detectors.locales import resolve_locales
-from mamori.infrastructure.detectors.patterns import UNIVERSAL_RULES
 
 #: Shapes chosen to make a backtracking engine work: long runs of the
 #: characters the rules are built out of, with no match anywhere in them.
@@ -48,6 +45,13 @@ from mamori.infrastructure.detectors.patterns import UNIVERSAL_RULES
 #: a shipped rule broke is the same shape a user's rule is held to. The
 #: entries below the loop are test-only extras that make sense against a
 #: hundred rules and not against one.
+from mamori.domain.normalization import NormalizedText
+from mamori.domain.placeholder import Placeholder
+from mamori.domain.placeholder_matching import scan_placeholders
+from mamori.domain.policy import PrivacyPolicy
+from mamori.infrastructure.detectors.custom import ADVERSARIAL_SHAPES
+from mamori.infrastructure.detectors.locales import resolve_locales
+from mamori.infrastructure.detectors.patterns import UNIVERSAL_RULES
 
 
 def _repeated(unit: str) -> Callable[[int], str]:
@@ -115,6 +119,119 @@ def _all_rules() -> list[tuple[str, object]]:
     for pack in resolve_locales(None):
         found.extend((pack.code, rule) for rule in pack.rules)
     return found
+
+
+def _peak_per_character(work: Callable[[], object], size: int) -> float:
+    """Bytes of peak Python allocation per input character.
+
+    `tracemalloc` counts what Python allocated, not RSS. That is the right
+    number here: what varies with the document is objects this library makes,
+    and the interpreter's own floor is a constant that would only blur the
+    measurement.
+    """
+    gc.collect()
+    tracemalloc.start()
+    before = tracemalloc.get_traced_memory()[0]
+    held = work()
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert held is not None
+    return (peak - before) / size
+
+
+class TestMemoryIsAlsoACost:
+    """Peak allocation per input character, which nothing measured until 0.34.
+
+    `mamori bench` measures time. Time was the cost that had bitten -- two
+    quadratics in 0.33 -- so time is what got a command. But the proxy holds
+    one thread per connection, and how many documents a machine can have in
+    flight is decided by this number, not by that one.
+
+    Measured when this class was written: a `protect` peaked at **157 bytes
+    per input character**, and **80 of those were an offset map** that, for
+    every one of the bench shapes, was `range(n)` and `range(1, n + 1)`
+    materialised into tuples of boxed integers. A 200 KB document paid 14 MB
+    to write down that character 40,000 is at character 40,000.
+    """
+
+    SIZE: ClassVar[int] = 120_000
+
+    def document(self, unit: str) -> str:
+        text = unit
+        while len(text) < self.SIZE:
+            text += text
+        return text[: self.SIZE]
+
+    @pytest.mark.parametrize(
+        ("label", "unit"),
+        [
+            ("ascii", "Dear Jane Doe, please contact john.smith@example.com.\n"),
+            ("japanese", "田中太郎さんへ。tanaka@example.com までご返信ください。\n"),
+        ],
+    )
+    def test_an_offset_map_that_is_the_identity_costs_nothing(self, label: str, unit: str) -> None:
+        """The common case, and the one that was paying the most.
+
+        Both of these normalize to themselves -- ASCII always does, and
+        Japanese written the ordinary way does too. `NormalizedText.of`
+        already had a fast path saying so; it then built the two tuples
+        anyway, one boxed `int` per character in each.
+        """
+        text = self.document(unit)
+        normalized = NormalizedText.of(text)
+        assert normalized.text == text, "this sample was supposed to fold to itself"
+
+        cost = _peak_per_character(lambda: NormalizedText.of(text), len(text))
+        assert cost < 8, f"{label}: {cost:.1f} bytes per character for an identity map"
+
+    def test_the_map_still_maps(self) -> None:
+        """The saving is only a saving if the answers did not change.
+
+        Every position in a document long enough to be past the small-integer
+        cache, where a `range` and a tuple of boxed integers stop being
+        interchangeable by accident and start being interchangeable because
+        indexing is indexing.
+        """
+        text = self.document("Contact john.smith@example.com or Jane Doe.\n")
+        normalized = NormalizedText.of(text)
+        for start in range(0, len(text) - 4, 997):
+            span = normalized.to_original_span(start, start + 4)
+            assert (span.start, span.end) == (start, start + 4)
+            assert text[span.start : span.end] == normalized.text[start : start + 4]
+
+    def test_a_fold_that_is_not_the_identity_still_maps(self) -> None:
+        """The slow path, which cannot be a `range` and is measured separately.
+
+        Half-width katakana is the shape that made this map necessary: `ﾀ` plus
+        `ﾞ` is two characters that fold to one, so normalized position and
+        original position stop agreeing and every later character is shifted.
+        """
+        text = "ﾀﾞﾝｽ " * 4000
+        normalized = NormalizedText.of(text)
+        assert normalized.text != text
+
+        for start in range(0, len(normalized.text) - 2, 331):
+            span = normalized.to_original_span(start, start + 2)
+            assert span.end > span.start
+            assert 0 <= span.start < span.end <= len(text)
+
+        cost = _peak_per_character(lambda: NormalizedText.of(text), len(text))
+        assert cost < 70, f"{cost:.1f} bytes per character on the folding path"
+
+    def test_a_whole_protection_stays_under_what_it_used_to_cost(self) -> None:
+        """The number a deployment actually feels, with a wide margin.
+
+        This is not a target. It is the ceiling that says the offset map did
+        not come back, and it is loose enough that ordinary work under it
+        does not have to argue with it.
+        """
+        text = self.document(
+            "田中太郎さんへ\n株式会社さくら商事の佐藤花子です。tanaka@example.com か "
+            "090-1234-5678 へ。\nCC: Mr. John Smith (Acme Inc.), 415-555-0198.\n"
+        )
+        session = MamoriConfig().session(policy=PrivacyPolicy.permissive())
+        cost = _peak_per_character(lambda: session.protect(text), len(text))
+        assert cost < 130, f"{cost:.1f} bytes per input character at peak"
 
 
 class TestNoRuleIsSuperlinear:

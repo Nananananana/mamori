@@ -167,15 +167,24 @@ class TestTheIdentityFastPathIsTheSlowPath:
         fast = NormalizedText.of(text)
         expected_text, starts, ends = normalized_reference(text)
         assert fast.text == expected_text
-        assert fast._starts == starts
-        assert fast._ends == ends
+        # Compared as sequences of offsets, not as containers. Since 0.34 the
+        # identity path keeps its map as a `range` and the folding path as an
+        # `array`, because a tuple of boxed integers was eighty bytes per
+        # input character. The claim being made here is that the two paths
+        # produce the same offsets, which is what this now says.
+        assert list(fast._starts) == list(starts)
+        assert list(fast._ends) == list(ends)
 
     @SETTINGS
     @given(text=any_text)
     def test_on_arbitrary_text(self, text: str) -> None:
         fast = NormalizedText.of(text)
         expected_text, starts, ends = normalized_reference(text)
-        assert (fast.text, fast._starts, fast._ends) == (expected_text, starts, ends)
+        assert (fast.text, list(fast._starts), list(fast._ends)) == (
+            expected_text,
+            list(starts),
+            list(ends),
+        )
 
     def test_the_fast_path_is_actually_taken(self) -> None:
         """Otherwise the two tests above compare the slow path with itself."""
@@ -188,5 +197,5 @@ class TestTheIdentityFastPathIsTheSlowPath:
     def test_the_case_that_broke_the_first_version(self) -> None:
         fast = NormalizedText.of("1゙")
         assert fast.text == "1゙"
-        assert fast._starts == (0, 0)
-        assert fast._ends == (2, 2)
+        assert list(fast._starts) == [0, 0]
+        assert list(fast._ends) == [2, 2]

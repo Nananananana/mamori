@@ -40,6 +40,8 @@ below is what says so.
 from __future__ import annotations
 
 import unicodedata
+from array import array
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -55,9 +57,15 @@ class NormalizedText:
     original: str = field(repr=False)
     text: str = field(repr=False)
     #: For normalized index i, the original index it starts at.
-    _starts: tuple[int, ...] = field(repr=False)
+    #:
+    #: A `Sequence[int]`, not a tuple, and the difference is the whole memory
+    #: profile of this class. When the fold is the identity this is
+    #: ``range(n)`` -- 48 bytes whatever `n` is -- and when it is not, it is an
+    #: `array` of machine integers rather than a tuple of boxed ones. Both are
+    #: read the same way and only through `to_original_span`.
+    _starts: Sequence[int] = field(repr=False)
     #: For normalized index i, the original index just past its source char.
-    _ends: tuple[int, ...] = field(repr=False)
+    _ends: Sequence[int] = field(repr=False)
 
     @classmethod
     def of(cls, original: str) -> NormalizedText:
@@ -68,12 +76,19 @@ class NormalizedText:
             # loop over every character. ASCII always qualifies; Japanese
             # written the ordinary way -- composed kana, nothing half-width --
             # qualifies too, and `_is_identity` says exactly when.
-            positions = tuple(range(len(original)))
+            #
+            # The ranges are kept as ranges. Calling `tuple()` on them was
+            # **eighty bytes per input character** -- a pointer and a boxed
+            # `int` per position, twice -- to write down that character 40,000
+            # starts at character 40,000. Measured on a 200 KB document: 14 MB
+            # for the map, against 31 MB for the whole protection. `range`
+            # indexes in constant time and returns the same integers, and
+            # nothing outside this class reads either field.
             return cls(
                 original=original,
                 text=original,
-                _starts=positions,
-                _ends=tuple(range(1, len(original) + 1)),
+                _starts=range(len(original)),
+                _ends=range(1, len(original) + 1),
             )
         return cls._of_slowly(original)
 
@@ -81,8 +96,12 @@ class NormalizedText:
     def _of_slowly(cls, original: str) -> NormalizedText:
         """The general case: group, fold each group, record where it came from."""
         chunks: list[str] = []
-        starts: list[int] = []
-        ends: list[int] = []
+        # `array` rather than `list`, for the same reason as the ranges above:
+        # a machine integer each instead of a pointer to a boxed one. `q` is
+        # signed 64-bit on every platform, which no document is going to
+        # exhaust, and unlike `i` its width is not left to the C compiler.
+        starts = array("q")
+        ends = array("q")
         index = 0
         length = len(original)
         while index < length:
@@ -108,8 +127,8 @@ class NormalizedText:
         return cls(
             original=original,
             text="".join(chunks),
-            _starts=tuple(starts),
-            _ends=tuple(ends),
+            _starts=starts,
+            _ends=ends,
         )
 
     def to_original_span(self, start: int, end: int) -> Span:

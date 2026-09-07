@@ -216,6 +216,12 @@ class TestDomainPurity:
         """No pydantic, no SQLAlchemy, no LLM SDK. Not even indirectly."""
         allowed_stdlib = {
             "__future__",
+            # Added in 0.34 for the offset map in `normalization.py`. A tuple
+            # of boxed integers cost eighty bytes per input character -- half
+            # the peak allocation of a whole protection -- to record where
+            # each normalised character came from. `array` stores machine
+            # integers, and is as much of the standard library as `bisect` is.
+            "array",
             # Added in 0.22 for overlap resolution, which was quadratic and
             # took thirteen seconds on a half-megabyte document. A binary
             # search over the accepted spans is the whole fix, and `bisect` is
