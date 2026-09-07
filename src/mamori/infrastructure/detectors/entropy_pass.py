@@ -132,12 +132,11 @@ class EntropyPass:
 
     def run(self, context: DetectionContext) -> Sequence[SensitiveEntity]:
         text = context.text
-        covered = context.covered()
         found: list[SensitiveEntity] = []
 
         for match in _RUN.finditer(text):
             start, end = match.span()
-            if any(index in covered for index in range(start, end)):
+            if context.overlaps(start, end):
                 # A vendor-prefixed key, an email, a URL: something with an
                 # anchor already claimed it, and an anchor beats a measurement.
                 continue

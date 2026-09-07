@@ -58,7 +58,6 @@ class CorrectionsPass:
             return []
 
         text = context.text
-        already = context.covered()
         found: list[SensitiveEntity] = []
 
         for correction in added:
@@ -66,7 +65,7 @@ class CorrectionsPass:
             if entity_type is None:  # pragma: no cover - refused at construction
                 continue
             for span in find_occurrences(text, correction.value):
-                if any(index in already for index in range(span.start, span.end)):
+                if context.overlaps(span.start, span.end):
                     # Something already covers it. A correction exists to add
                     # protection, not to relabel what is already protected.
                     continue

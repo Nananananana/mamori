@@ -30,6 +30,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ...domain import entity_types as t
+from ...domain.claimed import ClaimedSpans
 from ...domain.confidence import HIGH
 from ...domain.sensitive_entity import SensitiveEntity
 from ...domain.span import Span
@@ -103,7 +104,10 @@ class PhoneNumberPass:
             phonenumbers.is_valid_number if self._strict else phonenumbers.is_possible_number  # type: ignore[attr-defined]
         )
 
-        covered = context.covered()
+        # A copy this pass may claim into, so that two of its own findings
+        # cannot both be reported over the same characters. The context keeps
+        # what earlier passes found, unchanged.
+        covered = ClaimedSpans((e.span.start, e.span.end) for e in context.found)
         found: list[SensitiveEntity] = []
         seen: set[tuple[int, int]] = set()
         for region in self._regions:
@@ -116,7 +120,7 @@ class PhoneNumberPass:
                 if span in seen or not accepts(match.number):
                     continue
                 seen.add(span)
-                if any(index in covered for index in range(match.start, match.end)):
+                if covered.overlaps(match.start, match.end):
                     continue
                 found.append(
                     SensitiveEntity(
@@ -127,5 +131,5 @@ class PhoneNumberPass:
                         source=self._name,
                     )
                 )
-                covered |= set(range(match.start, match.end))
+                covered.add(match.start, match.end)
         return found

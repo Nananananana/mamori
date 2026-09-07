@@ -33,6 +33,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from ...domain import entity_types as t
+from ...domain.claimed import ClaimedSpans
 from ...domain.confidence import Confidence
 from ...domain.entity_types import EntityType
 from ...domain.sensitive_entity import SensitiveEntity
@@ -125,13 +126,16 @@ class NlpPass:
             # nothing -- the caller cannot tell that from a clean document.
             raise DetectionError(f"{self._name} failed: {exc}") from exc
 
-        covered = context.covered()
+        # A copy this pass may claim into, so that two of its own findings
+        # cannot both be reported over the same characters. The context keeps
+        # what earlier passes found, unchanged.
+        covered = ClaimedSpans((e.span.start, e.span.end) for e in context.found)
         found: list[SensitiveEntity] = []
         for entity in seen:
             entity_type = self._resolve(entity, text)
             if entity_type is None:
                 continue
-            if any(index in covered for index in range(entity.span.start, entity.span.end)):
+            if covered.overlaps(entity.span.start, entity.span.end):
                 # A rule with an anchor already claimed it. An anchor beats a
                 # model, and reporting the same span twice is noise the
                 # resolver would have to settle anyway.
@@ -145,7 +149,7 @@ class NlpPass:
                     source=self._name,
                 )
             )
-            covered |= set(range(entity.span.start, entity.span.end))
+            covered.add(entity.span.start, entity.span.end)
         return found
 
     def _resolve(self, entity: RecognizedEntity, text: str) -> EntityType | None:

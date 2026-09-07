@@ -157,11 +157,10 @@ class LLMDetectionPass:
         if unparsable and self._require_model:
             raise DetectionError(self._name, ValueError("; ".join(rejected)))
 
-        already = context.covered()
         return [
             entity
             for entity in _deduplicated(found)
-            if not any(index in already for index in range(entity.span.start, entity.span.end))
+            if not context.overlaps(entity.span.start, entity.span.end)
         ]
 
     def _request(self, text: str) -> LLMRequest:

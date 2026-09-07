@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ...domain import entity_types as t
+from ...domain.claimed import ClaimedSpans
 from ...domain.entity_types import EntityType
 from ...domain.occurrences import find_occurrences
 from ...domain.sensitive_entity import SensitiveEntity
@@ -84,12 +85,16 @@ class CoOccurrencePass:
         if not seeds:
             return []
 
-        covered = context.covered()
+        # A copy, because this pass claims each occurrence as it accepts it:
+        # two spellings of the same value must not both be reported over the
+        # same characters. The context's own ranges stay as they were, so a
+        # later pass sees what earlier passes found and not what this one did.
+        covered = ClaimedSpans((entity.span.start, entity.span.end) for entity in context.found)
         added: list[SensitiveEntity] = []
 
         for value, seed in seeds.items():
             for span in self._occurrences(context.text, value):
-                if any(index in covered for index in range(span.start, span.end)):
+                if covered.overlaps(span.start, span.end):
                     continue
                 added.append(
                     SensitiveEntity(
@@ -100,7 +105,7 @@ class CoOccurrencePass:
                         source=self._name,
                     )
                 )
-                covered |= set(range(span.start, span.end))
+                covered.add(span.start, span.end)
         return added
 
     # -- internals ---------------------------------------------------------

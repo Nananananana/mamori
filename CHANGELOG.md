@@ -76,6 +76,39 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **A set holding one integer per covered character, to state what the spans
+  already stated.** Every pass that reads prior findings asks the same
+  question: *does this candidate touch anything already found?* It was
+  answered by building a `frozenset` of every covered character index and
+  testing membership one index at a time -- a structure whose size is a
+  property of the **text** rather than of the findings.
+
+  On a 100 KB mixed Japanese/English document: 70,492 indices, **43.5 bytes
+  per input character**, 22.5 ms to build, for a fact 7,377 pairs of integers
+  already carried.
+
+  `DetectionContext.overlaps()` asks it of sorted, merged, disjoint ranges
+  instead -- one binary search. `covered()` stays, because it is part of the
+  port and somebody's pass may read it; nothing shipped here does.
+
+  Peak allocation and throughput, on the same commit, best of four runs:
+
+  | shape | peak was | peak now | speed was | speed now |
+  |---|---|---|---|---|
+  | mixed Japanese and English | 78 B/char | 68 B/char | 273 c/ms | 330 c/ms |
+  | Japanese prose | 80 B/char | 69 B/char | 332 c/ms | 356 c/ms |
+  | English prose | 40 B/char | 19 B/char | 897 c/ms | 1019 c/ms |
+  | a JSON payload | | | 694 c/ms | 859 c/ms |
+
+  Together with the offset-map change above, peak allocation for a protection
+  is down from 157 to 68 bytes per input character on mixed text, and from 108
+  to 19 on English prose.
+
+  Three passes claim their own findings as they accept them, so the ranges are
+  mutable and `add` merges. `ClaimedSpans` is checked against the set it
+  replaced by property test, in both directions and incrementally.
+
+
 - **A fourth quadratic, in a document with two languages in it.** When one
   language pack's evidence appears only in parts of a document -- kana in some
   sentences and not others -- the other pack is run and its hits are filtered
