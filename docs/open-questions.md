@@ -13,28 +13,34 @@ in a commit message, or nowhere.
 
 ---
 
-## A Chinese mobile number leaks at the balanced stance
+## A *bare* Chinese mobile number leaks at the balanced stance
 
-`Call me on 13812345678 tomorrow.` has no Chinese in it, so the `zh` pack never
-runs. At the default recall-first stance the wide digit-run rule covers it as
-an `IDENTIFIER` — the wrong type, but not a leak. At **balanced**, the wide tier
-is off and the number leaves the machine.
+**Half of this was closed in `0.33`, and closing it found the gap was worse
+than written here.** `Call me on 138-1234-5678 tomorrow.` — the *separated*
+form — leaked under **both** stances, not just balanced: the wide digit-run
+rule wants eight to twenty bare digits with no hyphen beside them, so it never
+saw a number with hyphens in it either. Three digits, four and four, beginning
+`1[3-9]`, is a shape that means one thing, which is the argument that earned
+`070|080|090` its place in the universal rules, and it is there now.
 
-This is the same shape as the Japanese mobile number fixed in `0.27`, and the
-fix that worked there does not transfer. `070|080|090` followed by four and
-four, with separators, is a shape that means one thing. `1[3-9]` followed by
-nine digits is eleven bare digits, and promoting it to the universal rules
-redacts `Order 13812345678` and `Ref 15000000000` — measured, both of them.
+What remains is the bare form. `Call me on 13812345678 tomorrow.` has no
+Chinese in it, so the `zh` pack never runs. At the default recall-first stance
+the wide digit-run rule covers it as an `IDENTIFIER` — the wrong type, but not
+a leak. At **balanced**, the wide tier is off and the number leaves the
+machine.
 
-The cost falls precisely on what the balanced stance is for. So the honest
-statement is that the gap is real and the obvious fix is worse than the gap,
-not that there is nothing here.
+`1[3-9]` followed by nine digits is eleven bare digits and nothing else, and
+promoting *that* to the universal rules redacts `Order 13812345678` and
+`Ref 15000000000` — measured, both of them, and both still measured as a test
+so the line stays where it is. The cost falls precisely on what the balanced
+stance is for. So the honest statement is that the remaining gap is real and
+the obvious fix is worse than the gap, not that there is nothing here.
 
-**Settled by** any of: a `zh` mobile pattern with an anchor cheap enough to run
-universally; evidence from a real corpus that eleven-digit identifiers starting
-`1[3-9]` are rare enough that the trade flips; or a decision that the balanced
-stance does not promise national formats outside their own script, written down
-as an ADR so that it is a decision instead of a gap.
+**Settled by** either: evidence from a real corpus that eleven-digit
+identifiers starting `1[3-9]` are rare enough that the trade flips; or a
+decision that the balanced stance does not promise *unseparated* national
+formats outside their own script, written down as an ADR so that it is a
+decision instead of a gap.
 
 ---
 

@@ -117,7 +117,7 @@ table was hand-copied until 0.28 and three of its rows had drifted:
 
 | Set | Samples | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|---|
-| `en-core` | 53 fragments | 0.62% | 0.71% | 0.980 / 0.980 |
+| `en-core` | 54 fragments | 0.60% | 0.69% | 0.981 / 0.981 |
 | `ja-core` | 54 fragments | 0.00% | 2.44% | 0.955 / 1.000 |
 | `zh-core` | 27 fragments | 0.00% | 2.94% | 0.875 / 1.000 |
 | `en-docs` | 8 documents | **2.65%** | 0.90% | 0.930 / 0.883 |
@@ -137,7 +137,7 @@ the table above. The rules are unchanged; this is what the model adds:
 
 | Set | Leak, rules | Leak, `+gliner` | Over-redaction, rules | `+gliner` |
 |---|---|---|---|---|
-| `en-core` | 0.62% | **0.00%** | 0.71% | 1.20% |
+| `en-core` | 0.60% | **0.00%** | 0.69% | 1.17% |
 | `en-docs` | 2.65% | **0.00%** | 0.90% | 1.56% |
 | `ja-core` | 0.00% | 0.00% | 2.44% | 2.95% |
 | `ja-docs` | 0.33% | **0.00%** | 1.06% | 3.95% |

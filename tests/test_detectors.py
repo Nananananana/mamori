@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from mamori import PrivacySession
+from mamori import MamoriConfig, PrivacySession
 from mamori.domain.normalization import NormalizedText
+from mamori.domain.stance import Stance
 from mamori.infrastructure.detectors import (
     JAPANESE,
     UNIVERSAL_RULES,
@@ -354,6 +355,64 @@ class TestANumberWithNoScriptAroundIt:
         no evidence of its own, so the script around it has to be the
         evidence, and it stays in the language pack."""
         assert "PHONE" not in PrivacySession(locales=["en"]).protect(text).protected_text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Call me on 138-1234-5678 tomorrow.",
+            "Call me on 138 1234 5678 tomorrow.",
+            "Zhang,159-8888-7777,zhang@example.com",
+            '{"contact": "186-0000-1111"}',
+            "138-1234-5678",
+        ],
+    )
+    def test_a_separated_chinese_mobile_is_found_with_no_chinese_present(self, text: str) -> None:
+        """The same gap, in the other language, and worse than it was recorded.
+
+        `docs/open-questions.md` had this as a balanced-stance leak. Measured
+        while closing it: the **separated** form leaked under *both* stances,
+        because the wide digit-run rule wants eight to twenty bare digits with
+        no hyphen beside them and so never saw `138-1234-5678` either.
+        """
+        session = MamoriConfig(locales=("en",), stance=Stance.BALANCED).session()
+        protected = session.protect(text).protected_text
+        assert "PHONE" in protected
+        for digits in ("138-1234-5678", "138 1234 5678", "159-8888-7777", "186-0000-1111"):
+            assert digits not in protected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Order 13812345678 shipped.",
+            "Ref 15000000000 in the ledger.",
+            "Batch 19999999999 was reprocessed.",
+        ],
+    )
+    def test_the_bare_chinese_form_stays_out_of_the_universal_rules(self, text: str) -> None:
+        """`1[3-9]` and nine bare digits is eleven digits and nothing else.
+
+        These three are the same shape as a real number, measured, so
+        promoting the bare form would spend precision exactly where the
+        balanced stance is meant to have it. It stays an `IDENTIFIER` under
+        recall-first and an open question under balanced.
+        """
+        session = MamoriConfig(locales=("en",), stance=Stance.BALANCED).session()
+        assert "PHONE" not in session.protect(text).protected_text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Version 15-1000-0001 released.",
+            "ISBN 978-4-1234-5678 published.",
+            "Date 2024-1234-5678 nonsense.",
+            "Due 05-12-2024 at noon.",
+        ],
+    )
+    def test_the_separated_shape_does_not_take_ordinary_numbers(self, text: str) -> None:
+        """Three digits, four and four, beginning `1[3-9]`. A version, an
+        ISBN and a date are none of those."""
+        session = MamoriConfig(locales=("en",), stance=Stance.BALANCED).session()
+        assert "PHONE" not in session.protect(text).protected_text
 
     def test_japanese_text_still_finds_the_landline(self) -> None:
         session = PrivacySession(locales=["ja"])

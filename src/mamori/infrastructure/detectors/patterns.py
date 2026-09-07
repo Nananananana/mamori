@@ -654,9 +654,35 @@ _PHONE_JP_MOBILE = compile_rule(
     MEDIUM,
 )
 
+# A Chinese mobile number that has been written with separators, here for the
+# same reason and with the same limit as the Japanese one above.
+#
+# `Call me on 138-1234-5678 tomorrow.` has no Chinese character in it, so the
+# `zh` pack never ran -- and the wide digit-run rule wants eight to twenty
+# *bare* digits with no hyphen beside them, so it did not run either.
+# Measured: that sentence leaked at **both** stances, which is worse than the
+# gap `docs/open-questions.md` had recorded, where only the balanced stance
+# was thought to be affected.
+#
+# **Only the separated form.** `1[3-9]` followed by nine bare digits is eleven
+# digits and nothing else: `Order 13812345678` and `Ref 15000000000` are the
+# same shape, both measured, and promoting that to the universal rules spends
+# precision exactly where the balanced stance is supposed to have it. Written
+# as three, four and four with separators it is a shape that means one thing --
+# nobody writes an order number that way -- which is the same argument that
+# earned `070|080|090` its place. The bare form stays where it is: an
+# `IDENTIFIER` under recall-first, an honest gap under balanced, and still an
+# open question.
+_PHONE_CN_MOBILE = compile_rule(
+    t.PHONE,
+    r"(?<![\d\-])1[3-9]\d[\-\s]\d{4}[\-\s]\d{4}(?![\d\-])",
+    MEDIUM,
+)
+
 #: Rules that hold whatever language the text is written in.
 UNIVERSAL_RULES: tuple[PatternRule, ...] = (
     _PHONE_JP_MOBILE,
+    _PHONE_CN_MOBILE,
     _EMAIL,
     _SPACED_EMAIL,
     _PHONE_E164,

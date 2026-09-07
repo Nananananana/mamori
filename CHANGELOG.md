@@ -142,6 +142,19 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **A Chinese mobile number written with separators leaked at *both*
+  stances.** `docs/open-questions.md` had this recorded as a balanced-stance
+  gap; measured while closing it, `Call me on 138-1234-5678 tomorrow.` leaked
+  under the default recall-first stance too, because the wide digit-run rule
+  wants eight to twenty *bare* digits with no hyphen beside them and so never
+  saw a separated number either. Three digits, four and four, beginning
+  `1[3-9]`, is a shape that means one thing -- the argument that earned
+  `070|080|090` its place in the universal rules -- and it is there now. The
+  **bare** form is deliberately still not matched: eleven digits beginning
+  `1[3-9]` is also `Order 13812345678` and `Ref 15000000000`, both measured
+  and both now pinned as tests, so the remaining half stays an open question
+  rather than a silent trade.
+
 - **An idle connection kept a thread for as long as it liked.**
   `ThreadingHTTPServer` gives every connection a thread and holds it until the
   client is done, so a client that writes half a request line and stops holds
