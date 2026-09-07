@@ -10,6 +10,28 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **The brief for a corpus somebody else wrote**, in
+  [docs/corpus-brief.md](docs/corpus-brief.md). `open-questions.md` has said
+  since 0.25 that every number here comes from text this project's own author
+  wrote, and what would fix it. What it did not say is *how much of what* --
+  and a standard with no scope attached is a standard nobody can act on.
+
+  400 documents across the three shipped locales, six document shapes rather
+  than prose only, a coverage floor per entity type, at least fifteen documents
+  per language long enough to catch a recogniser that silently truncates, and a
+  quarter of the material text that *looks* like a value and is not -- the half
+  that measures over-redaction, and the half a brief written from a rule list
+  forgets.
+
+  Commissioned at twice the volume, half held back unpublished: the model-tier
+  figures decay from the day the published half ships under Apache-2.0, and a
+  half that never ships is the only thing that keeps them checkable afterwards.
+
+  The coverage floor is a test rather than a list. `tests/test_corpus_brief.py`
+  compares it against the policy's own types in both directions, so a type
+  added here cannot quietly become a type the corpus would not have measured.
+
+
 - **The recognisers that need a model are measured in CI.** Seventeen tests --
   the spaCy adapter and the numbers in `gliner.py`'s docstring -- had never run
   anywhere: they skip without the package, and no job installed one. A `models`

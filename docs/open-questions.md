@@ -56,7 +56,13 @@ sibling reused this one's and reported a miss rate its own unseen data did not
 support, which is how this became a known problem rather than a suspected one.
 
 **Settled by** a corpus of documents with values in them, labelled by somebody
-who has not read these rules, which nobody has yet commissioned. Not by another
+who has not read these rules, which nobody has yet commissioned.
+[corpus-brief.md](corpus-brief.md) is the document you would hand to one:
+400 documents across the three shipped locales, six document shapes rather than
+prose only, a coverage floor per entity type, a quarter of it text that *looks*
+like a value and is not -- and commissioned at twice the volume so half can be
+held back unpublished, because the model-tier figures decay from the day the
+other half ships. Not by another
 generator, however adversarial: three of the five findings from the 900-document
 adversarial corpus were resolved by deciding what its generator should have
 been able to write, which is what a corpus refuting only its author's
