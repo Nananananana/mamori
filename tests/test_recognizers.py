@@ -307,9 +307,13 @@ class TestSpacyWhenItIsInstalled:
         [
             "I spoke to Sarah Okonkwo yesterday about the contract.",
             "Attendees: Yuki Tanaka, Marcus Lindqvist, Fatima Al-Rashid.",
-            "Reported by: Nguyen Thi Hoa",
+            # Was `Reported by: Nguyen Thi Hoa` until 0.34, when the balanced
+            # stance learned that label and began finding it -- so the case
+            # stopped saying what it was here to say. The same name in running
+            # prose has no anchor at all, which is the gap this class is about.
+            "The escalation was handled by Nguyen Thi Hoa last week.",
         ],
-        ids=["in prose", "in a list", "after a label"],
+        ids=["in prose", "in a list", "in running prose"],
     )
     def test_it_finds_names_the_balanced_stance_misses(self, text: str) -> None:
         """The whole reason it exists, stated as the comparison rather than as
@@ -503,10 +507,10 @@ class TestGlinerWhenItIsInstalled:
         [
             "I spoke to Sarah Okonkwo yesterday about the contract.",
             "Attendees: Yuki Tanaka, Marcus Lindqvist, and Priya Raman.",
-            "Reported by: Nguyen Thi Hoa",
+            "The escalation was handled by Nguyen Thi Hoa last week.",
             "Aleksandr Volkov signed off on the migration.",
         ],
-        ids=["in prose", "in a list", "after a label", "the one spacy misses"],
+        ids=["in prose", "in a list", "in running prose", "the one spacy misses"],
     )
     def test_it_finds_names_the_balanced_stance_misses(self, text: str) -> None:
         assert "PERSON" not in MamoriConfig(stance=Stance.BALANCED).session().inspect(text)

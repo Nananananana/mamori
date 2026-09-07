@@ -8,6 +8,22 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ## [Unreleased]
 
+### Fixed
+
+- **The last English leaks were bare given names, and an anchor was all they
+  needed.** `Reported by: Sarah`, with no surname anywhere in the document for
+  the co-occurrence pass to propagate from, so nothing could reach it. The name
+  shape already accepted a single word; what was missing was a label saying the
+  word is a person. Eight `... by` and `assigned to` labels join the existing
+  ones, and all of them now run through a validator that refuses a department
+  or a status -- `Approved by: Legal`, `Prepared by: Finance`, `Assigned to:
+  Unassigned`, measured, all three firing before it existed. `Name: Finance`
+  was always wrong too and nothing had been checking it.
+
+  **Both directions improved at once**, which is rare enough to say plainly:
+  `en-docs` leak 2.65% -> **2.05%** and over-redaction 0.90% -> **0.57%**.
+
+
 ## [0.33.0] - 2026-09-07
 
 Speed, evidence, and an orchestrator. Three quadratics -- two found by

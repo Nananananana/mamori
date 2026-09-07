@@ -669,20 +669,20 @@ class TestEvalTakesTheStanceFromTheConfig:
         )
         out = capsys.readouterr().out
         # The wide tier is off, so en-docs leaks a fifth of its sensitive text.
-        assert "20.02%" in out, out
+        assert "19.42%" in out, out
 
     def test_the_flag_still_wins_when_it_is_given(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         config = self._config(tmp_path, stance="balanced")
         assert main(["eval", "--locale", "en", "--config", config, "--stance", "recall_first"]) == 0
-        assert "2.65%" in capsys.readouterr().out
+        assert "2.05%" in capsys.readouterr().out
 
     def test_recall_first_is_still_the_default_with_no_config(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         assert main(["eval", "--locale", "en"]) == 0
-        assert "2.65%" in capsys.readouterr().out
+        assert "2.05%" in capsys.readouterr().out
 
     def test_the_compare_baseline_keeps_everything_but_the_model(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -694,7 +694,7 @@ class TestEvalTakesTheStanceFromTheConfig:
         config = self._config(tmp_path, stance="balanced")
         assert main(["eval", "--locale", "en", "--config", config, "--compare"]) == 0
         out = capsys.readouterr().out
-        assert "20.02%" in out, "the compare baseline lost the stance"
+        assert "19.42%" in out, "the compare baseline lost the stance"
 
 
 class TestTheCliIsAFilter:

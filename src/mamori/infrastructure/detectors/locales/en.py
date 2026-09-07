@@ -74,6 +74,24 @@ _STREET_TYPES = (
     r"|Place|Pl|Terrace|Way|Parkway|Pkwy|Square|Sq"
 )
 
+
+def _names_a_person(value: str) -> bool:
+    """Whether a label's value is a person rather than a department or a status.
+
+    `Reported by: Sarah` is what the `... by` labels were added for. The same
+    anchor also accepts `Approved by: Legal`, `Prepared by: Finance` and
+    `Assigned to: Unassigned` -- measured, all three -- because a field that
+    names a person *by construction* is a strong anchor and not an omniscient
+    one.
+
+    Applied to every label and not only the new ones: `Name: Finance` was
+    always wrong and nothing was checking it. The list is the one the wide
+    tier already keeps for the same question, which is the point -- a second
+    list would be a second thing to keep in step.
+    """
+    return not set(value.split()) & _NOT_NAME_WORDS
+
+
 RULES: tuple[PatternRule, ...] = (
     # North American numbering plan, and the common UK shapes. Separators or
     # parentheses are required: ten bare digits are usually not a phone number.
@@ -189,11 +207,24 @@ RULES: tuple[PatternRule, ...] = (
         group=1,
     ),
     # Label-anchored: Name: Jane Doe
+    #
+    # **The `... by` labels earn their place on a single-token name.** The
+    # last English leaks in the bundled corpora were bare given names --
+    # `Reported by: Sarah`, with no surname anywhere in the document for
+    # co-occurrence to propagate from. `_FULL_NAME` already accepts one word;
+    # what was missing was an anchor that says the word is a person. A field
+    # label whose value is by construction somebody is that anchor, and it
+    # costs nothing on a name that has a surname, because that case was
+    # already covered.
     compile_rule(
         t.PERSON,
-        r"(?i)(?:full\s+name|name|contact|attn|attention)\s*[:]\s*(?-i:(" + _FULL_NAME + r"))",
+        r"(?i)(?:full\s+name|name|contact|attn|attention"
+        r"|reported\s+by|raised\s+by|submitted\s+by|requested\s+by"
+        r"|prepared\s+by|approved\s+by|reviewed\s+by|assigned\s+to)"
+        r"\s*[:]\s*(?-i:(" + _FULL_NAME + r"))",
         MEDIUM,
         group=1,
+        validator=_names_a_person,
     ),
 )
 
@@ -229,6 +260,14 @@ _NOT_NAME_WORDS = frozenset({
     "LLP", "PLC", "GmbH", "AG", "SA", "NV", "BV", "Pty", "Holdings",
     "Partners", "Associates", "Ventures", "Industries", "Technologies",
     "Contract", "Agreement", "Policy", "Terms", "Conditions", "Data", "System",
+    # What a "reported by" or "assigned to" field holds when it does not hold
+    # a person. Measured against the labels added in 0.34: without these,
+    # `Approved by: Legal`, `Prepared by: Finance` and `Assigned to:
+    # Unassigned` all came back as people.
+    "Legal", "Finance", "Engineering", "Marketing", "Sales", "Operations",
+    "Compliance", "Procurement", "Facilities", "Payroll", "Admin", "Everyone",
+    "Unassigned", "Unknown", "None", "Nobody", "Anyone", "Automation",
+    "Automated", "Pending", "TBD", "TBC", "Various", "Multiple", "Self",
 })
 # fmt: on
 

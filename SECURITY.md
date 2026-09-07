@@ -120,7 +120,7 @@ table was hand-copied until 0.28 and three of its rows had drifted:
 | `en-core` | 54 fragments | 0.60% | 0.69% | 0.981 / 0.981 |
 | `ja-core` | 54 fragments | 0.00% | 2.44% | 0.955 / 1.000 |
 | `zh-core` | 27 fragments | 0.00% | 2.94% | 0.875 / 1.000 |
-| `en-docs` | 8 documents | **2.65%** | 0.90% | 0.930 / 0.883 |
+| `en-docs` | 8 documents | **2.05%** | 0.57% | 0.947 / 0.900 |
 | `ja-docs` | 8 documents | **0.33%** | 1.06% | 0.938 / 0.984 |
 | `zh-docs` | 6 documents | **0.00%** | 1.12% | 0.882 / 0.978 |
 | `en-context` | 2 packages | **0.00%** | 0.92% | 0.900 / 0.900 |
@@ -138,7 +138,7 @@ the table above. The rules are unchanged; this is what the model adds:
 | Set | Leak, rules | Leak, `+gliner` | Over-redaction, rules | `+gliner` |
 |---|---|---|---|---|
 | `en-core` | 0.60% | **0.00%** | 0.69% | 1.17% |
-| `en-docs` | 2.65% | **0.00%** | 0.90% | 1.56% |
+| `en-docs` | 2.05% | **0.00%** | 0.57% | 1.22% |
 | `ja-core` | 0.00% | 0.00% | 2.44% | 2.95% |
 | `ja-docs` | 0.33% | **0.00%** | 1.06% | 3.95% |
 | `zh-core` | 0.00% | 0.00% | 2.94% | 4.25% |
@@ -212,10 +212,10 @@ At `--stance balanced`, which runs only the anchored rules:
 
 | Set | Leak rate | Over-redaction | Entity P / R |
 |---|---|---|---|
-| `en-core` | 1.93% | 0.00% | 1.000 / 0.960 |
+| `en-core` | 3.15% | 0.00% | 1.000 / 0.943 |
 | `ja-core` | 0.68% | 0.62% | 0.984 / 0.984 |
 | `zh-core` | 0.00% | 1.63% | 0.933 / 1.000 |
-| `en-docs` | **20.02%** | 0.03% | 1.000 / 0.700 |
+| `en-docs` | **19.42%** | 0.03% | 1.000 / 0.717 |
 | `ja-docs` | 0.33% | 0.18% | 0.968 / 0.984 |
 | `zh-docs` | 2.37% | 0.40% | 0.957 / 0.978 |
 | `en-context` | **46.85%** | 0.00% | 1.000 / 0.500 |

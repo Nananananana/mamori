@@ -216,3 +216,66 @@ class TestASalutationMustNotHideTheName:
         found = types_in("Please contact Umbrella Ltd", "en", Stance.RECALL_FIRST)
         assert "COMPANY_NAME" in found
         assert "PERSON" not in found
+
+
+class TestALabelThatNamesAPerson:
+    """The last English leaks in the bundled corpora were bare given names.
+
+    `Reported by: Sarah`, with no surname anywhere in the document for the
+    co-occurrence pass to propagate from -- so nothing could reach it. The
+    name shape already accepted a single word; what was missing was an anchor
+    saying the word is a person, and a field label whose value is by
+    construction somebody is exactly that.
+
+    Measured on `en-docs`: leak 2.65% -> 2.05%, and over-redaction 0.90% ->
+    0.57% at the same time, because the validator below also removed false
+    positives the older `Name:` label had been making all along.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Reported by: Sarah",
+            "Raised by: Tom",
+            "Submitted by: Ann",
+            "Requested by: Priya",
+            "Prepared by: Marcus",
+            "Approved by: Yuki",
+            "Reviewed by: Nguyen",
+            "Assigned to: Aleksandr",
+        ],
+    )
+    def test_a_single_given_name_behind_a_label_is_found(self, text: str) -> None:
+        assert "PERSON" in en_types(text), text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Approved by: Legal",
+            "Prepared by: Finance",
+            "Assigned to: Unassigned",
+            "Reviewed by: The Board",
+            "Reported by: Automation",
+            "Submitted by: Compliance",
+            "Assigned to: Pending",
+        ],
+    )
+    def test_a_department_or_a_status_behind_the_same_label_is_not(self, text: str) -> None:
+        """A field that names a person by construction is a strong anchor and
+        not an omniscient one. All seven were measured firing before the
+        validator was added."""
+        assert "PERSON" not in en_types(text), text
+
+    def test_the_validator_covers_the_labels_that_were_there_before(self) -> None:
+        """`Name: Finance` was always wrong and nothing was checking it. One
+        list, applied to every label, rather than a second list for the new
+        ones that would need keeping in step."""
+        assert "PERSON" not in en_types("Name: Finance")
+        assert "PERSON" not in en_types("Contact: Operations")
+        assert "PERSON" in en_types("Name: Jane Doe")
+
+    def test_a_full_name_behind_a_new_label_still_works(self) -> None:
+        """The single-word case is what these labels were added for, and they
+        must not have broken the case that already worked."""
+        assert "PERSON" in en_types("Submitted by: Sarah Okonkwo")
+        assert "PERSON" in en_types("Assigned to: Priya Raman")
