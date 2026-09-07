@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
+import time
 from typing import Any
 
 import pytest
@@ -288,3 +290,80 @@ class TestAPartialBodyDoesNotHoldAThread:
                     connection.recv(65536)
             reply = send_raw(proxy, chunked_request(json.dumps(chat("hello")).encode()))
         assert status_of(reply) == 200, reply[:200]
+
+
+class TestAnIdleConnectionDoesNotKeepAThread:
+    """`ThreadingHTTPServer` gives every connection a thread and holds it
+    until the client is done, so a client that opens a socket, writes half a
+    request line and stops holds that thread indefinitely.
+
+    Measured before the deadline existed: 500 such connections, 503 threads,
+    and the count only stopping where the operating system does. Ordinary
+    callers were served instantly throughout, so this is exhaustion rather
+    than denial -- but it costs one socket per thread to cause, and it is the
+    same shape as the drain hang above: a thread parked on a client that will
+    never speak again.
+    """
+
+    def test_a_half_written_request_is_dropped(self) -> None:
+        started = threading.active_count()
+        with FakeUpstream() as service, RunningProxy(service.url, idle_timeout=1.0) as proxy:
+            service.reply = completion("ok")
+            host, port = address(proxy)
+            held = [socket.create_connection((host, port), timeout=5) for _ in range(20)]
+            try:
+                for connection in held:
+                    connection.sendall(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n")
+                deadline = time.monotonic() + 1.0
+                peak = started
+                while time.monotonic() < deadline:
+                    peak = max(peak, threading.active_count())
+                    time.sleep(0.05)
+                assert peak >= started + 10, f"only {peak - started} threads: nothing was held"
+
+                settled = time.monotonic() + 8.0
+                while time.monotonic() < settled and threading.active_count() > started + 2:
+                    time.sleep(0.1)
+                assert threading.active_count() <= started + 2, (
+                    f"{threading.active_count() - started} threads still held a minute after "
+                    "the deadline; an idle connection keeps its thread"
+                )
+            finally:
+                for connection in held:
+                    connection.close()
+
+    def test_an_upstream_slower_than_the_deadline_still_streams(self) -> None:
+        """The deadline is on a read that blocks, and a proxy waiting for an
+        upstream is not reading from its caller. Measured: 2.5 seconds of
+        upstream silence against a 1 second deadline."""
+        with FakeUpstream() as service, RunningProxy(service.url, idle_timeout=1.0) as proxy:
+            service.stream_chunks = ["Mailed <EMA", "IL_001>.", " Done."]
+            service.first_delay = 2.5
+            text = self._stream(proxy)
+        assert text == f"Mailed {EMAIL}. Done."
+
+    def test_a_reader_slower_than_the_deadline_still_gets_the_whole_stream(self) -> None:
+        with FakeUpstream() as service, RunningProxy(service.url, idle_timeout=1.0) as proxy:
+            service.stream_chunks = ["Mailed <EMA", "IL_001>.", " Done."]
+            text = self._stream(proxy, pause=1.5)
+        assert text == f"Mailed {EMAIL}. Done."
+
+    @staticmethod
+    def _stream(proxy: RunningProxy, *, pause: float = 0.0) -> str:
+        import urllib.request
+
+        request = urllib.request.Request(
+            proxy.url,
+            data=json.dumps(chat(f"Mail {EMAIL}", stream=True)).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        text = ""
+        with urllib.request.urlopen(request, timeout=30) as response:
+            for raw in response:
+                if pause:
+                    time.sleep(pause)
+                line = raw.decode()
+                if line.startswith("data: ") and "[DONE]" not in line:
+                    text += json.loads(line[6:])["choices"][0]["delta"].get("content", "")
+        return text

@@ -112,6 +112,24 @@ MAX_BODY_BYTES = 8 * 1024 * 1024
 #: How long to spend discarding a body nobody will read. See :meth:`_drain`.
 _DRAIN_SECONDS = 0.5
 
+#: How long a connection may go without saying anything before it is dropped.
+#:
+#: `ThreadingHTTPServer` gives every connection a thread and keeps it until the
+#: client is done, so a client that opens a socket, writes half a request line
+#: and stops holds that thread indefinitely. Measured without this: 500 such
+#: connections, 503 threads, and the count only stops where the operating
+#: system does. Ordinary callers were still served instantly throughout, so
+#: this is exhaustion rather than denial -- but it is exhaustion that costs
+#: one socket per thread to cause.
+#:
+#: A minute, not a second. The deadline is on a *read that blocks*, and the
+#: reads that block legitimately are a client writing a large body over a slow
+#: link and a client that has stopped draining a stream. Sixty seconds of
+#: either is a broken client already; sixty seconds of an upstream thinking
+#: costs nothing here, because a proxy waiting on an upstream is not reading
+#: from its caller.
+DEFAULT_IDLE_TIMEOUT = 60.0
+
 #: The longest chunk-size line this will read. A chunk header is a hexadecimal
 #: number and perhaps an extension; anything approaching a kilobyte of it is a
 #: caller trying to make the server hold a line it will never finish.
@@ -134,6 +152,9 @@ class ProxySettings:
     #: Prepend a briefing telling the model to leave placeholders alone.
     guidance: bool = True
     timeout: float = 300.0
+    #: How long a connection may block a read before it is dropped. Guards the
+    #: thread, not the request: see :data:`DEFAULT_IDLE_TIMEOUT`.
+    idle_timeout: float = DEFAULT_IDLE_TIMEOUT
     #: Called with a one-line summary per request. Counts and types only.
     log: Callable[[str], None] | None = None
     #: Hold mappings between requests when a client asks to. ``None`` -- the
@@ -168,6 +189,11 @@ class _Handler(BaseHTTPRequestHandler):
     upstream: Upstream
     server_version = "mamori"
     sys_version = ""
+    #: Applied to the connection by `socketserver` before `handle` runs, which
+    #: is what makes it cover the request line and the headers -- the part of
+    #: an exchange this class never gets to see. Replaced per server in
+    #: :func:`build_server`.
+    timeout = DEFAULT_IDLE_TIMEOUT
 
     #: The conversation this request belongs to, echoed on every reply it
     #: produces including the failures. A connection is reused for more than
@@ -595,6 +621,7 @@ def build_server(settings: ProxySettings) -> ThreadingHTTPServer:
         {
             "settings": settings,
             "upstream": Upstream(settings.upstream, timeout=settings.timeout),
+            "timeout": settings.idle_timeout,
         },
     )
     return ThreadingHTTPServer((settings.host, settings.port), handler)

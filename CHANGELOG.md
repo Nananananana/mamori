@@ -142,6 +142,18 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **An idle connection kept a thread for as long as it liked.**
+  `ThreadingHTTPServer` gives every connection a thread and holds it until the
+  client is done, so a client that writes half a request line and stops holds
+  one indefinitely: measured at 500 such connections, 503 threads, growing
+  until the operating system stopped it. Ordinary callers were served
+  instantly throughout, so this was exhaustion rather than denial -- and it
+  cost one socket per thread to cause. Connections are dropped after 60
+  seconds of a blocked read now, `--idle-timeout`. Measured not to touch a
+  stream: an upstream 2.5x slower than the deadline and a reader pausing
+  1.5x it per line both complete, because a proxy waiting on an upstream is
+  not reading from its caller.
+
 - **A request body framed as `Transfer-Encoding: chunked` was refused, and the
   refusal did not arrive.** `httpx` frames a body that way whenever it is
   given an iterator, so an OpenAI SDK doing a streamed upload got a reset

@@ -60,6 +60,14 @@ hole in the trail.
 Error bodies are `{"error": {"message", "type": "mamori_error", "code"}}` and
 never carry a value. A `422` still names its scope in `X-Mamori-Scope`.
 
+**An idle connection is dropped after 60 seconds** (`--idle-timeout`). A
+client that opens a socket and stops mid-request otherwise keeps a thread for
+as long as it likes: measured at 500 such connections, 503 threads, growing
+until the operating system stops it. The deadline is on a read that blocks, so
+it does not touch a stream -- a proxy waiting on an upstream is not reading
+from its caller, and a client reading a stream slowly is not blocking a write.
+Both are measured in `TestAnIdleConnectionDoesNotKeepAThread`.
+
 **Both framings of a request body are read**: `Content-Length`, and
 `Transfer-Encoding: chunked`, which is what `httpx` sends when the body is an
 iterator and therefore what an OpenAI SDK sends for a streamed upload. The

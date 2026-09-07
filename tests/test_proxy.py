@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -69,6 +70,9 @@ class FakeUpstream:
         self.reply: dict[str, Any] = completion("nothing to say")
         self.stream_chunks: list[str] = []
         self.status = 200
+        #: Seconds to wait before answering, so a test can be slower than a
+        #: proxy deadline on purpose.
+        self.first_delay = 0.0
         self._server: ThreadingHTTPServer | None = None
 
     @property
@@ -84,6 +88,8 @@ class FakeUpstream:
                 length = int(self.headers.get("Content-Length", "0"))
                 outer.received.append(json.loads(self.rfile.read(length)))
                 outer.headers.append(dict(self.headers))
+                if outer.first_delay:
+                    time.sleep(outer.first_delay)
                 if outer.stream_chunks:
                     self._stream()
                 else:

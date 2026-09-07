@@ -66,6 +66,7 @@ from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, lo
 from ...ports.detector import Detector
 from ...prompts.library import EXTERNAL_PROMPT_ID
 from ...provenance import ProtectionLedger, restoration_record
+from ..proxy.server import DEFAULT_IDLE_TIMEOUT
 from .bench import SHAPES, run_bench
 from .demo import SCENARIOS, LiveSettings, run_demo
 from .explain import audit_rules, trace_text
@@ -332,6 +333,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=8100,
         help="bind port (default 8100). 0 takes a free port and prints it on the first line",
+    )
+    serve_cmd.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=DEFAULT_IDLE_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            f"drop a connection that has blocked a read for this long "
+            f"(default {DEFAULT_IDLE_TIMEOUT:g}). Guards the thread a "
+            "half-written request would otherwise hold, and does not touch a "
+            "stream: waiting on an upstream is not reading from the caller"
+        ),
     )
     serve_cmd.add_argument(
         "--audit",
@@ -1096,6 +1109,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         upstream=args.upstream,
         host=args.host,
         port=args.port,
+        idle_timeout=args.idle_timeout,
         audit=_ledger(args, recall=config.stance.value) if args.audit else None,
         config=config,
         guidance=not args.no_guidance,
