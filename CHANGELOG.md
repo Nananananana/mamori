@@ -26,6 +26,25 @@ While the version is below `1.0.0`, the public API may change in a minor release
   catalogue promised, so a consumer checking its copy in CI is checking
   something true.
 
+### Fixed
+
+- **Exit code 2 meant two different things, one release after the catalogue
+  promised it meant one.** `argparse` exits `2` for a command line it cannot
+  read, and the catalogue reserves `2` for `PolicyViolationError` -- a
+  credential found and the request refused, which is this library working. So
+  an unknown flag, an unknown subcommand and a bad `--min-confidence` all
+  reported *"a credential was blocked"*. Sora made exactly that call --
+  `mamori serve --port 8100 errors --json`, from a manifest whose command was
+  the proxy's -- and would have recorded a refusal that never happened. A
+  refused command line is `InvalidArgument` and exit `1` now, which is what
+  the catalogue already said, and `2` means one thing.
+
+- **Exit code 1 meant two outcomes as well**, found the same hour by a
+  structural check asking whether any code maps to more than one: `1` covered
+  both `failed` and `unavailable`, so a caller could not tell a model it could
+  not reach -- worth asking again -- from a detector that will not load.
+  `ProviderError` has exit `3`.
+
 ### Changed
 
 - **The first line of stderr begins with the kind.** It was the word `error`,

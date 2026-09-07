@@ -29,6 +29,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
+from typing import NoReturn
 
 from ... import __version__
 from ...application.results import ProtectionResult, RestorationResult
@@ -44,6 +45,7 @@ from ...errors import (
     ConfigurationError,
     MamoriError,
     PolicyViolationError,
+    ProviderError,
 )
 from ...evaluation import (
     CachedProvider,
@@ -83,6 +85,16 @@ __all__ = ["build_parser", "main"]
 _EXIT_OK = 0
 _EXIT_ERROR = 1
 _EXIT_BLOCKED = 2
+#: The model or the upstream could not be reached. Its own code because it is
+#: the one failure here that **could succeed if asked again**, and a caller
+#: that cannot tell it from a detector that will not load has to choose
+#: between never retrying and retrying what cannot work.
+#:
+#: Found by a test rather than by thought: the catalogue said `exit_code: 1`
+#: for both `ProviderError` and `DetectionError` while giving them different
+#: outcomes, and a structural check asking "does one code ever mean two
+#: outcomes" caught it the hour the catalogue shipped.
+_EXIT_UNAVAILABLE = 3
 
 
 def _read_input(text: str | None, file: str | None) -> str:
@@ -104,8 +116,36 @@ def _force_utf8() -> None:
                 pass
 
 
+class _Parser(argparse.ArgumentParser):
+    """An `ArgumentParser` that refuses a command line the way this CLI does.
+
+    **`argparse` exits 2, and 2 already meant something here.** The catalogue
+    reserves it for `PolicyViolationError` -- a credential was found and the
+    request was refused, which is this library working. Measured on the
+    release that shipped the catalogue: `mamori --nonsense`, an unknown
+    subcommand, a bad `--min-confidence`, and a real blocked credential all
+    exited 2, so an orchestrator mapping codes read a typo as *"a credential
+    was blocked"*.
+
+    Sora made exactly that call -- `mamori serve --port 8100 errors --json`,
+    from a manifest whose command was the proxy's -- and recorded a refusal
+    that never happened.
+
+    So a bad command line is `InvalidArgument` and exit 1, which is what the
+    catalogue already said it was, and 2 now means one thing. `--help` and
+    `--version` are untouched: they go through `exit`, not through here.
+    """
+
+    def error(self, message: str) -> NoReturn:
+        # The kind first, because an aggregator reads the first line and
+        # `usage:` is not a kind. The usage follows for the person.
+        print(f"InvalidArgument: {message}", file=sys.stderr)
+        self.print_usage(sys.stderr)
+        raise SystemExit(_EXIT_ERROR)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="mamori",
         description="Local-first privacy layer for generative AI.",
     )
@@ -1948,6 +1988,9 @@ def main(argv: list[str] | None = None) -> int:
         # and `error:` cannot.
         _print_failure(exc)
         return _EXIT_BLOCKED
+    except ProviderError as exc:
+        _print_failure(exc)
+        return _EXIT_UNAVAILABLE
     except MamoriError as exc:
         _print_failure(exc)
         return _EXIT_ERROR

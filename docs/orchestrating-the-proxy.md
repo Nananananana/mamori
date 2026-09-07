@@ -68,6 +68,12 @@ log. `tests/test_error_catalogue.py` drives the proxy and the command line and
 compares what actually came back with what the catalogue promised, so the list
 is what happens rather than what somebody typed once.
 
+Exit codes carry the same distinction the statuses do: `0` succeeded, `1`
+failed, `2` **refused** (a credential was found; this library working), `3`
+unavailable (the model or the upstream could not be reached, and asking again
+could work). A command line this cannot read is `1` -- not `2`, which
+`argparse` would have used and which already meant refused.
+
 The first line of stderr begins with the kind -- `PolicyViolationError: ...`,
 `ConfigurationError: ...` -- so an aggregator can fold repeats on the token
 before the colon and keep nothing after it. That half is the half that can

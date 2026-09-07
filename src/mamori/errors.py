@@ -77,7 +77,7 @@ CATALOGUE: tuple[dict[str, object], ...] = (
     {
         "kind": "ProviderError",
         "status": 502,
-        "exit_code": 1,
+        "exit_code": 3,
         "outcome": "unavailable",
         "retryable": True,
         "detail": "The model or the upstream service could not be reached, or refused.",

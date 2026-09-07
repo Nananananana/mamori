@@ -240,3 +240,69 @@ class TestTheFirstTokenOfStderrIsAKind:
         for name in ("ConfigurationError", "DetectionError", "StorageError"):
             assert name in BY_KIND
             assert issubclass(getattr(mamori, name), MamoriError)
+
+
+class TestExitCodeTwoMeansOneThing:
+    """`argparse` exits 2, and 2 already meant something here.
+
+    The catalogue reserves it for `PolicyViolationError` -- a credential was
+    found and the request refused, which is this library working. Measured on
+    the release that shipped the catalogue: an unknown flag, an unknown
+    subcommand, a bad `--min-confidence` and a real blocked credential **all
+    exited 2**, so an orchestrator mapping codes read a typo as *"a credential
+    was blocked"*.
+
+    Sora made exactly that call -- `mamori serve --port 8100 errors --json`,
+    from a manifest whose command was the proxy's -- and would have recorded a
+    refusal that never happened. It fixed its side by asking the program
+    rather than a configured invocation; this is the other half, and it is the
+    half that stops the next caller repeating it.
+    """
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--nonsense"],
+            ["nosuchcommand"],
+            ["protect", "--min-confidence", "abc", "x"],
+            ["serve", "--port", "8100", "errors", "--json"],
+        ],
+        ids=["unknown flag", "unknown command", "bad value", "the call Sora made"],
+    )
+    def test_a_refused_command_line_does_not_exit_two(
+        self, argv: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as raised:
+            main(argv)
+        assert raised.value.code == BY_KIND["InvalidArgument"]["exit_code"]
+        assert raised.value.code != BY_KIND["PolicyViolationError"]["exit_code"]
+        assert capsys.readouterr().err.splitlines()[0].startswith("InvalidArgument:")
+
+    def test_a_blocked_credential_still_does(self, tmp_path: Path) -> None:
+        """The other side of the same fact: 2 has to keep meaning refused, or
+        the fix has only moved the ambiguity."""
+        path = tmp_path / "k.txt"
+        path.write_text(f"deploy with {KEY}\n", encoding="utf-8")
+        assert main(["protect", "-f", str(path)]) == 2
+
+    def test_no_two_kinds_claim_the_same_exit_code_for_different_outcomes(self) -> None:
+        """The structural half. Two kinds may share a code only if a caller
+        mapping that code to an outcome would be right either way."""
+        by_code: dict[int, set[str]] = {}
+        for entry in CATALOGUE:
+            code = entry["exit_code"]
+            if code is None:
+                continue
+            by_code.setdefault(int(code), set()).add(str(entry["outcome"]))  # type: ignore[call-overload]
+        ambiguous = {code: sorted(words) for code, words in by_code.items() if len(words) > 1}
+        assert not ambiguous, f"one exit code, two outcomes: {ambiguous}"
+
+    @pytest.mark.parametrize("argv", [["--help"], ["errors", "--json"], ["--version"]])
+    def test_success_still_exits_zero(self, argv: list[str]) -> None:
+        """`--help` and `--version` leave through `exit`, not through the
+        refusal path, and must not have been caught by it."""
+        try:
+            code = main(argv)
+        except SystemExit as exit_called:
+            code = exit_called.code  # type: ignore[assignment]
+        assert code == 0
