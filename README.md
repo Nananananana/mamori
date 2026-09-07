@@ -1661,6 +1661,7 @@ measuring it and saying no.
 | **v0.31** | Secrets as an algorithm you choose: the entropy pass `detect-secrets` and `gitleaks` run, behind a `secrets` switch that defaults to what shipped before, with a registry so a fourth algorithm is a call and a config value. Found on the way: two settings a config file could name and could not set. |
 | **v0.30** | Saying what happened without saying what it was: an opt-in audit sink that receives `protection-scope` records — the document that already carries no values. The proxy half of this row was withdrawn before it was built: the warning it called for was already there, and the check that said otherwise had searched for a property name that does not exist. |
 | **v0.33** | Speed and evidence. Two unbounded quantifiers made cost quadratic in the length of the input, so the *shape* of a document decided how long a request took — 128KB of one base64 blob took 456 seconds to restore. Both bounded by somebody else's number, and every rule surveyed against sixteen adversarial shapes. Plus GLiNER, an identifier shape that closes three leaks, `mamori.protect()`, the return half of the audit record, detection rules in the configuration file — each timed before it is accepted — and `mamori bench`, which found a third quadratic on its first run. |
+| **v0.34** | Closing what is left rather than adding what is next. The bare Chinese mobile and the unanchored English name are the two remaining leaks with no fix that is cheaper than the gap, and both are waiting on evidence rather than on effort — so the work is the evidence: a corpus somebody else wrote, and a measurement of what an eleven-digit identifier actually costs. Plus the two contract decisions `1.0` cannot ship without. |
 | **v1.0** | Not a feature: a stable API, the promises suite as the specification, and numbers with data behind them worth the word "measured". |
 
 The reasoning behind that table — what was planned and did not happen, what was
@@ -1706,6 +1707,35 @@ sharper problem: a budget spent is a value sent, so the counter becomes a thing
 worth attacking, and there is no measurement yet that says what a sensible
 budget would be. Both are in [docs/open-questions.md](docs/open-questions.md)
 with what would settle them.
+
+**What is left, in the order it is worth doing.** Nine questions are open and
+they are not equally stuck, so the order below is by what unblocks what rather
+than by how interesting each one is.
+
+1. **`pip install mamori`** — the one thing that stops somebody trying this at
+   all, and the only item on the list that needs a decision rather than work.
+   Creating a GitHub Release *is* the publication: `publish.yml` is
+   `on: release: types: [published]` with no branching. A tag alone publishes
+   nothing, which is why `0.33.0` is a version bump and not a tag.
+2. **A corpus somebody else wrote.** Every number in `SECURITY.md` comes from
+   text this project generated, which makes them a regression floor and not a
+   probability. Nothing else on this list can be settled honestly without it:
+   items 3 and 4 both end in *"evidence from a real corpus"*.
+3. **The bare Chinese mobile at the balanced stance.** Half closed in `0.33`;
+   the rest needs evidence that eleven-digit identifiers beginning `1[3-9]`
+   are rare, or an ADR saying the balanced stance does not promise unseparated
+   national formats. Either settles it; neither is guesswork.
+4. **The unanchored English name.** `The escalation was handled by Nguyen Thi
+   Hoa` has no anchor, and `0.34` took the anchored half as far as anchors go.
+   What remains needs a recogniser — which exists, costs several hundred
+   megabytes, and is measured — or a name list, which needs a corpus to price.
+5. **Two contract decisions**: when `protection-scope/1` freezes, and whether
+   identity folds case as it folds width. Both are cheap to decide and
+   expensive to change afterwards, so they belong before `1.0` rather than in
+   it.
+
+Two proposals are **declined** with reasons rather than pending: a
+destination-aware policy and a privacy budget. See below.
 
 Questions that are open rather than planned — a known gap with no good fix yet,
 a number nobody has, a decision that is owed — are in
