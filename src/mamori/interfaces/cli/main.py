@@ -69,6 +69,7 @@ from ...infrastructure.storage.encrypted import (
     DEFAULT_KEY_VARIABLE,
     generate_key,
     read_encrypted_scope,
+    require_key,
     write_encrypted_scope,
 )
 from ...infrastructure.storage.jsonfile import PLAINTEXT_WARNING, dump_scope, load_scope
@@ -1421,6 +1422,18 @@ def _cmd_protect(args: argparse.Namespace) -> int:
         )
         return _EXIT_BLOCKED
 
+    # Everything that can still refuse, asked before the first byte of
+    # anything goes to disk. The order these outputs are written in is
+    # deliberate (see the audit comment below), which means a failure in a
+    # later one lands after an earlier one has already written the values in
+    # the clear. `--permissive` is a decision to put values on disk; a failed
+    # run is not, and a caller reading a non-zero exit as "nothing happened"
+    # was wrong in exactly the case where being wrong costs the most.
+    if args.encrypt_mapping:
+        require_key()
+    if args.audit:
+        _require_writable(Path(args.audit))
+
     if args.save_mapping:
         path = Path(args.save_mapping)
         count = dump_scope(store, session.scope, path)
@@ -1466,6 +1479,24 @@ def _cmd_protect(args: argparse.Namespace) -> int:
         if result.entities:
             print(f"\n-- {result.entity_count} value(s) protected", file=sys.stderr)
     return _EXIT_OK
+
+
+def _require_writable(path: Path) -> None:
+    """Refuse a ledger path now rather than after the other outputs exist.
+
+    The ledger does not create parent directories, deliberately: a mistyped
+    path that quietly makes a tree is how an audit file ends up somewhere
+    nobody looks. That refusal used to arrive after the mapping files had been
+    written.
+    """
+    parent = path.parent if str(path.parent) else Path(".")
+    if not parent.is_dir():
+        raise ConfigurationError(
+            f"no directory {str(parent)!r} for the audit file. Create it first: "
+            "the ledger does not make directories, because a mistyped path that "
+            "quietly builds a tree is how an audit file ends up somewhere nobody "
+            "looks."
+        )
 
 
 def _ledger(args: argparse.Namespace, *, recall: str | None = None) -> ProtectionLedger:

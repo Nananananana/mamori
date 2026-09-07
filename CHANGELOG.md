@@ -10,6 +10,15 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **`python -m mamori`.** It was `No module named mamori.__main__`. The
+  console script needs the environment's script directory on `PATH`; this
+  needs an interpreter that can import the package, which is one fewer thing
+  to have set up wrongly in a container or a CI job. It is the same `main`,
+  so `mamori errors --json` describes this door too, and a test pins the three
+  exit codes through it. `__main__` is a declared layer in the architecture
+  test rather than an exception to it.
+
+
 - **`mamori errors --json`: every named way this can fail, as data.** An
   orchestrator in front of several libraries has to answer *"is this my fault
   or is something broken"* and cannot answer it from an exit code. The
@@ -27,6 +36,18 @@ While the version is below `1.0.0`, the public API may change in a minor release
   something true.
 
 ### Fixed
+
+- **A `protect` run that failed still left the values on disk in the clear.**
+  `--save-mapping` wrote the plaintext file, and *then* `--encrypt-mapping`
+  discovered there was no key and exited non-zero -- so a caller reading a
+  non-zero exit as "nothing happened" was wrong in the one case where being
+  wrong costs the most. The same shape applied to an audit path whose
+  directory does not exist, which the ledger refuses to create on purpose.
+
+  Both are asked before the first byte goes anywhere. The refusal path in the
+  same command already promised "Nothing was written"; the failure path now
+  keeps the promise as well.
+
 
 - **The trust boundary classified a different host than the one the request
   went to. Three Unicode characters were enough to get past it.** A detector

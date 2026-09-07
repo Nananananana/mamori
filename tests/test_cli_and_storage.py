@@ -212,6 +212,74 @@ class TestCli:
         assert main(["restore", "--mapping", str(mapping), protected]) == 0
         assert capsys.readouterr().out.strip() == SAMPLE
 
+    def test_a_run_that_cannot_finish_writes_no_plaintext(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`protect` promises "Nothing was written" when it refuses. It has to
+        keep the same promise when it fails.
+
+        Measured: `--save-mapping` wrote the values in the clear, and *then*
+        `--encrypt-mapping` discovered there was no key and exited non-zero.
+        A caller that reads a non-zero exit as "nothing happened" was left
+        with a file of original values it did not know about.
+        """
+        monkeypatch.delenv("MAPPING_ENCRYPTION_KEY", raising=False)
+        plain = tmp_path / "mapping.json"
+        cipher = tmp_path / "mapping.enc"
+
+        assert (
+            main(
+                [
+                    "protect",
+                    "--save-mapping",
+                    str(plain),
+                    "--encrypt-mapping",
+                    str(cipher),
+                    SAMPLE,
+                ]
+            )
+            != 0
+        )
+        assert not plain.exists(), "the failing run left the values on disk"
+        assert not cipher.exists()
+
+    def test_an_audit_path_that_cannot_be_written_is_found_first(self, tmp_path: Path) -> None:
+        """Same promise, the other way the command can fail.
+
+        The ledger does not create parent directories -- deliberately, so a
+        mistyped path does not quietly build a tree somewhere nobody looks.
+        That check used to happen after the mapping files were written.
+        """
+        plain = tmp_path / "mapping.json"
+        audit = tmp_path / "no" / "such" / "dir" / "audit.jsonl"
+
+        assert main(["protect", "--save-mapping", str(plain), "--audit", str(audit), SAMPLE]) != 0
+        assert not plain.exists(), "the failing run left the values on disk"
+
+    def test_the_key_is_checked_before_the_encrypted_file_is_opened(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A key that is present but not a Fernet key fails the same way."""
+        monkeypatch.setenv("MAPPING_ENCRYPTION_KEY", "not-a-real-key")
+        plain = tmp_path / "mapping.json"
+        cipher = tmp_path / "mapping.enc"
+
+        assert (
+            main(
+                [
+                    "protect",
+                    "--save-mapping",
+                    str(plain),
+                    "--encrypt-mapping",
+                    str(cipher),
+                    SAMPLE,
+                ]
+            )
+            != 0
+        )
+        assert not plain.exists()
+        assert not cipher.exists()
+
     def test_restore_warns_about_an_unknown_placeholder(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

@@ -18,6 +18,8 @@ through a repository never pass through this library at all.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -255,6 +257,59 @@ class TestTheLinterAsACommand:
         (tmp_path / "readme.md").write_text("Nothing here.\n", encoding="utf-8")
         assert main(["lint", str(tmp_path)]) == 0
         assert "nothing found" in capsys.readouterr().out
+
+
+class TestAskingTheProgramAboutItself:
+    """`python -m mamori`, which is how a caller with an interpreter asks.
+
+    Sora's rule, and it arrived from two libraries at once: a program is asked
+    about itself by running the program, not by a command line assembled from
+    a manifest written for something else. That rule needs an entry point that
+    works wherever the package can be imported -- the console script needs the
+    environment's script directory on `PATH`, which is one more thing to have
+    set up wrongly in a container.
+    """
+
+    def run(self, *argv: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603
+            [sys.executable, "-m", "mamori", *argv],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+
+    def test_the_module_runs_at_all(self) -> None:
+        """Until 0.34 this was `No module named mamori.__main__`."""
+        completed = self.run("--version")
+        assert completed.returncode == 0, completed.stderr
+
+    def test_the_catalogue_comes_back_through_it(self) -> None:
+        completed = self.run("errors", "--json")
+        assert completed.returncode == 0, completed.stderr
+        catalogue = json.loads(completed.stdout)
+        assert catalogue["contract"] == "mamori.errors/1-draft"
+        assert catalogue["errors"]
+
+    @pytest.mark.parametrize(
+        ("expected", "argv"),
+        [
+            (0, ("errors", "--json")),
+            (1, ("--nonsense",)),
+            (2, ("protect", "key AKIAIOSFODNN7EXAMPLE")),
+        ],
+    )
+    def test_the_exit_codes_are_the_ones_the_catalogue_promises(
+        self, expected: int, argv: tuple[str, ...]
+    ) -> None:
+        """The three Sora asked to see on real hardware, through this door.
+
+        An entry point that returned the code from somewhere other than
+        `main` would be a second set of exit codes with nothing describing
+        them, and 2 in particular has to keep meaning one thing.
+        """
+        assert self.run(*argv).returncode == expected
 
 
 class TestTheReportDescribesTheseSettings:

@@ -103,6 +103,11 @@ ALLOWED: dict[str, frozenset[str]] = {
     # same things `config` does and nothing reaches it. Separate from `config`
     # because it is a convenience over the library, not part of describing one.
     "quickstart": frozenset({"application", "config"}),
+    # `python -m mamori`. One import and one call, so that asking the program
+    # about itself needs an interpreter rather than a `PATH` with the console
+    # script on it. It is outside `interfaces` and names only `interfaces`,
+    # which is why it is the second entry allowed to reach the CLI.
+    "__main__": frozenset({"interfaces"}),
     # Exceptions are shared by everything and import nothing.
     "errors": frozenset(),
 }
@@ -112,8 +117,10 @@ ALLOWED: dict[str, frozenset[str]] = {
 #: mistake that would otherwise surface only as a strange import cycle.
 NEVER_IMPORTED = frozenset({"interfaces", "evaluation"})
 
-#: The one layer allowed to import those, because driving them is its job.
-OUTERMOST = "interfaces"
+#: The layers allowed to import those, because driving them is the job. Two,
+#: not one: the console script enters at `interfaces`, `python -m mamori`
+#: enters at `__main__`, and both are entry points rather than library code.
+OUTERMOST = frozenset({"interfaces", "__main__"})
 
 
 def source_files() -> Iterator[Path]:
@@ -184,7 +191,7 @@ class TestLayering:
     def test_nothing_imports_the_outer_layers(self, path: Path) -> None:
         layer = layer_of(path)
         for target in imported_layers(path):
-            if target in NEVER_IMPORTED and layer not in {target, OUTERMOST}:
+            if target in NEVER_IMPORTED and layer not in ({target} | OUTERMOST):
                 pytest.fail(
                     f"{path.relative_to(PACKAGE_ROOT)} imports '{target}'. Nothing "
                     "may depend on the CLI or the evaluation harness."

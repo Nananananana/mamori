@@ -75,6 +75,7 @@ interfaces ──> application ──> domain
 | `schemas/` | Frozen contract documents, shipped as package data | nothing; there is no code in it |
 | `interfaces/cli/` | Argument parsing, output formatting | everything above |
 | `interfaces/proxy/` | The OpenAI-compatible endpoint: payload walk, exchange, upstream | everything above |
+| `__main__.py` | `python -m mamori`: one import, one call, the same exit codes | `interfaces` |
 
 `domain` imports nothing else, including nothing outside the standard library.
 See [ADR 0001](adr/0001-domain-depends-on-nothing.md).

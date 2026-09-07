@@ -59,6 +59,7 @@ __all__ = [
     "KeySource",
     "generate_key",
     "read_encrypted_scope",
+    "require_key",
     "write_encrypted_scope",
 ]
 
@@ -135,6 +136,20 @@ def _resolve_key(key: KeySource | None) -> bytes:
             "choices this library declines to make on your behalf."
         ) from exc
     return material
+
+
+def require_key(key: KeySource | None = None) -> None:
+    """Fail now if there is no usable key, before anything has been written.
+
+    `protect --save-mapping A --encrypt-mapping B` used to write A in the
+    clear and *then* discover there was no key for B, exiting non-zero with
+    the original values on disk. The refusal path in the same command prints
+    "Nothing was written"; this is what lets the failure path say it too.
+
+    Takes the key the same way :func:`write_encrypted_scope` does, so what
+    passes here is what will work there.
+    """
+    _resolve_key(key)
 
 
 def write_encrypted_scope(
