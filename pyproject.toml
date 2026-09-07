@@ -38,8 +38,12 @@ dev = [
     # Exercised by the encrypted-store tests, which are skipped without it.
     "cryptography>=42",
     # Small, pure Python, and the phone tests measure it against the rules.
-    # spaCy is deliberately *not* here: it pulls a compiled stack and a model
-    # download, and the recogniser tests use a fake so they run everywhere.
+    # spaCy and GLiNER are deliberately *not* here: between them they pull a
+    # compiled stack, torch, transformers and two model downloads, which is a
+    # tax on every contributor for seventeen tests. Those seventeen run in
+    # CI's `models` job, which installs `.[dev,nlp,gliner]` and sets
+    # MAMORI_REQUIRE_MODELS so a skip there is a failure. To run them locally:
+    # `pip install -e ".[dev,nlp,gliner]" && python -m spacy download en_core_web_sm`.
     "phonenumbers>=8.13",
 ]
 

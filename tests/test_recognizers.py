@@ -17,7 +17,10 @@ mapping bug.
 
 from __future__ import annotations
 
+import importlib
+import os
 from collections.abc import Sequence
+from typing import NoReturn
 
 import pytest
 
@@ -286,18 +289,40 @@ class TestPhonePassContract(DetectionPassContract):
         return "call (415) 555-0198 tomorrow"
 
 
+#: Set by the CI job whose whole purpose is these tests. A skip is how an
+#: absent package is meant to read on a contributor's machine; it is also how a
+#: job that downloads the wrong model, or cannot reach the model host at all,
+#: would read -- and that job would then be green about nothing. With this set,
+#: every reason to skip below becomes a reason to fail.
+REQUIRE_MODELS = bool(os.environ.get("MAMORI_REQUIRE_MODELS"))
+
+
+def require(package: str) -> object:
+    """`importorskip`, unless the caller has said the package must be here."""
+    if REQUIRE_MODELS:
+        return importlib.import_module(package)
+    return pytest.importorskip(package)
+
+
+def absent(reason: str) -> NoReturn:
+    """Skip because a model is missing -- or fail, if it was promised."""
+    if REQUIRE_MODELS:
+        pytest.fail(f"MAMORI_REQUIRE_MODELS is set and the model is not usable: {reason}")
+    pytest.skip(reason)
+
+
 class TestSpacyWhenItIsInstalled:
     """The adapter, only where spaCy and a model are present. Everything above
     runs everywhere; this is the part that can be absent."""
 
     def recognizer(self) -> object:
-        pytest.importorskip("spacy")
+        require("spacy")
         from mamori.infrastructure.detectors import SpacyRecognizer
 
         try:
             return SpacyRecognizer()
         except ConfigurationError as exc:
-            pytest.skip(str(exc))
+            absent(str(exc))
 
     def test_it_satisfies_the_port(self) -> None:
         assert isinstance(self.recognizer(), NlpRecognizer)
@@ -338,7 +363,7 @@ class TestSpacyWhenItIsInstalled:
         assert "PERSON" not in smart.inspect(text)
 
     def test_a_missing_model_is_refused_when_the_session_is_built(self) -> None:
-        pytest.importorskip("spacy")
+        require("spacy")
         from mamori.infrastructure.detectors import SpacyRecognizer
 
         with pytest.raises(ConfigurationError, match="spacy download"):
@@ -472,7 +497,7 @@ class TestGlinerWhenItIsInstalled:
     """
 
     def recognizer(self, **kwargs: object) -> object:
-        pytest.importorskip("gliner")
+        require("gliner")
         from mamori.infrastructure.detectors import GlinerRecognizer
 
         key = repr(sorted(kwargs.items()))
@@ -480,7 +505,7 @@ class TestGlinerWhenItIsInstalled:
             try:
                 _LOADED[key] = GlinerRecognizer(**kwargs)  # type: ignore[arg-type]
             except ConfigurationError as exc:
-                pytest.skip(str(exc))
+                absent(str(exc))
         return _LOADED[key]
 
     def session(self) -> object:
@@ -491,12 +516,12 @@ class TestGlinerWhenItIsInstalled:
         pays for, and a wide-tier session would find them either way and prove
         nothing.
         """
-        pytest.importorskip("gliner")
+        require("gliner")
         if "session" not in _LOADED:
             try:
                 _LOADED["session"] = MamoriConfig(stance=Stance.BALANCED, nlp="gliner").session()
             except ConfigurationError as exc:
-                pytest.skip(str(exc))
+                absent(str(exc))
         return _LOADED["session"]
 
     def test_it_satisfies_the_port(self) -> None:
@@ -556,7 +581,7 @@ class TestGlinerWhenItIsInstalled:
         assert list(recognizer.entities(text)) == []  # type: ignore[attr-defined]
 
     def test_a_model_that_does_not_exist_is_refused_when_the_session_is_built(self) -> None:
-        pytest.importorskip("gliner")
+        require("gliner")
         from mamori.infrastructure.detectors import GlinerRecognizer
 
         with pytest.raises(ConfigurationError, match="could not load"):

@@ -10,6 +10,23 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Added
 
+- **The recognisers that need a model are measured in CI.** Seventeen tests --
+  the spaCy adapter and the numbers in `gliner.py`'s docstring -- had never run
+  anywhere: they skip without the package, and no job installed one. A `models`
+  job now installs `.[dev,nlp,gliner]` and the spaCy model, caches the GLiNER
+  weights, and runs them.
+
+  It sets `MAMORI_REQUIRE_MODELS`, which turns every skip in that file into a
+  failure. Without it the job would be green the day the model host renamed
+  something: the tests would skip, pytest would exit 0, and nothing would say
+  the recognisers had stopped being measured. A job whose whole purpose is
+  those tests has to fail when it did not run them.
+
+  Neither package is in `[dev]`. Between them they pull torch, transformers and
+  two model downloads, which is a tax on every contributor for seventeen tests.
+  `pip install -e ".[dev,nlp,gliner]"` runs them locally.
+
+
 - **`python -m mamori`.** It was `No module named mamori.__main__`. The
   console script needs the environment's script directory on `PATH`; this
   needs an interpreter that can import the package, which is one fewer thing
