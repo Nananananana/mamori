@@ -393,7 +393,8 @@ The long form, including what is in and out of scope for each threat, is in
 | Sensitive values reach logs or tracebacks | Mitigated; values are excluded from every `repr`, and the library logs nothing |
 | Prompt injection in the input steers a detector | Partly mitigated. Pattern rules and the co-occurrence pass cannot be argued with. The local-model pass can be, and the worst a successful injection achieves is silencing it: proposals only ever add, so the rules still run |
 | A model hallucinates a span and the wrong text is replaced | Prevented. Offsets must lie inside the text and the reported value must be exactly the characters between them, or the candidate is dropped |
-| A detector sends the unprotected text somewhere | Prevented by default. The model provider refuses a non-local URL unless explicitly overridden |
+| A detector sends the unprotected text somewhere | Prevented by default. The model provider refuses a URL outside the trust boundary, and the host is read the way the HTTP client reads it -- a name written with a Unicode label separator, or an address in `inet_aton` notation, used to be classified as internal and is not |
+| A settings file in a cloned repository points the detector somewhere | Mitigated since 0.34. A discovered file may not set the boundary to `anywhere`; `protect` and `inspect` name the endpoint on stderr whenever it is not this machine |
 | An input crafted to be undetectable | **Not mitigated.** No detector set is complete |
 | Local machine compromise | **Out of scope** |
 | Re-identification from what remains | **Not mitigated.** Removing names does not remove a distinctive combination of facts |
