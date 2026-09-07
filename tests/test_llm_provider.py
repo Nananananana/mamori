@@ -147,6 +147,89 @@ class TestClassifyHost:
     def test_an_empty_host(self) -> None:
         assert classify_host("") is HostKind.EXTERNAL
 
+    @pytest.mark.parametrize(
+        ("label", "host"),
+        [
+            ("ideographic full stop", "api\u3002openai\u3002com"),
+            ("fullwidth full stop", "api\uff0eopenai\uff0ecom"),
+            ("halfwidth ideographic stop", "api\uff61openai\uff61com"),
+        ],
+    )
+    def test_a_separator_this_module_does_not_read_as_a_dot(self, label: str, host: str) -> None:
+        """Measured leak, not a hypothetical one.
+
+        `httpx.URL("http://api\u3002openai\u3002com/").host` is
+        `api.openai.com` -- IDNA maps all three of these characters onto the
+        label separator before the request goes out. This module split on
+        ASCII `.` only, saw one label, and applied the rule that a single-label
+        name cannot be public. So the default boundary admitted
+        `http://api\u3002openai\u3002com/v1/` and the detector sent the
+        unprotected document to OpenAI.
+
+        The rule is that this module has to see the host the client will send
+        to, not the host the config file spells.
+        """
+        assert classify_host(host) is HostKind.EXTERNAL
+        assert not EndpointPolicy().admits(f"http://{host}/v1/")
+
+    @pytest.mark.parametrize("host", ["gpu\uff0ecorp", "llm\u3002internal", "nas\uff61local"])
+    def test_the_same_separator_read_the_same_way_for_an_internal_name(self, host: str) -> None:
+        """The mapping has to be a mapping, not a rejection.
+
+        Refusing every non-ASCII host would close the leak above just as
+        well, and would also refuse an operator who typed a fullwidth dot
+        into their config for an internal box. The client sends that request
+        to `gpu.corp`, which is internal, so the answer is `private` -- this
+        module reads the name the client's way in both directions or it is
+        not reading it the client's way at all.
+        """
+        assert classify_host(host) is HostKind.PRIVATE
+
+    def test_a_lookalike_letter_is_not_the_name_it_resembles(self) -> None:
+        """`l\u03bfcalhost` is Greek omicron. It is not localhost, and the
+        single-label rule would otherwise have called it internal on the
+        strength of a character nobody can see."""
+        assert classify_host("l\u03bfcalhost") is HostKind.EXTERNAL
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "2130706433",  # 127.0.0.1 as a 32-bit integer
+            "1560984610",  # a public address, same notation
+            "0177.0.0.1",  # octal
+            "0x7f.0.0.1",  # hex
+            "127.1",  # inet_aton's short form
+        ],
+    )
+    def test_an_address_written_in_a_form_this_module_cannot_read(self, host: str) -> None:
+        """Refused rather than guessed at.
+
+        `inet_aton` accepts all of these and glibc's resolver goes through
+        `inet_aton` first, so on Linux `curl http://1560984610/` reaches a
+        public host. Here they parsed as neither an address nor a dotted name,
+        fell through to the single-label rule, and came out `private`.
+
+        This module does not decode them. It says so instead of vouching for
+        them: an all-numeric final label is an address in some notation, and
+        RFC 1123 forbids it being a hostname.
+        """
+        assert classify_host(host) is HostKind.EXTERNAL
+
+    def test_the_root_label_is_not_a_second_label(self) -> None:
+        """`localhost.` is localhost with the root written out. It had a dot
+        in it, so it missed both the loopback names and the single-label rule,
+        and a correctly-spelled FQDN was refused."""
+        assert classify_host("localhost.") is HostKind.LOOPBACK
+        assert classify_host("llm01.") is HostKind.PRIVATE
+        assert classify_host("gpu.corp.") is HostKind.PRIVATE
+
+    def test_a_declaration_survives_normalisation(self) -> None:
+        """Both sides are read the same way, or a declared host stops matching
+        the moment it is written with a trailing root dot."""
+        assert classify_host("llm.example.com.", frozenset({"llm.example.com"})) is (
+            HostKind.DECLARED
+        )
+
 
 class TestTrustBoundary:
     def test_the_default_admits_this_machine(self) -> None:

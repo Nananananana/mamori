@@ -150,10 +150,33 @@ that fails is dropped and counted, and the rest of the response is kept.
 
 ### T7c — A detector sends the text somewhere
 
-*Prevented by default.* A detector sees the text **before** it is protected, so
-a detector pointed at a hosted endpoint is not a detector but the leak itself.
-`OpenAICompatibleProvider` refuses a non-local base URL unless
-`allow_remote=True` is passed, and says why.
+*Prevented by default, and it was evadable until 0.34.* A detector sees the
+text **before** it is protected, so a detector pointed at a hosted endpoint is
+not a detector but the leak itself. `OpenAICompatibleProvider` refuses a base
+URL outside the trust boundary (`private_network` by default) and says why.
+
+The check reads a hostname. **Until 0.34 it read a different hostname than the
+one the request went to**, and the gap was an evasion rather than a corner
+case: `httpx` maps three Unicode characters onto the label separator before it
+resolves anything, so `http://api。openai。com/v1/` looked to this
+library like one label -- and a name with no dots in it cannot be a public
+host, so it was admitted as internal. The request went to `api.openai.com`
+with the document in the clear. Measured, both halves: the classification and
+the host `httpx` actually produced.
+
+Two more of the same shape were open. An address written the way `inet_aton`
+reads it (`2130706433`, `0177.0.0.1`, `127.1`) parsed as neither an address
+nor a dotted name and fell through to the same single-label rule, so a public
+address in decimal came out `private`; glibc's resolver tries `inet_aton`
+first, so that form connects on Linux. And a lookalike letter -- Greek omicron
+in `lοcalhost` -- did the same on a name a reviewer reads as loopback.
+
+The rule now is that the host is normalised the way the client will read it
+*before* being classified: the three separators are mapped, a trailing root
+label is dropped, an all-numeric final label is refused as an address notation
+this module declines to decode, and anything left holding a character outside
+`[a-z0-9.\-_]` is external. A genuinely non-ASCII internal name goes in
+`trusted_hosts`. Four guards, one test each, each watched to fail.
 
 ### T12b — The proxy forwards a payload shape it does not recognise
 

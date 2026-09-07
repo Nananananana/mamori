@@ -28,6 +28,35 @@ While the version is below `1.0.0`, the public API may change in a minor release
 
 ### Fixed
 
+- **The trust boundary classified a different host than the one the request
+  went to. Three Unicode characters were enough to get past it.** A detector
+  is sent the text *before* it is protected, so the check on its base URL is
+  the one that decides whether an unprotected document leaves the machine.
+  `httpx` maps `U+3002`, `U+FF0E` and `U+FF61` onto the label separator before
+  it resolves anything; this library split on ASCII `.` only. So
+  `http://api。openai。com/v1/` looked like a single-label name, the
+  rule that a name without dots cannot be public admitted it as internal, and
+  the request went to `api.openai.com` in the clear. Both halves measured: the
+  classification, and the host `httpx` produced from the same string.
+
+  Two more of that shape were open. An address in `inet_aton`'s notation
+  (`2130706433`, `0177.0.0.1`, `127.1`) parsed as neither an address nor a
+  dotted name and fell through the same way, so a **public** address written
+  in decimal came out `private` -- and glibc tries `inet_aton` before DNS, so
+  that form connects on Linux. A lookalike letter did it again on a name a
+  reviewer reads as loopback: `lοcalhost` is Greek omicron.
+
+  The host is now normalised the way the client reads it *before* it is
+  classified. Separators are mapped, a trailing root label is dropped, an
+  all-numeric final label is refused as a notation this module declines to
+  decode, and a name still holding a character outside `[a-z0-9.-_]` is
+  external -- a genuinely non-ASCII internal name belongs in `trusted_hosts`.
+  Four guards, one named test each, each watched to fail on its own.
+
+  `localhost.` -- the same name with the root written out -- was being refused
+  and is now admitted, which was the same bug seen from the other side.
+
+
 - **Exit code 2 meant two different things, one release after the catalogue
   promised it meant one.** `argparse` exits `2` for a command line it cannot
   read, and the catalogue reserves `2` for `PolicyViolationError` -- a
