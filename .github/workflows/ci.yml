@@ -52,7 +52,7 @@ jobs:
       # downloads it on every run and is one outage away from red for a reason
       # that has nothing to do with the code.
       - name: Cache the model weights
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
           key: huggingface-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
